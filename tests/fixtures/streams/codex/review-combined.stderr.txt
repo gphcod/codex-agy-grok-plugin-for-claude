@@ -1,0 +1,5 @@
+error: the argument '--uncommitted' cannot be used with '[PROMPT]'
+
+Usage: codex exec review --uncommitted --json --output-last-message <FILE> --config <key=value> --model <MODEL> [PROMPT]
+
+For more information, try '--help'.

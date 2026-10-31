@@ -1,0 +1,1 @@
+Error: --effort/--reasoning-effort: unknown effort level 'max'; use one of: xhigh, high, medium, low

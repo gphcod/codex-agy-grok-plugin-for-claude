@@ -54,7 +54,7 @@ Effort behaviour, probed live:
 
 | Provider | Accepts | On an unsupported value |
 |---|---|---|
-| Codex | low, medium, high, xhigh, max; `ultra` on the listed families | per catalog |
+| Codex | low, medium, high, xhigh, max; `ultra` on the listed families | accepted without error: codex-cli 0.163.0 completed `-c model_reasoning_effort=ultra` on `gpt-6-luna`, whose listing lacks `ultra` (S1.1, 2026-10-31); the CLI does not check the effort against the catalog, council does (A3.3) |
 | Grok | low, medium, high, xhigh | `max` → "unknown effort level" |
 | Gemini | low, medium, high, or an effort-suffixed id | xhigh/max → "invalid model selection"; suffixed id with a different `--effort` → the same error |
 

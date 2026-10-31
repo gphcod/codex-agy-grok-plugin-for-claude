@@ -1,0 +1,1 @@
+error: invalid model selection (--model "gemini-3.8-flash" --effort "xhigh"): gemini-3.8-flash has no "xhigh" effort (available: low, medium, high)

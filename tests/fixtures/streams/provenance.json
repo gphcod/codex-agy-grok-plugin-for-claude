@@ -1,0 +1,50 @@
+{
+  "recorded": "2026-10-31",
+  "machine": "macOS (Darwin 27.0.0), Node 22.19.0",
+  "cli": { "codex": "codex-cli 0.163.0", "agy": "1.4.12", "grok": "grok 1.0.70 (f50904eaee6c) [stable]" },
+  "note": "Raw stdout streams captured by the S1 probes (docs/spike/<cli>.md lists each probe's argv). The scratch directory path is replaced by <scratch>. The fakes in tests/fixtures/fake-*.mjs reproduce these shapes; scenarios marked synthetic below have no capture and are mutations of a recorded stream.",
+  "streams": {
+    "codex": {
+      "minimal.jsonl": { "probe": "S1.1 minimal turn: exec --json -o … -C … -s read-only -m gpt-6.1-sol -c model_reasoning_effort=low -", "fakeScenario": "ok" },
+      "resume.jsonl": { "probe": "S1.1 resume: exec resume <thread> --json -o … -c sandbox_mode=read-only … -", "fakeScenario": "resume" },
+      "review-unfocused.jsonl": { "probe": "S1.1 unfocused review: exec review --uncommitted --json -o … -c sandbox_mode=read-only -m gpt-6.1-sol -c review_model=gpt-6.1-sol", "fakeScenario": "review-findings", "answerFile": "review-unfocused.answer.md" },
+      "review-focused.jsonl": { "probe": "S1.1 focused review: exec review --json -o … -c sandbox_mode=read-only … - (target sentence plus focus on stdin)", "answerFile": "review-focused.answer.md" },
+      "review-combined.jsonl": { "probe": "S1.1 flags plus prompt: exec review --uncommitted … - (exit 2, stream empty; see review-combined.stderr.txt)" },
+      "effort-ultra-luna.jsonl": { "probe": "S1.1 effort: -m gpt-6-luna -c model_reasoning_effort=ultra (accepted, exit 0)" },
+      "effort-ultra-sol.jsonl": { "probe": "S1.1 effort: -m gpt-6.1-sol -c model_reasoning_effort=ultra (accepted, exit 0)" },
+      "cancel.jsonl": { "probe": "S1.1 cancel: long prompt, kill -TERM -<pgid> 3 s after the first line; process died on SIGTERM" }
+    },
+    "agy": {
+      "minimal.jsonl": { "probe": "S1.2 minimal read-only turn: --model gemini-4-argon --effort low --sandbox --disable-slash-commands --print-timeout 120s --settings <deny list>", "fakeScenario": "ok" },
+      "resume.jsonl": { "probe": "S1.2 resume: --conversation <id>", "fakeScenario": "resume" },
+      "effort-flash-low-plus-high.jsonl": { "probe": "S1.2 effort matrix: --model gemini-3.8-flash-low --effort high (exit 1)", "fakeScenario": "effort-error" },
+      "effort-flash-high-plus-high.jsonl": { "probe": "S1.2 effort matrix: --model gemini-3.8-flash-high --effort high (exit 0)" },
+      "effort-flash-plus-high.jsonl": { "probe": "S1.2 effort matrix: --model gemini-3.8-flash --effort high (exit 0)" },
+      "effort-flash-plus-xhigh.jsonl": { "probe": "S1.2 effort matrix: --model gemini-3.8-flash --effort xhigh (exit 1)" },
+      "effort-flash-plus-max.jsonl": { "probe": "S1.2 effort matrix: --model gemini-3.8-flash --effort max (exit 1)" },
+      "denied-write.jsonl": { "probe": "S1.2 denial signature: read-only turn asked to create a file", "fakeScenario": "denied" },
+      "web-1.jsonl": { "probe": "S1.2 web tool name: read-only turn asked to search the web (tool search_web)" },
+      "web-2.jsonl": { "probe": "S1.2 web repeat with search_web(*) in the deny list (not blocked)" },
+      "json-schema.jsonl": { "probe": "S1.2 --json-schema <shared schema> on a tiny review prompt", "fakeScenario": "review-findings" },
+      "print-timeout-5s.jsonl": { "probe": "S1.2 --print-timeout 5s on a long prompt (exit 0, finished_reason print_timeout)" },
+      "cancel-group.jsonl": { "probe": "S1.2 cancel: kill -TERM -<pgid> (exit 1, result interrupted)" },
+      "cancel-pid-only.jsonl": { "probe": "S1.2 cancel: kill -TERM <pid> only (exit 1, result interrupted)" },
+      "merge-1-global-deny-only.jsonl": { "probe": "S1.2 settings merging: scratch HOME with global deny read_file(*), no --settings (read denied)" },
+      "merge-2-session-replaces.jsonl": { "probe": "S1.2 settings merging: session deny [write_file(*)] (read succeeded: the session array replaced the global one)" },
+      "merge-3-session-merged.jsonl": { "probe": "S1.2 settings merging: session deny [write_file(*), read_file(*)] (read denied again)" }
+    },
+    "grok": {
+      "minimal.jsonl": { "probe": "S1.3 read-only turn: explore recipe, --model grok-4.7 --effort low --session-id <uuid>", "fakeScenario": "ok" },
+      "resume.jsonl": { "probe": "S1.3 resume: -r <session>", "fakeScenario": "resume" },
+      "effort-xhigh.jsonl": { "probe": "S1.3 --effort xhigh (exit 0)" },
+      "effort-max.jsonl": { "probe": "S1.3 --effort max (exit 1, error event; see effort-max.stderr.txt)", "fakeScenario": "effort-error" },
+      "json-schema.jsonl": { "probe": "S1.3 --json-schema '<inline schema>' on a review prompt (structuredOutput on the end event)", "fakeScenario": "review-findings" },
+      "cancel.jsonl": { "probe": "S1.3 cancel: kill -TERM -<pgid> 3.5 s after the first line (exit 143)" }
+    }
+  },
+  "synthetic": {
+    "codex": { "effort-error": "no capture: codex 0.163.0 accepted every effort token probed", "denied": "no capture: a failed command_execution item modelled on the review-unfocused items", "review-malformed": "mutation of review-unfocused: answer without [P0]/[P1] lines", "slow": "ok stream with a delay", "hold-pipes": "ok stream plus a detached grandchild holding stdout" },
+    "agy": { "review-malformed": "mutation of json-schema: structured_output lacks summary and a finding lacks file", "slow": "ok stream with a delay; SIGTERM reproduces the cancel-group result", "hold-pipes": "ok stream plus a detached grandchild holding stdout" },
+    "grok": { "denied": "no capture: a tool_call to the forbidden `write` tool, shapes from grok-build-plugin-cc lib/reader.mjs", "review-malformed": "mutation of json-schema: structuredOutput lacks findings", "slow": "ok stream with a delay; SIGTERM exits 143 as the cancel probe did", "hold-pipes": "ok stream plus a detached grandchild holding stdout" }
+  }
+}

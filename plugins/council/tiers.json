@@ -1,0 +1,17 @@
+{
+  "codex": {
+    "consult": { "model": "gpt-6.1-sol", "effort": "high" },
+    "exec": { "model": "gpt-6-luna", "effort": "max" },
+    "deep": { "model": "gpt-6.1-sol", "effort": "xhigh" }
+  },
+  "grok": {
+    "consult": { "model": "grok-4.7", "effort": "high" },
+    "exec": { "model": "grok-4.7-build-fast", "effort": "xhigh" },
+    "deep": { "model": "grok-4.7", "effort": "xhigh" }
+  },
+  "gemini": {
+    "consult": { "model": "gemini-4-argon", "effort": "high" },
+    "exec": { "model": "gemini-3.8-flash", "effort": "high" },
+    "deep": { "model": "gemini-4-argon", "effort": "high" }
+  }
+}
