@@ -1,0 +1,21 @@
+{
+  "name": "gphcod-council",
+  "owner": {
+    "name": "gphcod"
+  },
+  "metadata": {
+    "description": "council: Codex, Gemini (agy) and Grok from Claude Code, one plugin.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "council",
+      "description": "Ask Codex, Gemini or Grok a question, discuss findings, review changes, fan a brief out to several models, or delegate authorized edits from Claude Code.",
+      "version": "0.1.0",
+      "author": {
+        "name": "gphcod"
+      },
+      "source": "./plugins/council"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "council",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Claude Code plugin through which Claude calls Codex, Gemini (agy) and Grok.",
+  "engines": {
+    "node": ">=18.20.8 <19 || >=22.19.0"
+  },
+  "scripts": {
+    "test": "node scripts/run-tests.mjs",
+    "test:live": "node scripts/run-tests.mjs --live",
+    "gen": "node scripts/gen-commands.mjs",
+    "gen:check": "node scripts/gen-commands.mjs --check",
+    "measure": "node scripts/measure.mjs"
+  },
+  "license": "Apache-2.0"
+}
