@@ -2,8 +2,8 @@
 // A fake validates the complete launch contract of PLAN.md A5.1 before emitting anything;
 // a mismatch exits 99 with the reason on stderr. Scenario selection: COUNCIL_FAKE_SCENARIO.
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const fixturesDir = dirname(fileURLToPath(import.meta.url));
@@ -30,6 +30,51 @@ export function requireGuards(env = process.env) {
   for (const name of GUARD_VARS) {
     if (!env[name]) fail(`guard variable ${name} is not set on the child`);
   }
+}
+
+/**
+ * Expected-content markers the test (or an adapter test) passes so the fake can check the exact
+ * bytes a turn carries: COUNCIL_FAKE_EXPECT_PROMPT (exact) or COUNCIL_FAKE_EXPECT_PROMPT_CONTAINS
+ * (substring), COUNCIL_FAKE_EXPECT_CONTRACT (exact contract text), COUNCIL_FAKE_JOB_DIR (directory
+ * every per-job file must live in) and COUNCIL_FAKE_WEB=1 (the turn is a --web turn).
+ */
+export function expectPrompt(actual, what, env = process.env) {
+  const exact = env.COUNCIL_FAKE_EXPECT_PROMPT;
+  const contains = env.COUNCIL_FAKE_EXPECT_PROMPT_CONTAINS;
+  if (exact === undefined && contains === undefined) fail(`no COUNCIL_FAKE_EXPECT_PROMPT or COUNCIL_FAKE_EXPECT_PROMPT_CONTAINS marker to check the ${what} against`);
+  if (exact !== undefined && actual !== exact) fail(`${what} differs from COUNCIL_FAKE_EXPECT_PROMPT (${JSON.stringify(actual.slice(0, 80))})`);
+  if (contains !== undefined && !actual.includes(contains)) fail(`${what} lacks COUNCIL_FAKE_EXPECT_PROMPT_CONTAINS`);
+}
+
+export function expectContract(actual, what, env = process.env) {
+  const contract = env.COUNCIL_FAKE_EXPECT_CONTRACT;
+  if (contract === undefined) fail(`no COUNCIL_FAKE_EXPECT_CONTRACT marker to check the ${what} against`);
+  if (actual !== contract) fail(`${what} differs from COUNCIL_FAKE_EXPECT_CONTRACT`);
+}
+
+export function expectInJobDir(file, what, env = process.env) {
+  const dir = env.COUNCIL_FAKE_JOB_DIR;
+  if (!dir) fail(`no COUNCIL_FAKE_JOB_DIR marker to check the ${what} path against`);
+  const real = (p) => { try { return realpathSync(p); } catch { return resolve(p); } };
+  const inside = real(dirname(file)) === real(dir) || real(dirname(file)).startsWith(real(dir) + sep);
+  if (!inside) fail(`${what} ${file} is outside the job directory ${dir}`);
+}
+
+export function wantsWeb(env = process.env) {
+  return env.COUNCIL_FAKE_WEB === "1";
+}
+
+export function readRepoSchema() {
+  return JSON.parse(readFileSync(join(repoRoot, "plugins", "council", "schemas", "review-output.schema.json"), "utf8"));
+}
+
+export function deepEqual(a, b) {
+  return JSON.stringify(sortKeys(a)) === JSON.stringify(sortKeys(b));
+}
+function sortKeys(v) {
+  if (Array.isArray(v)) return v.map(sortKeys);
+  if (v && typeof v === "object") return Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortKeys(v[k])]));
+  return v;
 }
 
 export function readStdin() {

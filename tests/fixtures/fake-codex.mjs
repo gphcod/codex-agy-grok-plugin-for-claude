@@ -6,7 +6,7 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import {
-  emit, fail, holdPipes, parseArgs, printAndExit, readSpike, readStdin, readStreamFixture, requireGuards, scenario, sleep, slowMs, uuid,
+  emit, expectContract, expectInJobDir, expectPrompt, fail, holdPipes, parseArgs, printAndExit, readSpike, readStdin, readStreamFixture, requireGuards, scenario, sleep, slowMs, uuid,
 } from "./fake-common.mjs";
 
 const argv = process.argv.slice(2);
@@ -47,6 +47,7 @@ if (!args.has("--json")) fail("--json missing");
 const answerFile = args.one("-o");
 if (!answerFile) fail("-o <answer file> missing");
 if (!existsSync(dirname(answerFile))) fail(`answer directory ${dirname(answerFile)} does not exist`);
+expectInJobDir(answerFile, "answer file (-o)");
 const model = args.one("-m");
 if (!model) fail("-m <model> missing");
 const config = new Map(args.all("-c").map((kv) => { const i = kv.indexOf("="); if (i < 0) fail(`-c ${kv} is not key=value`); return [kv.slice(0, i), kv.slice(i + 1)]; }));
@@ -72,8 +73,10 @@ if (form !== "review") {
   if (dev === undefined) fail("-c developer_instructions=<json string> missing");
   let parsed; try { parsed = JSON.parse(dev); } catch { fail("developer_instructions is not a JSON string literal"); }
   if (typeof parsed !== "string" || !parsed.trim()) fail("developer_instructions must be a non-empty string");
+  expectContract(parsed, "developer_instructions contract");
   if (!stdinMarker) fail("prompt marker `-` missing");
   if (!stdin.trim()) fail("empty prompt on stdin");
+  expectPrompt(stdin, "stdin prompt");
 }
 let target = null;
 if (form === "review") {
@@ -85,6 +88,8 @@ if (form === "review") {
   if (targets.length && stdinMarker) { process.stderr.write(COMBINED_ERROR); process.exit(2); } // real CLI behaviour
   if (!targets.length && !stdinMarker) fail("review needs a target flag or a prompt");
   if (stdinMarker && !stdin.trim()) fail("focused review with empty stdin");
+  if (stdinMarker) expectPrompt(stdin, "focused review stdin");
+  if (!stdinMarker && stdin.length) fail("unfocused review must not receive stdin");
   target = targets[0] ?? "prompt";
 }
 if (sc === "resume" && form !== "resume") fail("scenario resume requires `exec resume`");

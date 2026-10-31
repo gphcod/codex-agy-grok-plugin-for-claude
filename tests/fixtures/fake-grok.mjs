@@ -5,9 +5,9 @@
 // Scenarios: ok, resume, denied (a forbidden tool call on a read-only turn; Grok has no denial
 // event, the adapter fails closed), effort-error (S1.3 effort-max), review-findings (S1.3
 // json-schema), review-malformed (synthetic), slow, hold-pipes.
-import { existsSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import {
-  emit, fail, holdPipes, parseArgs, printAndExit, readSpike, readStreamFixture, requireGuards, scenario, sleep, slowMs,
+  deepEqual, emit, expectContract, expectInJobDir, expectPrompt, fail, holdPipes, parseArgs, printAndExit, readRepoSchema, readSpike, readStdin, readStreamFixture, requireGuards, scenario, sleep, slowMs, wantsWeb,
 } from "./fake-common.mjs";
 
 const argv = process.argv.slice(2);
@@ -33,6 +33,9 @@ const args = parseArgs(argv, {
 if (args.positionals.length) fail(`unexpected positional ${args.positionals.join(" ")}`);
 const promptFile = args.one("--prompt-file");
 if (!promptFile || !existsSync(promptFile) || statSync(promptFile).size === 0) fail("--prompt-file missing, absent or empty");
+expectInJobDir(promptFile, "prompt file");
+expectPrompt(readFileSync(promptFile, "utf8"), "prompt file content");
+if (readStdin().length) fail("grok receives no stdin");
 if (args.has("--session-id") === args.has("-r")) fail("exactly one of --session-id and -r");
 const sessionId = args.one("--session-id") ?? args.one("-r");
 if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) fail(`session id ${sessionId} is not a uuid`);
@@ -43,6 +46,7 @@ const model = args.one("--model");
 if (!model) fail("--model missing");
 if (!args.has("--no-auto-update")) fail("--no-auto-update missing");
 if (!args.has("--always-approve") || !args.has("--no-subagents")) fail("--always-approve and --no-subagents are required");
+if (wantsWeb() === args.has("--disable-web-search")) fail(wantsWeb() ? "a --web turn must omit --disable-web-search" : "--disable-web-search missing on a turn without --web");
 const disallowed = (args.one("--disallowed-tools") ?? "").split(",");
 if (!args.has("--disallowed-tools")) fail("--disallowed-tools missing");
 const denies = args.all("--deny");
@@ -68,8 +72,10 @@ if (!readOnly && process.env.GROK_CLAUDE_RULES_ENABLED !== undefined) fail("writ
 let schema = null;
 if (args.has("--json-schema")) {
   try { schema = JSON.parse(args.one("--json-schema")); } catch { fail("--json-schema is not inline JSON"); }
+  if (!deepEqual(schema, readRepoSchema())) fail("--json-schema differs from plugins/council/schemas/review-output.schema.json");
   if (args.has("--rules")) fail("reviews carry no --rules");
 } else if (!args.has("--rules") || !args.one("--rules").trim()) fail("--rules <contract> missing on a non-review turn");
+else expectContract(args.one("--rules"), "--rules contract");
 if (sc === "resume" && !args.has("-r")) fail("scenario resume requires -r");
 if (sc === "ok" && !args.has("--session-id")) fail("scenario ok requires --session-id");
 if (sc.startsWith("review-") && !schema) fail(`scenario ${sc} requires --json-schema`);

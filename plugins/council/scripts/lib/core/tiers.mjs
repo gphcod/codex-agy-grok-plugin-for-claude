@@ -17,7 +17,8 @@ export function loadTiers(pluginRoot = PLUGIN_ROOT) {
  * {model?, effort?} from a thread record, used when the tier was not given explicitly.
  */
 export function resolveTier(provider, tier, overrides = {}, catalog, { tiers = loadTiers(), inherited = null, tierExplicit = Boolean(tier) } = {}) {
-  const name = tier ?? DEFAULT_TIER;
+  // An omitted --tier keeps the thread's persisted tier; only then does the default apply.
+  const name = tier ?? inherited?.tier ?? DEFAULT_TIER;
   if (!TIERS.includes(name)) throw new UsageError(`--tier must be one of ${TIERS.join(", ")}`);
   const table = tiers[provider];
   if (!table || !table[name]) throw new UsageError(`no ${name} tier for ${provider} in tiers.json`);

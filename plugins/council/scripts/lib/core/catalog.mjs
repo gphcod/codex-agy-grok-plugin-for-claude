@@ -107,12 +107,23 @@ export function splitSuffix(id, catalog) {
   return { family: m[1], suffix: m[2] };
 }
 
-/** Effort list the catalog knows for this id, or null when the id is not catalogued. */
+/**
+ * Effort list the catalog knows for this id, or null when the id is not catalogued. A catalogued
+ * model with an empty list returns [] (known, offers nothing), which is not the same as absent.
+ * A Gemini suffixed id is known only when its family lists that suffix (`gemini-4-argon-xhigh` is
+ * unknown while the listing has low, medium, high).
+ */
 export function effortsFor(id, catalog) {
-  if (Object.hasOwn(catalog.models ?? {}, id) && catalog.models[id].length) return catalog.models[id];
+  if (Object.hasOwn(catalog.models ?? {}, id) && Array.isArray(catalog.models[id])) {
+    if (catalog.models[id].length) return catalog.models[id];
+    const split = splitSuffix(id, catalog);
+    if (!split) return [];
+  }
   if (Object.hasOwn(catalog.families ?? {}, id)) return catalog.families[id];
   const split = splitSuffix(id, catalog);
-  if (split && Object.hasOwn(catalog.families ?? {}, split.family)) return [split.suffix];
+  if (split && Object.hasOwn(catalog.families ?? {}, split.family)) {
+    return catalog.families[split.family].includes(split.suffix) ? [split.suffix] : null;
+  }
   return null;
 }
 
@@ -140,11 +151,12 @@ export function resolveEffort(provider, id, requested, catalog) {
   if (requested == null) return { effort: null, requested: null, clamped: false, suffixed: false };
   const offered = effortsFor(id, catalog);
   if ((catalog.passThrough ?? []).includes(requested)) {
-    if (offered && !offered.includes(requested)) throw new UsageError(`${id} does not offer effort ${requested}`);
+    // offered === [] is a catalogued model that offers nothing: rejected, never passed through.
+    if (offered !== null && !offered.includes(requested)) throw new UsageError(`${id} does not offer effort ${requested}`);
     return { effort: requested, requested, clamped: false, suffixed: false };
   }
   if (!SHARED_ENUM.includes(requested)) throw new UsageError(`--effort must be one of ${SHARED_ENUM.join(", ")}${(catalog.passThrough ?? []).length ? ` (or ${catalog.passThrough.join(", ")} where ${provider} offers it)` : ""}`);
-  if (!offered) return { effort: requested, requested, clamped: false, suffixed: false };
+  if (offered === null) return { effort: requested, requested, clamped: false, suffixed: false };
   const shared = offered.filter((e) => SHARED_ENUM.includes(e)).sort(byRank);
   if (!shared.length) throw new UsageError(`${id} lists no effort council can select`);
   const below = shared.filter((e) => rank(e) <= rank(requested));

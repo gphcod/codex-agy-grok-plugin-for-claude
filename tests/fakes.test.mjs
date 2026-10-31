@@ -53,10 +53,15 @@ function assertShapes(provider, events, { allowExtraTypes = [] } = {}) {
   }
 }
 
-function run(file, args, { env = {}, input = "", cwd = repoRoot, signalAfterMs = null, signal = "SIGTERM" } = {}) {
+const CONTRACT = "Answer tersely.";
+const PROMPT = "Reply with pong.";
+/** Markers the fakes check the turn's bytes against; a test overrides them to provoke exit 99. */
+const markers = (cwd, prompt = PROMPT) => ({ COUNCIL_FAKE_EXPECT_PROMPT: prompt, COUNCIL_FAKE_EXPECT_CONTRACT: CONTRACT, COUNCIL_FAKE_JOB_DIR: cwd });
+
+function run(file, args, { env = {}, input = "", cwd = repoRoot, prompt = PROMPT, signalAfterMs = null, signal = "SIGTERM" } = {}) {
   return new Promise((resolve) => {
     const started = Date.now();
-    const child = spawn(node, [file, ...args], { cwd, env: { ...process.env, ...env }, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(node, [file, ...args], { cwd, env: { ...process.env, ...markers(cwd, prompt), ...env }, stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "", stderr = "", exitAt = null, closeAt = null, code = null, sig = null;
     child.stdout.on("data", (d) => { stdout += d; });
     child.stderr.on("data", (d) => { stderr += d; });
@@ -78,11 +83,11 @@ function run(file, args, { env = {}, input = "", cwd = repoRoot, signalAfterMs =
 // --- launch builders per fake and form ----------------------------------------------------------
 function codexArgs(dir, form, { effort = "low", model = "gpt-6.1-sol", target = "--uncommitted", focus = false } = {}) {
   const answer = join(dir, "answer.md");
-  const dev = ["-c", `developer_instructions=${JSON.stringify("Answer tersely.")}`];
-  if (form === "fresh") return { args: ["exec", "--json", "-o", answer, "-C", dir, "-s", "read-only", "-m", model, "-c", `model_reasoning_effort=${effort}`, ...dev, "-"], input: "Reply with pong.", answer };
-  if (form === "resume") return { args: ["exec", "resume", UUID, "--json", "-o", answer, "-c", "sandbox_mode=read-only", "-m", model, "-c", `model_reasoning_effort=${effort}`, ...dev, "-"], input: "Again.", answer };
+  const dev = ["-c", `developer_instructions=${JSON.stringify(CONTRACT)}`];
+  if (form === "fresh") return { args: ["exec", "--json", "-o", answer, "-C", dir, "-s", "read-only", "-m", model, "-c", `model_reasoning_effort=${effort}`, ...dev, "-"], input: PROMPT, answer };
+  if (form === "resume") return { args: ["exec", "resume", UUID, "--json", "-o", answer, "-c", "sandbox_mode=read-only", "-m", model, "-c", `model_reasoning_effort=${effort}`, ...dev, "-"], input: PROMPT, answer };
   const common = ["--json", "-o", answer, "-c", "sandbox_mode=read-only", "-m", model, "-c", `review_model=${model}`, "-c", `model_reasoning_effort=${effort}`];
-  if (focus) return { args: ["exec", "review", ...common, "-"], input: "Review the uncommitted changes.\n\nFocus on loops.", answer };
+  if (focus) return { args: ["exec", "review", ...common, "-"], input: PROMPT, answer };
   return { args: ["exec", "review", target, ...common], input: "", answer };
 }
 function agyArgs(dir, form, { effort = "low", model = "gemini-4-argon", settings, mode = null, schema = false } = {}) {
@@ -93,19 +98,19 @@ function agyArgs(dir, form, { effort = "low", model = "gemini-4-argon", settings
   if (mode) args.push("--mode", mode);
   if (form === "resume") args.push("--conversation", UUID);
   if (schema) args.push("--json-schema", schemaPath);
-  return { args, input: JSON.stringify({ event: "user", message: { content: "Reply with pong." } }) + "\n" };
+  return { args, input: JSON.stringify({ event: "user", message: { content: `${CONTRACT}\n\n${PROMPT}` } }) + "\n", prompt: `${CONTRACT}\n\n${PROMPT}` };
 }
 function grokArgs(dir, form, { effort = "low", recipe = "explore", schema = false, web = false } = {}) {
   const promptFile = join(dir, "prompt.md");
-  writeFileSync(promptFile, "Reply with pong.");
+  writeFileSync(promptFile, PROMPT);
   const session = form === "resume" ? ["-r", UUID] : ["--session-id", UUID];
   const common = ["--always-approve", "--no-subagents", ...(web ? [] : ["--disable-web-search"]), "--disallowed-tools"];
   const RESUME_DENY = "search_replace,write,run_terminal_cmd,search_tool,use_tool,todo_write,monitor,workflow,scheduler_create,scheduler_delete,scheduler_list,send_feedback," + HOSTILE;
   const plan = recipe === "explore" ? ["--agent", "explore", ...common, HOSTILE, "--deny", "MCPTool(*)"]
     : recipe === "resume-deny" ? [...common, RESUME_DENY, "--deny", "MCPTool(*)"]
     : [...common, HOSTILE, "--deny", "Bash(git push*)", "--deny", "Bash(rm -rf *)"];
-  const tail = schema ? ["--json-schema", SCHEMA] : ["--rules", "Answer tersely."];
-  const env = { ...guards, ...grokEnv, ...(recipe === "write" ? {} : { GROK_CLAUDE_RULES_ENABLED: "0" }) };
+  const tail = schema ? ["--json-schema", SCHEMA] : ["--rules", CONTRACT];
+  const env = { ...guards, ...grokEnv, ...(recipe === "write" ? {} : { GROK_CLAUDE_RULES_ENABLED: "0" }), ...(web ? { COUNCIL_FAKE_WEB: "1" } : {}) };
   return { args: ["--prompt-file", promptFile, ...session, "--cwd", dir, "--output-format", "streaming-json", "--model", "grok-4.7", "--effort", effort, "--no-auto-update", ...plan, ...tail], env };
 }
 
@@ -156,9 +161,9 @@ for (const sc of SCENARIOS) {
   test(`fake-agy scenario ${sc}`, async () => {
     const dir = tmp();
     try {
-      const { args, input } = agyArgs(dir, formFor(sc), { schema: sc.startsWith("review-") });
+      const { args, input, prompt } = agyArgs(dir, formFor(sc), { schema: sc.startsWith("review-") });
       const env = { ...guards, COUNCIL_FAKE_SCENARIO: sc, COUNCIL_FAKE_SLOW_MS: "300", COUNCIL_FAKE_HOLD_MS: "1500" };
-      const r = await run(fakes.agy, args, { env, input, cwd: dir });
+      const r = await run(fakes.agy, args, { env, input, cwd: dir, prompt });
       const result = r.events.find((e) => e.event === "result")?.result;
       assertShapes("agy", r.events);
       if (sc === "effort-error") {
@@ -226,7 +231,7 @@ test("slow scenarios stop on SIGTERM the way the probes recorded", async () => {
     const codex = await run(fakes.codex, c.args, { env, input: c.input, cwd: dir, signalAfterMs: 300 });
     assert.equal(codex.code, 143, "codex probe: killed by SIGTERM (143 in the fake; the real CLI died on the signal)");
     const a = agyArgs(dir, "fresh");
-    const agy = await run(fakes.agy, a.args, { env, input: a.input, cwd: dir, signalAfterMs: 300 });
+    const agy = await run(fakes.agy, a.args, { env, input: a.input, cwd: dir, prompt: a.prompt, signalAfterMs: 300 });
     assert.equal(agy.code, 1);
     const result = agy.events.at(-1).result;
     assert.equal(result.status, "ERROR");
@@ -239,6 +244,7 @@ test("slow scenarios stop on SIGTERM the way the probes recorded", async () => {
 
 test("fakes refuse a wrong launch contract with exit 99", async () => {
   const dir = tmp();
+  const other = tmp(); // a sibling job directory, not a parent of `dir`
   try {
     // missing guard variable
     const c = codexArgs(dir, "fresh");
@@ -249,22 +255,47 @@ test("fakes refuse a wrong launch contract with exit 99", async () => {
     const resume = codexArgs(dir, "resume");
     assert.equal((await run(fakes.codex, [...resume.args, "-C", dir], { env: guards, input: resume.input, cwd: dir })).code, 99);
     const combined = codexArgs(dir, "review");
-    const r = await run(fakes.codex, [...combined.args, "-"], { env: guards, input: "focus", cwd: dir });
+    const r = await run(fakes.codex, [...combined.args, "-"], { env: guards, input: "focus", cwd: dir, prompt: "focus" });
     assert.equal(r.code, 2);
     assert.match(r.stderr, /cannot be used with '\[PROMPT\]'/);
+    assert.equal((await run(fakes.codex, c.args, { env: { ...guards, COUNCIL_FAKE_EXPECT_CONTRACT: "Other contract." }, input: c.input, cwd: dir })).code, 99, "developer_instructions differs from the contract");
+    assert.equal((await run(fakes.codex, c.args, { env: guards, input: c.input + " extra", cwd: dir })).code, 99, "stdin differs from the prompt");
+    assert.equal((await run(fakes.codex, c.args, { env: { ...guards, COUNCIL_FAKE_JOB_DIR: other }, input: c.input, cwd: dir })).code, 99, "-o outside the job dir");
+    const { COUNCIL_FAKE_EXPECT_PROMPT: _p, ...noMarker } = { ...markers(dir), ...guards };
+    assert.equal((await run(fakes.codex, c.args, { env: { ...noMarker, COUNCIL_FAKE_EXPECT_PROMPT: undefined }, input: c.input, cwd: dir })).code, 99, "no prompt marker at all");
+    assert.equal((await run(fakes.codex, combined.args, { env: guards, input: "stray", cwd: dir })).code, 99, "unfocused review with stdin");
+    const focused = codexArgs(dir, "review", { focus: true });
+    assert.equal((await run(fakes.codex, focused.args, { env: guards, input: focused.input, cwd: dir })).code, 0, "focused review with the expected stdin");
     // agy: missing deny rule on a read-only turn; allow rule beyond read_file/read_url; two stdin lines; bad suffix conflict (real exit 1)
+    const agyRun = (built, extra = {}) => run(fakes.agy, built.args, { env: guards, input: built.input, cwd: dir, prompt: built.prompt, ...extra });
     const weak = agyArgs(dir, "fresh", { settings: { permissions: { deny: ["write_file(*)"] } } });
-    assert.equal((await run(fakes.agy, weak.args, { env: guards, input: weak.input, cwd: dir })).code, 99);
+    assert.equal((await agyRun(weak)).code, 99);
     const allow = agyArgs(dir, "fresh", { settings: { permissions: { deny: ["write_file(*)", "edit_file(*)", "command(*)", "unsandboxed(*)", "mcp(*)", "execute_url(*)"], allow: ["command(git status)"] } } });
-    assert.equal((await run(fakes.agy, allow.args, { env: guards, input: allow.input, cwd: dir })).code, 99);
+    assert.equal((await agyRun(allow)).code, 99);
     const ok = agyArgs(dir, "fresh");
-    assert.equal((await run(fakes.agy, ok.args, { env: guards, input: ok.input + ok.input, cwd: dir })).code, 99);
+    assert.equal((await agyRun(ok, { input: ok.input + ok.input })).code, 99, "two NDJSON lines");
+    assert.equal((await agyRun(ok, { input: ok.input + "\n" })).code, 99, "trailing blank line");
+    assert.equal((await agyRun(ok, { input: ok.input.trimEnd() })).code, 99, "missing newline");
+    assert.equal((await agyRun(ok, { input: JSON.stringify({ event: "user", message: { content: ok.prompt }, extra: 1 }) + "\n" })).code, 99, "unexpected key");
+    assert.equal((await agyRun(ok, { prompt: "something else" })).code, 99, "content differs from the expected prompt");
+    assert.equal((await agyRun(ok, { env: { ...guards, COUNCIL_FAKE_EXPECT_CONTRACT: "Other contract." } })).code, 99, "content does not start with the contract");
+    assert.equal((await agyRun(ok, { env: { ...guards, COUNCIL_FAKE_JOB_DIR: other } })).code, 99, "settings file outside the job dir");
+    const unsuffixed = agyArgs(dir, "fresh", { model: "gemini-4-argon", effort: null });
+    assert.equal((await agyRun(unsuffixed)).code, 99, "unsuffixed family without --effort");
+    const suffixedOnly = agyArgs(dir, "fresh", { model: "gemini-4-argon-high", effort: null });
+    assert.equal((await agyRun(suffixedOnly)).code, 0, "suffixed id alone is fine");
+    const wrongSchema = agyArgs(dir, "fresh", { schema: true });
+    const otherSchema = join(dir, "other-schema.json");
+    writeFileSync(otherSchema, "{}");
+    const idx = wrongSchema.args.indexOf("--json-schema");
+    wrongSchema.args[idx + 1] = otherSchema;
+    assert.equal((await agyRun(wrongSchema)).code, 99, "schema file differs from the repository schema");
     const conflict = agyArgs(dir, "fresh", { model: "gemini-3.8-flash-low", effort: "high" });
-    const cr = await run(fakes.agy, conflict.args, { env: guards, input: conflict.input, cwd: dir });
+    const cr = await agyRun(conflict);
     assert.equal(cr.code, 1);
     assert.match(cr.stderr, /conflicts with --effort=high/);
     const task = agyArgs(dir, "fresh", { settings: { permissions: { allow: ["command(git status)"] } }, mode: "accept-edits" });
-    assert.equal((await run(fakes.agy, task.args, { env: guards, input: task.input, cwd: dir })).code, 0, "a task keeps the global lists");
+    assert.equal((await agyRun(task)).code, 0, "a task keeps the global lists");
     // grok: explore recipe without --deny MCPTool(*); write recipe with rules disabled; review with --rules; missing compatEnv
     const g = grokArgs(dir, "fresh");
     assert.equal((await run(fakes.grok, g.args.filter((x, i, a) => !(x === "--deny" || a[i - 1] === "--deny")), { env: g.env, cwd: dir })).code, 99);
@@ -279,5 +310,14 @@ test("fakes refuse a wrong launch contract with exit 99", async () => {
     assert.equal((await run(fakes.grok, rd.args, { env: { ...rd.env, COUNCIL_FAKE_SCENARIO: "resume" }, cwd: dir })).code, 0);
     const web = grokArgs(dir, "fresh", { web: true });
     assert.equal((await run(fakes.grok, web.args, { env: web.env, cwd: dir })).code, 0, "--web omits --disable-web-search");
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+    assert.equal((await run(fakes.grok, g.args, { env: { ...g.env, COUNCIL_FAKE_WEB: "1" }, cwd: dir })).code, 99, "--disable-web-search present on a --web turn");
+    assert.equal((await run(fakes.grok, web.args, { env: g.env, cwd: dir })).code, 99, "--disable-web-search missing without --web");
+    assert.equal((await run(fakes.grok, g.args, { env: g.env, cwd: dir, prompt: "a different prompt" })).code, 99, "prompt file content differs");
+    assert.equal((await run(fakes.grok, g.args, { env: g.env, cwd: dir, input: "stray stdin" })).code, 99, "stdin must be empty");
+    assert.equal((await run(fakes.grok, g.args, { env: { ...g.env, COUNCIL_FAKE_EXPECT_CONTRACT: "Other contract." }, cwd: dir })).code, 99, "--rules differs from the contract");
+    assert.equal((await run(fakes.grok, g.args, { env: { ...g.env, COUNCIL_FAKE_JOB_DIR: other }, cwd: dir })).code, 99, "prompt file outside the job dir");
+    const emptySchema = grokArgs(dir, "fresh", { schema: true });
+    emptySchema.args[emptySchema.args.indexOf("--json-schema") + 1] = "{}";
+    assert.equal((await run(fakes.grok, emptySchema.args, { env: emptySchema.env, cwd: dir })).code, 99, "inline schema differs from the repository schema");
+  } finally { rmSync(dir, { recursive: true, force: true }); rmSync(other, { recursive: true, force: true }); }
 });

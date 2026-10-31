@@ -5,7 +5,7 @@
 // review-findings (S1.2 json-schema), review-malformed (synthetic), slow, hold-pipes.
 import { existsSync, readFileSync } from "node:fs";
 import {
-  emit, fail, holdPipes, parseArgs, printAndExit, readSpike, readStdin, readStreamFixture, requireGuards, scenario, sleep, slowMs, uuid,
+  deepEqual, emit, expectContract, expectInJobDir, expectPrompt, fail, holdPipes, parseArgs, printAndExit, readRepoSchema, readSpike, readStdin, readStreamFixture, requireGuards, scenario, sleep, slowMs, uuid,
 } from "./fake-common.mjs";
 
 const argv = process.argv.slice(2);
@@ -33,6 +33,7 @@ if (!args.has("--sandbox")) fail("--sandbox missing");
 if (!/^\d+(\.\d+)?s$/.test(args.one("--print-timeout") ?? "")) fail("--print-timeout <seconds>s missing");
 const settingsPath = args.one("--settings");
 if (!settingsPath || !existsSync(settingsPath)) fail("--settings <file> missing or absent");
+expectInJobDir(settingsPath, "settings file");
 let settings;
 try { settings = JSON.parse(readFileSync(settingsPath, "utf8")); } catch { fail("--settings file is not JSON"); }
 if (!settings || typeof settings.permissions !== "object") fail("settings lack a permissions object");
@@ -48,17 +49,22 @@ const model = args.one("--model");
 if (!model) fail("--model missing");
 const suffix = /-(low|medium|high)$/.exec(model)?.[1] ?? null;
 const effort = args.one("--effort");
+if (!suffix && effort === undefined) fail("an unsuffixed family needs --effort");
 const schemaPath = args.one("--json-schema");
 if (schemaPath !== undefined) {
   if (!existsSync(schemaPath)) fail("--json-schema path does not exist");
-  try { JSON.parse(readFileSync(schemaPath, "utf8")); } catch { fail("--json-schema file is not JSON"); }
+  let schema; try { schema = JSON.parse(readFileSync(schemaPath, "utf8")); } catch { fail("--json-schema file is not JSON"); }
+  if (!deepEqual(schema, readRepoSchema())) fail("--json-schema file differs from plugins/council/schemas/review-output.schema.json");
 }
 const raw = readStdin();
-const lines = raw.split("\n").filter((l) => l.length);
-if (lines.length !== 1 || !raw.endsWith("\n")) fail("stdin must be exactly one NDJSON line");
+const newline = raw.indexOf("\n");
+if (newline < 0 || newline !== raw.length - 1) fail("stdin must be exactly one NDJSON line ending in a single newline");
 let message;
-try { message = JSON.parse(lines[0]); } catch { fail("stdin line is not JSON"); }
+try { message = JSON.parse(raw.slice(0, newline)); } catch { fail("stdin line is not JSON"); }
 if (message?.event !== "user" || typeof message?.message?.content !== "string" || !message.message.content.trim()) fail("stdin must be {event:'user', message:{content}}");
+if (Object.keys(message).length !== 2 || Object.keys(message.message).length !== 1) fail("stdin message carries unexpected keys");
+if (process.env.COUNCIL_FAKE_EXPECT_CONTRACT !== undefined && !message.message.content.startsWith(process.env.COUNCIL_FAKE_EXPECT_CONTRACT)) fail("content does not start with the contract");
+expectPrompt(message.message.content, "stdin content");
 const conversation = args.one("--conversation");
 if (sc === "resume" && !conversation) fail("scenario resume requires --conversation");
 if (sc === "ok" && conversation) fail("scenario ok requires a fresh conversation");
