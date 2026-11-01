@@ -121,7 +121,7 @@ function pathEntry(file, budget) {
   if (st.isSymbolicLink()) { try { return { kind: "link", target: fs.readlinkSync(file) }; } catch { return { kind: "link", target: null }; } }
   if (st.isDirectory()) return { kind: "dir" }; // An embedded repository or submodule; what is inside it is not hashed.
   if (!st.isFile()) return { kind: "other" };
-  const entry = { kind: "file", exec: Boolean(st.mode & 0o111), size: st.size, mtimeMs: st.mtimeMs, hash: null };
+  const entry = { kind: "file", exec: Boolean(st.mode & 0o100), size: st.size, mtimeMs: st.mtimeMs, hash: null };
   if (st.size > budget.left) return entry;
   let data = null;
   try { data = readBounded(file, budget.left); } catch { /* by size and mtime */ }

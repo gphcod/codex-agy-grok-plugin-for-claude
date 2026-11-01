@@ -289,6 +289,20 @@ test("sameEntry: kinds, link targets, one missing hash, absent entries", () => {
   assert.equal(sameEntry(file(), undefined), false);
 });
 
+test("real Git: the owner's execute bit is the one that counts, as in Git's own mode", { skip: process.platform === "win32" }, () => {
+  const dir = repo();
+  try {
+    writeFileSync(join(dir, "a.txt"), "dirty\n");
+    fs.chmodSync(join(dir, "a.txt"), 0o755);
+    const dirty = worktreeSnapshot(dir);
+    fs.chmodSync(join(dir, "a.txt"), 0o655);
+    assert.deepEqual(rel(dir, worktreeChanges(dir, dirty)), ["a.txt"], "0755 to 0655 clears Git's execute bit");
+    const owner = worktreeSnapshot(dir);
+    fs.chmodSync(join(dir, "a.txt"), 0o645);
+    assert.deepEqual(rel(dir, worktreeChanges(dir, owner)), [], "a group bit is no change to Git");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("real Git: chmod +x counts, on an already dirty file and on a clean one", { skip: process.platform === "win32" }, () => {
   const dir = repo();
   try {
