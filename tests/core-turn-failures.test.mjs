@@ -26,6 +26,11 @@ function setup() {
   for (const k of ["COUNCIL_FAKE_SCENARIO", "COUNCIL_FAKE_ANSWER", "COUNCIL_NULL_ID", "COUNCIL_NULL_INPUT", "COUNCIL_NULL_OUTPUT", "COUNCIL_NULL_TRUST"]) delete env[k];
   return { root, home, cwd, ctx: { home, env, cwd, session: "s" }, done: () => rmSync(root, { recursive: true, force: true }) };
 }
+/** The one job directory a test's turn has created. */
+const loadJobDir = (s) => {
+  const root = join(s.home, "jobs");
+  return join(root, fs.readdirSync(root).at(-1));
+};
 const request = (s, over = {}) => ({ verb: "ask", provider: "null", cwd: s.cwd, session: "s", tier: "consult", model: "null-model", effort: "high", requestedEffort: "high", modelVerified: true, thread: null, readOnly: true, text: "hello", contract: "<c/>", rounds: 9, round: 1, ...over });
 async function run(s, { adapter = nullAdapter, over = {}, env = {}, hooks = {}, options = {}, prepare = null } = {}) {
   const req = request(s, over);
@@ -258,3 +263,24 @@ test("A5 beforeTurn/afterTurn: once each around the spawn; afterTurn only after 
     assert.equal(loadJob(s.home, af.job.id).afterTurnError, "cleanup hook failed");
   } finally { s.done(); }
 });
+
+test("a cancel that arrives during a task's before-snapshot starts no provider (S7.1 R1)", async () => {
+  const s = setup();
+  try {
+    let spawns = 0, snapshots = 0;
+    const { job } = await run(s, {
+      over: { verb: "task", readOnly: false },
+      hooks: {
+        spawn: () => { spawns += 1; throw new Error("no spawn expected"); },
+        worktreeSnapshot: () => { snapshots += 1; writeFileSync(join(loadJobDir(s), "cancel"), ""); return { root: s.cwd, head: null, states: new Map() }; },
+      },
+    });
+    assert.equal(snapshots, 1);
+    assert.equal(spawns, 0, "zero spawn attempts");
+    assert.equal(job.spawnAttempted, undefined);
+    assert.equal(job.outcome, "cancelled");
+    assert.equal(job.code, 1);
+    assert.deepEqual(job.edited, [], "nothing ran, so nothing is compared");
+  } finally { s.done(); }
+});
+

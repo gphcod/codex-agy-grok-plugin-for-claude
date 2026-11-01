@@ -150,11 +150,13 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
       // A5: once, after admission and before the spawn; a throw fails the turn with nothing started.
       adapter.beforeTurn({ job, request, turn, home: ctx.home, env: ctx.env });
     }
+    // X2: a task's edits are also counted from the working tree, so one made through a shell shows.
+    if (request.verb === "task" && !cancelled()) { beat(); edits = (hooks.worktreeSnapshot ?? worktreeSnapshot)(request.cwd); beat(); }
+    // After the snapshot, which can take seconds: a cancel that arrived during it starts no provider.
     if (cancelled()) {
       reason = "cancelled";
+      edits = null;
     } else {
-      // X2: a task's edits are also counted from the working tree, so one made through a shell shows.
-      if (request.verb === "task") { beat(); edits = worktreeSnapshot(request.cwd); beat(); }
       cleanupConfirmed = false;
       job.spawnAttempted = true;
       save(job); // Persist the exact operands before any executable can start.
