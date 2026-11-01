@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { PLUGIN_ROOT, loadStaticCatalog, parseModelListing } from "../core/catalog.mjs";
 import { hasFlagOperand } from "../core/execution.mjs";
 import { resolveLauncher as resolveBinary, runSync } from "../core/launcher.mjs";
@@ -18,6 +19,67 @@ export const BINS = ["grok", "grok.exe"];
 /** grok-build reader LINE_CAP. */
 export const LINE_CAP = 1024 * 1024;
 const PATH_CAP = 10000;
+
+// --- recipes (grok-build lib/recipes.mjs, whole) -----------------------------------------------------
+
+export const HOSTILE = ["Agent", "ask_user_question", "enter_plan_mode", "exit_plan_mode", "image_gen", "image_edit", "image_to_video", "reference_to_video"];
+// search_tool and use_tool are the default agent's way to MCP and other deferred tools.
+export const FORBIDDEN = ["search_replace", "write", "run_terminal_command", "spawn_subagent", "search_tool", "use_tool"];
+// A session that has run the default agent (a task) cannot switch to explore: the verified read-only
+// denylist. run_terminal_cmd is the flag-side spelling of run_terminal_command.
+export const RESUME_DENY = [
+  "search_replace", "write", "run_terminal_cmd", "search_tool", "use_tool", "todo_write", "monitor", "workflow",
+  "scheduler_create", "scheduler_delete", "scheduler_list", "send_feedback", ...HOSTILE,
+];
+// Read-only turns also deny every MCP tool; the parseEvent guard stays the check.
+const NO_MCP = ["--deny", "MCPTool(*)"];
+
+/** `agent` is the Grok agent the turn runs; the thread record keeps it so later turns on the session follow it. */
+export function recipe(kind, { web = false, defaultAgent = false } = {}) {
+  const common = ["--always-approve", "--no-subagents", ...(web ? [] : ["--disable-web-search"]), "--disallowed-tools"];
+  if (kind === "read-only") {
+    if (defaultAgent) return { readOnly: true, agent: "default", args: [...common, RESUME_DENY.join(","), ...NO_MCP], forbidden: FORBIDDEN };
+    return { readOnly: true, agent: "explore", args: ["--agent", "explore", ...common, HOSTILE.join(","), ...NO_MCP], forbidden: FORBIDDEN };
+  }
+  if (kind === "write") {
+    return { readOnly: false, agent: "default", args: [...common, HOSTILE.join(","), "--deny", "Bash(git push*)", "--deny", "Bash(rm -rf *)"], forbidden: [] };
+  }
+  throw new Error(`unknown recipe ${kind}`);
+}
+
+/**
+ * Child environment additions. Claude skills, agents (which also keeps ~/.claude/CLAUDE.md out), hooks
+ * and MCP stay off inside Grok (hook recursion). Read-only turns also skip Claude's rules directories;
+ * a task drops an inherited setting (undefined: the spawn leaves the variable out) so Grok's default
+ * applies. The four guard variables come from the core (A5.1), replacing grok-build's GROK_BUILD_DEPTH.
+ */
+export function compatEnv(readOnly) {
+  return {
+    GROK_DISABLE_AUTOUPDATER: "1",
+    GROK_CLAUDE_SKILLS_ENABLED: "0",
+    GROK_CLAUDE_AGENTS_ENABLED: "0",
+    GROK_CLAUDE_HOOKS_ENABLED: "0",
+    GROK_CLAUDE_MCPS_ENABLED: "0",
+    GROK_CLAUDE_RULES_ENABLED: readOnly ? "0" : undefined,
+  };
+}
+
+/** The agent a session last ran: the thread record's, else inferred from its last mode (grok-build grok.mjs:150). */
+export function sessionAgent(thread) {
+  if (!thread) return null;
+  return thread.agent ?? (thread.readOnly === false ? "default" : "explore");
+}
+
+/** One line: argv carries it, and nothing in it needs a newline (grok-build grok.mjs:23). */
+export const oneLineContract = (text) => String(text).replace(/\s*\r?\n\s*/g, " ").trim();
+
+const SCHEMA_FILE = path.join(PLUGIN_ROOT, "schemas", "review-output.schema.json");
+let schemaText = null;
+/** The repository schema, minified, for the inline `--json-schema` carrier. */
+export function inlineSchema() {
+  schemaText ??= JSON.stringify(JSON.parse(fs.readFileSync(SCHEMA_FILE, "utf8")));
+  return schemaText;
+}
 
 // --- adapter ---------------------------------------------------------------------------------------------
 
@@ -59,6 +121,32 @@ const adapter = {
   },
 
   catalog: loadStaticCatalog().grok,
+
+  /**
+   * A5.1 argv: --prompt-file, --session-id (new) or -r (resumed), --cwd, streaming-json, model, effort,
+   * --no-auto-update, the recipe, then --rules <contract> (not on reviews) or --json-schema <inline> (reviews).
+   */
+  buildTurn(request) {
+    const kind = request.readOnly === false ? "write" : "read-only";
+    const resumed = request.thread?.threadId ?? null;
+    const plan = recipe(kind, { web: Boolean(request.web), defaultAgent: kind === "read-only" && sessionAgent(request.thread) === "default" });
+    const threadId = resumed ?? randomUUID();
+    const review = request.verb === "review";
+    // grok refuses --add-dir, so a review runs at the repository root, where the diff's paths resolve.
+    const cwd = review ? request.reviewTarget?.root ?? request.cwd : request.cwd;
+    const promptFile = path.join(request.jobDir, "prompt.md");
+    const args = [
+      "--prompt-file", promptFile, ...(resumed ? ["-r", resumed] : ["--session-id", threadId]), "--cwd", cwd,
+      "--output-format", "streaming-json", "--model", request.model, "--effort", request.effort, "--no-auto-update",
+      ...plan.args,
+      ...(review ? ["--json-schema", inlineSchema()] : ["--rules", oneLineContract(request.contract)]),
+    ];
+    return {
+      args, env: compatEnv(plan.readOnly), promptFile, promptText: review ? request.reviewPrompt : request.text,
+      answerFile: null, readOnly: plan.readOnly, agent: plan.agent, forbidden: plan.forbidden,
+      contractCarrier: review ? "json-schema" : "rules", threadId,
+    };
+  },
 
 };
 
