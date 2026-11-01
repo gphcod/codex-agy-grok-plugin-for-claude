@@ -198,5 +198,5 @@ Reviewed by Codex gpt-6.1-sol and Gemini 4 Argon; rulings by the coordinator. Th
 - `parseAgyEvent` now counts a `tool` step in state `DONE` whose tool is a write tool as an edit of its path. The write tools are `write_file`, `edit_file`, `write_to_file`, `replace_file_content`, `multi_replace_file_content` and `notebook_edit`. The path comes from the first of `TargetFile`, `AbsolutePath`, `Path`, `FilePath`, `file_path` or `path`. These are the same lists as the twin's.
 - A `run_command` step in state `ERROR`, or `DONE` with `Command exited with code N` where N is not 0, counts as a failed command `{cmd, exit}`.
 - A deny-rule step stays a denial and counts as neither.
-- A write tool completing on a read-only turn should be impossible under the A2 deny list. If it happens, it is reported as `incomplete` (exit 10) and is not counted as an edit.
+- A write tool completing on a read-only turn should be impossible under the A2 deny list. If it happens, the turn fails closed as `incomplete` (exit 1, like an event-level incomplete on any verb) and the write is not counted as an edit.
 - The live stream is kept as `tests/fixtures/streams/agy/task-edit.jsonl`. Tests are in `tests/gemini.test.mjs`. The run is recorded in `docs/qualification/gemini-macos.md`.
