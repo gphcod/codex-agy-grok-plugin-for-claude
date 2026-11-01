@@ -70,8 +70,9 @@ test("ownsExecution delegates to the adapter; ownedExecution finds owned rows, d
     { pid: 504, ppid: 500, group: 500, stamp: "1", raw: "older than parent", argv: ["x"], name: "x" },
   ];
   const found = ownedExecution(job, { state: "ok", rows }, "darwin", [], nullAdapter);
-  assert.equal(found.state, "owned");
-  assert.deepEqual(found.rows.map((r) => r.pid).sort(), [500, 501, 502].sort(), "child, its descendant and the reparented group member (A7.5); a group member older than the leader is a reused pid");
+  assert.equal(found.state, "unknown", "504 cannot be verified (S2.10)");
+  assert.deepEqual(found.rows.map((r) => r.pid).sort(), [500, 501, 502].sort(), "child, its descendant and the reparented group member (A7.5)");
+  assert.deepEqual(found.unverified.map((r) => r.pid), [504], "a group member older than the leader is never adopted, only reported");
   // S2.8 F1: after pid/pgid reuse the recorded leader is someone else's process; its group is never adopted
   const reused = [
     { pid: 500, ppid: 1, group: 500, stamp: "90", raw: "/bin/sleep 600", argv: ["/bin/sleep", "600"], name: "sleep" },
@@ -90,7 +91,8 @@ test("ownsExecution delegates to the adapter; ownedExecution finds owned rows, d
   const newLeader = { pid: 700, ppid: 1, group: 700, stamp: "Sat Oct 31 13:00:00 2026", raw: "/bin/sleep 600", argv: null, name: "sleep" };
   assert.deepEqual(ownedExecution(lj, { state: "ok", rows: [newLeader, { ...member, stamp: "Sat Oct 31 13:00:01 2026" }] }, "darwin", [], nullAdapter).rows, [], "a live leader with the same pid and a newer creation time: a reused group");
   assert.deepEqual(ownedExecution(lj, { state: "ok", rows: [{ ...member, stamp: "Sat Oct 31 11:59:59 2026" }] }, "darwin", [], nullAdapter).rows, [], "a member born before the recorded leader start is not ours");
-  assert.deepEqual(ownedExecution({ ...lj, leader: null }, { state: "ok", rows: [member] }, "darwin", [], nullAdapter).rows, [], "no recorded leader, no group adoption");
+  const noLeader = ownedExecution({ ...lj, leader: null }, { state: "ok", rows: [member] }, "darwin", [], nullAdapter);
+  assert.deepEqual([noLeader.state, noLeader.rows, noLeader.unverified.map((r) => r.pid)], ["unknown", [], [701]], "no recorded leader: no adoption, and the member is unverified, never gone");
   const evidence = ownedExecution(job, { state: "ok", rows: [{ pid: 506, ppid: 1, group: 500, stamp: "1", raw: `helper --job ${JOB}`, argv: ["helper", "--job", JOB], name: "helper" }] }, "darwin", [], nullAdapter);
   assert.deepEqual(evidence.rows.map((r) => r.pid), [506], "a member with job-specific evidence is ours without its leader");
   const linux = ownedExecution(job, { state: "ok", rows: rows.map((r) => ({ ...r, group: undefined })) }, "linux", [], nullAdapter);

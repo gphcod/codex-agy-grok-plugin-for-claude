@@ -87,6 +87,8 @@ async function awaitScope(ctx, o, scope, fp, control, sleepMs = 50) {
   const end = Date.now() + seconds(o.deadline, DEADLINE_S, "deadline") * 1000;
   for (let checkedAt = 0; ; await new Promise((r) => setTimeout(r, sleepMs))) {
     if (!fs.existsSync(scope.file)) return { retry: true };
+    // Bindings are created complete (claimScope links a written file), so an unreadable one was damaged
+    // afterwards: its creator cannot be proven gone, so it is waited on like a live one until the deadline.
     const record = loadScope(scope.file);
     if (record?.fingerprint && record.fingerprint !== fp) throw new UsageError(`${name} was already used with different input; use a new request id`);
     if (record?.job) return { replay: { id: record.job, fresh: false, tombstone: loadTombstone(ctx.home, record.job), provider: record.provider } };
@@ -215,7 +217,7 @@ async function runTurn(ctx, io, verb, o, text, literal, hooks) {
   // exclusive create before anything is resolved; a second caller waits on it, replays it, or exits 2.
   let scope = null;
   while (requestId !== undefined && !scope) {
-    const claim = claimScope(ctx.home, { session: ctx.session, cwd: ctx.cwd, requestId }, { fingerprint: fp, verb, companionPid: process.pid, companionIdentity: control.self() });
+    const claim = claimScope(ctx.home, { session: ctx.session, cwd: ctx.cwd, requestId }, { fingerprint: fp, verb, companionPid: process.pid, companionIdentity: control.self() }, hooks.scopeIo);
     if (claim.fresh) { scope = claim; break; }
     const waited = await awaitScope(ctx, o, claim, fp, control);
     if (waited.replay) return replayRequest(ctx, o, waited.replay, fp, io.out, { control });

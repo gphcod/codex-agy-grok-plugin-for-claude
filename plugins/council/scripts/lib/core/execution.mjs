@@ -350,8 +350,10 @@ export function ownedExecution(job, snapshot, platform = process.platform, evide
     if (owned.has(row.pid) || row.pid === process.pid || row.pid === job.companionPid || row.group === undefined || !job.pid || row.group !== job.pid) continue;
     const born = startTime(row.stamp);
     if (leaderVerified && born !== null && born >= leaderStart) owned.set(row.pid, row);
-    // A live leader with another creation time owns a reused group: not ours, and not ambiguous either.
-    else if (!liveLeader && recorded) unverified.push(row);
+    // A live leader with a recorded identity and another creation time owns a reused group: provably
+    // not ours. Everything else is ambiguous — including a missing leader record (the identification
+    // at spawn can fail) — so it is unverified: never signalled, and cleanup never reads as gone.
+    else if (!(liveLeader && recorded && !leaderVerified)) unverified.push(row);
   }
   // Snapshot all descendants before any parent is killed, including descendants in other groups.
   for (let changed = true; changed;) {

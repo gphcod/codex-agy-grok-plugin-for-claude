@@ -160,3 +160,50 @@ test("request binding: a different fingerprint exits 2, a released binding is cl
     assert.match(record.job, /^[0-9a-f]{16}$/);
   } finally { s.done(); }
 });
+
+test("S2.10: a missing leader record with a live group member is unknown — no signal, claim kept, unverified reported", async () => {
+  const s = setup();
+  try {
+    const job = createJob(s.home, { provider: "null", verb: "ask", status: "running", cwd: s.cwd, session: null, threadId: "t-n", threadIds: ["t-n"], admitted: true, companionPid: 999999, companionIdentity: { pid: 999999, stamp: "x" }, execution: [], pid: 700, leader: null, spawnedAt: new Date().toISOString() });
+    claimThread(s.home, "null", "t-n", job);
+    const orphan = { pid: 701, ppid: 1, group: 700, stamp: "150", raw: "/bin/sleep 600", argv: ["/bin/sleep", "600"], name: "sleep" };
+    const found = ownedExecution(job, { state: "ok", rows: [orphan] }, "linux", [], nullAdapter);
+    assert.deepEqual([found.state, found.rows, found.unverified.map((r) => r.pid)], ["unknown", [], [701]]);
+    const kills = [];
+    const control = executionController({ platform: "linux", adapter: nullAdapter, snapshot: () => ({ state: "ok", rows: [orphan] }), kill: (...a) => kills.push(a) });
+    const r = await cancelManaged({ home: s.home }, job, { timeoutMs: 1500, control });
+    assert.equal(r.status, "unknown");
+    assert.match(r.error, /unverified: 1 process\(es\) in the job's process group \(701\)/);
+    assert.deepEqual(kills, []);
+    assert.equal(loadJob(s.home, job.id).stopped, false, "not marked stopped");
+    assert.equal(inspectClaim(s.home, "null", "t-n").state, "owned", "claim kept");
+    // a live leader whose recorded identity differs owns a reused group: neither adopted nor reported
+    const reused = ownedExecution({ ...job, leader: { pid: 700, stamp: "100" } }, { state: "ok", rows: [{ pid: 700, ppid: 1, group: 700, stamp: "140", raw: "x", argv: ["x"], name: "x" }, orphan] }, "linux", [], nullAdapter);
+    assert.deepEqual([reused.state, reused.rows], ["gone", []]);
+  } finally { s.done(); }
+});
+
+test("S2.10: a reservation whose write fails leaves no file, exits 1, and an identical retry runs", async () => {
+  const s = setup();
+  try {
+    const fs = await import("node:fs");
+    const failing = Object.create(fs);
+    failing.writeFileSync = (file, ...rest) => { if (String(file).includes("scope-")) throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC" }); return fs.writeFileSync(file, ...rest); };
+    const argv = ["ask", "--to", "null", "--request-id", "nospace", "--", "x"];
+    const r = await s.call(argv, { hooks: { scopeIo: failing } });
+    assert.equal(r.code, 1);
+    assert.match(r.err, /ENOSPC/);
+    const dir = join(canonical(s.home), "claims", "requests");
+    assert.deepEqual(existsSync(dir) ? (await import("node:fs")).readdirSync(dir) : [], [], "no reservation and no temporary file left");
+    const retry = await s.call(argv);
+    assert.equal(retry.code, 0, retry.err);
+    assert.equal(s.spawns().length, 1);
+    // a failed link (not EEXIST) is cleaned up the same way
+    const noLink = Object.create(fs);
+    noLink.linkSync = () => { throw Object.assign(new Error("EPERM: operation not permitted, link"), { code: "EPERM" }); };
+    const l = await s.call(["ask", "--to", "null", "--request-id", "nolink", "--", "x"], { hooks: { scopeIo: noLink } });
+    assert.equal(l.code, 1);
+    assert.equal(fs.readdirSync(dir).filter((n) => n.endsWith(".tmp")).length, 0);
+    assert.equal(existsSync(scopeFile(canonical(s.home), null, canonical(s.cwd), "nolink")), false);
+  } finally { s.done(); }
+});

@@ -156,19 +156,23 @@ export const scopeFile = (home, session, cwd, requestId) =>
  * calls can never resolve `--last` differently and reserve two jobs. It stores the fingerprint now
  * and the provider and job id once resolved (bindScope). → {fresh: true, file} | {fresh: false, file, record}
  */
-export function claimScope(home, { session, cwd, requestId }, record) {
+export function claimScope(home, { session, cwd, requestId }, record, io = fs) {
   if (!REQUEST_ID.test(requestId ?? "")) throw new UsageError("--request-id needs 1 to 128 letters, digits, '.', '_', ':' or '-', starting with a letter or digit");
   const file = scopeFile(home, session, cwd, requestId);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  let fd;
-  try { fd = fs.openSync(file, "wx"); }
-  catch (error) {
-    if (error.code !== "EEXIST") throw error;
-    return { fresh: false, file, record: loadScope(file) };
-  }
-  try { fs.writeSync(fd, `${JSON.stringify({ ...record, requestId, session: session ?? null, cwd, provider: null, job: null, reservedAt: new Date().toISOString() })}\n`); }
-  finally { fs.closeSync(fd); }
-  return { fresh: true, file };
+  io.mkdirSync(path.dirname(file), { recursive: true });
+  // The binding appears complete or not at all: written to a private temporary file, then hard-linked
+  // to its name (exclusive: EEXIST when another call holds it). A failed write leaves no empty binding
+  // that identical retries would wait on.
+  const temp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+  try {
+    io.writeFileSync(temp, `${JSON.stringify({ ...record, requestId, session: session ?? null, cwd, provider: null, job: null, reservedAt: new Date().toISOString() })}\n`, { flag: "wx" });
+    try { io.linkSync(temp, file); }
+    catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      return { fresh: false, file, record: loadScope(file) };
+    }
+    return { fresh: true, file };
+  } finally { io.rmSync(temp, { force: true }); }
 }
 /** The binding, or null while its creator is still writing it (or when it was released). */
 export function loadScope(file) {
