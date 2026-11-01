@@ -56,8 +56,10 @@ export function harness() {
   for (const p of PROVIDERS) {
     bins[p] = join(root, `wrap-${p}.mjs`);
     writeFileSync(bins[p], [
-      `import { appendFileSync } from "node:fs";`,
+      `import { appendFileSync, rmSync, writeFileSync } from "node:fs";`,
       `appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ provider: ${JSON.stringify(p)}, argv: process.argv.slice(2), pid: process.pid, guards: ${JSON.stringify(GUARD_VARS)}.filter((g) => process.env[g]) }) + "\\n");`,
+      // COUNCIL_FAKE_SHELL_EDIT: [[path, content | null]], what a shell command in the turn would do; no edit event is emitted.
+      `for (const [path, content] of JSON.parse(process.env.COUNCIL_FAKE_SHELL_EDIT ?? "[]")) { if (content === null) rmSync(path); else writeFileSync(path, content); }`,
       `await import(${JSON.stringify(pathToFileURL(join(FIXTURES, FAKES[p])).href)});`,
     ].join("\n") + "\n");
   }

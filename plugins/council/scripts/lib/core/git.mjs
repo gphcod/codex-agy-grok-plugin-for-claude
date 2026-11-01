@@ -7,6 +7,7 @@
 // non-merge commit (with -M, so renames read as in `git diff`) and the first-parent diff for a merge, and a commit whose parent object is missing
 // (shallow boundary) exits 2. Every subprocess goes through the one runner below.
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { UsageError } from "./catalog.mjs";
@@ -75,6 +76,96 @@ function worktreeBase(cwd) {
   const probe = !branch.error && branch.status === 0 ? git(cwd, ["rev-parse", "--verify", "--quiet", branch.stdout.trim()]) : null;
   if (!probe || probe.error || probe.status !== 1) throw new Error("git could not resolve HEAD");
   return checked(git(cwd, ["hash-object", "-t", "tree", "--stdin"], { input: "" }), "git hash-object").trim();
+}
+
+// --- task edits (S7.1 fix X2) -------------------------------------------------------------------------
+
+/** Over this many dirty paths the snapshot is skipped and `edited` stays event-only. */
+export const SNAPSHOT_CAP = 5000;
+/** A larger file is compared by size and mtime, not read. */
+export const SNAPSHOT_HASH_CAP = 64 * 1024 * 1024;
+
+/** The paths of `git status --porcelain=v1 -z`: `XY path`, followed by the old path after a rename or copy. */
+export function statusPaths(output) {
+  const tokens = output.split("\0").filter(Boolean), paths = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const xy = tokens[i].slice(0, 2);
+    paths.push(tokens[i].slice(3));
+    if (/[RC]/.test(xy)) { i += 1; if (xy.includes("R") && tokens[i]) paths.push(tokens[i]); }
+  }
+  return [...new Set(paths.map((p) => p.replace(/\/$/, "")))];
+}
+/** What a path holds now, as a string compared between snapshots. Never reads through a link. */
+function pathState(file) {
+  let st;
+  try { st = fs.lstatSync(file); } catch { return "gone"; }
+  if (st.isSymbolicLink()) { try { return `link:${fs.readlinkSync(file)}`; } catch { return "link"; } }
+  if (st.isDirectory()) return "dir"; // An embedded repository or submodule; what is inside it is not hashed.
+  if (!st.isFile()) return "other";
+  const exec = st.mode & 0o111 ? "x" : "-";
+  if (st.size > SNAPSHOT_HASH_CAP) return `big:${exec}:${st.size}:${st.mtimeMs}`;
+  let fd;
+  try {
+    fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+    const hash = createHash("sha1"), buffer = Buffer.allocUnsafe(64 * 1024);
+    for (let n; (n = fs.readSync(fd, buffer, 0, buffer.length, null));) hash.update(buffer.subarray(0, n));
+    return `file:${exec}:${hash.digest("hex")}`;
+  } catch { return `unreadable:${st.size}:${st.mtimeMs}`; }
+  finally { if (fd !== undefined) try { fs.closeSync(fd); } catch { /* the state stands */ } }
+}
+/**
+ * {root, head, states}: HEAD (null on an unborn branch) and a content state per dirty path, relative
+ * to the repository root. Null outside a repository, on a git failure or over the cap: the caller
+ * keeps the provider's own edit events. Never throws.
+ */
+export function worktreeSnapshot(cwd, { cap = SNAPSHOT_CAP } = {}) {
+  try {
+    const top = git(cwd, ["rev-parse", "--show-toplevel"]);
+    if (top.error || top.status !== 0) return null;
+    const root = top.stdout.replace(/\r?\n$/, "");
+    const head = git(root, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
+    if (head.error || (head.status !== 0 && head.status !== 1)) return null;
+    const status = git(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
+    if (status.error || status.status !== 0) return null;
+    const paths = statusPaths(status.stdout);
+    if (paths.length > cap) return null;
+    return { root, head: head.status === 0 ? head.stdout.trim() : null, states: new Map(paths.map((p) => [p, pathState(path.join(root, p))])) };
+  } catch { return null; }
+}
+/**
+ * The paths that changed since `before`, as absolute paths: state differs, plus what differs between
+ * the two HEADs if HEAD moved. Empty when the second snapshot cannot be taken. Never throws.
+ */
+export function worktreeChanges(cwd, before, options) {
+  const after = worktreeSnapshot(cwd, options);
+  if (!before || !after || after.root !== before.root) return [];
+  const changed = new Set();
+  for (const [p, state] of before.states) if (after.states.get(p) !== state) changed.add(p);
+  for (const p of after.states.keys()) if (!before.states.has(p)) changed.add(p);
+  if (before.head !== after.head) {
+    try {
+      const empty = () => checked(git(after.root, ["hash-object", "-t", "tree", "--stdin"], { input: "" }), "git hash-object").trim();
+      const moved = git(after.root, ["diff", "--name-only", "--no-renames", "-z", before.head ?? empty(), after.head ?? empty()]);
+      if (!moved.error && moved.status === 0) for (const p of moved.stdout.split("\0").filter(Boolean)) changed.add(p);
+    } catch { /* the states alone */ }
+  }
+  return [...changed].map((p) => path.join(after.root, p));
+}
+/**
+ * The union of a turn's edit events and its snapshot changes, each path once, relative to the job
+ * cwd when inside it and absolute otherwise. An event's path is compared through its real directory,
+ * so a symlinked spelling of the same file counts once.
+ */
+export function unionEdited(cwd, events, changed) {
+  let base = cwd;
+  try { base = fs.realpathSync(cwd); } catch { /* as spelled */ }
+  const shown = (p) => {
+    let abs = path.resolve(base, p);
+    try { abs = path.join(fs.realpathSync(path.dirname(abs)), path.basename(abs)); } catch { /* a directory the turn removed: as spelled */ }
+    const rel = path.relative(base, abs);
+    return (rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? rel : abs).replace(/\\/g, "/");
+  };
+  return [...new Set([...events, ...changed].map(shown))];
 }
 
 /**

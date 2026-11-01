@@ -20,6 +20,7 @@ import { attentionReason, elapsed, elapsedOf, readAnswer, renderResult, resultJs
 import { refreshBeat, BEAT_MS } from "./heartbeat.mjs";
 import { UsageError, seconds } from "./args.mjs";
 import { finalizeReviewTurn } from "./review.mjs";
+import { unionEdited, worktreeChanges, worktreeSnapshot } from "./git.mjs";
 
 /** Production defaults; tests inject shorter ones through hooks. */
 export const SHUTDOWN_MS = 60000;
@@ -114,7 +115,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     const old = blockingJob(ctx.home, provider, id, job.id);
     if (old) throw new BusyError(`thread ${id} requires cleanup of job ${old.id}; run cancel ${old.id}`, old.id);
   };
-  let reader = null;
+  let reader = null, edits = null;
   let cleanupConfirmed = true; // No spawn yet.
   let streamFailure = null;
   let stop = (why) => { reason ??= why; };
@@ -152,6 +153,8 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     if (cancelled()) {
       reason = "cancelled";
     } else {
+      // X2: a task's edits are also counted from the working tree, so one made through a shell shows.
+      if (request.verb === "task") { edits = worktreeSnapshot(request.cwd); beat(); }
       cleanupConfirmed = false;
       job.spawnAttempted = true;
       save(job); // Persist the exact operands before any executable can start.
@@ -430,7 +433,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     error, cleanupPending: !cleanupConfirmed, endedAt: new Date().toISOString(),
     // X1: the reason a turn needs attention, shown in the footer as `attention: <reason>`.
     attention: outcome === "attention" ? attentionReason({ isReview, review: job.review, denied: seen?.denied, deniedAction: seen?.deniedAction, deniedCount: seen?.deniedCount, questions: parsed?.questions }) : null,
-    edited: [...(seen?.edited ?? [])], failedCommands: seen?.failedCommands ?? [], failedCommandCount: seen?.failedCommandCount ?? 0,
+    edited: edits ? unionEdited(request.cwd, seen?.edited ?? [], worktreeChanges(request.cwd, edits)) : [...(seen?.edited ?? [])], failedCommands: seen?.failedCommands ?? [], failedCommandCount: seen?.failedCommandCount ?? 0,
     unconfirmed: isReview ? null : seen?.unconfirmed ?? null, denied: seen?.denied ?? null, costUsd: seen?.costUsd ?? null, usage: seen?.usage ?? null, answerClipped: parsed?.answerClipped ?? false,
   });
   delete job.stderrTail;
