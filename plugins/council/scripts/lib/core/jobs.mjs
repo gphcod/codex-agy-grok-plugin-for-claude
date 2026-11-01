@@ -145,6 +145,46 @@ export function claimRequest(home, provider, requestId, { session, cwd }, reserv
   // The loser: a tombstone may have landed meanwhile.
   return { id, fresh: false, tombstone: loadTombstone(home, id), reservation: loadRequest(home, id) };
 }
+// --- provider-neutral request binding (A7.4, S2.9) ----------------------------------------------------
+
+/** claims/requests/scope-<hash>.json: one per session + realpath(cwd) + request id, whatever the provider. */
+export const scopeFile = (home, session, cwd, requestId) =>
+  path.join(home, "claims", "requests", `scope-${createHash("sha256").update(JSON.stringify([session ?? null, cwd, requestId])).digest("hex").slice(0, ID_LENGTH)}.json`);
+
+/**
+ * Exclusive creation of the request's binding before its provider is resolved, so two identical
+ * calls can never resolve `--last` differently and reserve two jobs. It stores the fingerprint now
+ * and the provider and job id once resolved (bindScope). → {fresh: true, file} | {fresh: false, file, record}
+ */
+export function claimScope(home, { session, cwd, requestId }, record) {
+  if (!REQUEST_ID.test(requestId ?? "")) throw new UsageError("--request-id needs 1 to 128 letters, digits, '.', '_', ':' or '-', starting with a letter or digit");
+  const file = scopeFile(home, session, cwd, requestId);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  let fd;
+  try { fd = fs.openSync(file, "wx"); }
+  catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    return { fresh: false, file, record: loadScope(file) };
+  }
+  try { fs.writeSync(fd, `${JSON.stringify({ ...record, requestId, session: session ?? null, cwd, provider: null, job: null, reservedAt: new Date().toISOString() })}\n`); }
+  finally { fs.closeSync(fd); }
+  return { fresh: true, file };
+}
+/** The binding, or null while its creator is still writing it (or when it was released). */
+export function loadScope(file) {
+  return readJson(file);
+}
+/** Records the resolved provider and job id in the binding. */
+export function bindScope(file, provider, job) {
+  const record = readJson(file);
+  if (!record) throw new Error(`request binding ${path.basename(file)} cannot be read`);
+  writeFileAtomic(file, `${JSON.stringify({ ...record, provider, job, boundAt: new Date().toISOString() })}\n`);
+}
+/** Frees a binding whose call failed before its tombstone: nothing ran, so a retry may. */
+export function releaseScope(file) {
+  fs.rmSync(file, { force: true });
+}
+
 /** The reservation a request id's first call wrote with its claim, or null. */
 export const loadRequest = (home, id) => readJson(path.join(jobsRoot(home), id, REQUEST_FILE));
 /** Whether a request id is still claimed: a call that failed before its job record frees it. */

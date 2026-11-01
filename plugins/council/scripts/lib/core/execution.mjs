@@ -335,20 +335,23 @@ export function ownedExecution(job, snapshot, platform = process.platform, evide
     if (ownsExecution(row, job, platform, adapter) || known.some((p) => sameIdentity(p, row))) owned.set(row.pid, row);
     if (!row.raw && !row.inaccessible && names.has(String(row.name ?? "").toLowerCase())) unknown = true;
   }
-  // A7.5: a live row whose group is the child's pid is owned iff (a) no live process has pid ==
-  // job.pid with a creation time different from the recorded leader's, and (b) the row was born at or
-  // after the recorded leader start. That finds members reparented to pid 1 after the leader exited,
-  // and refuses a reused group, whose new leader carries the same pid and a later creation time.
+  // A7.5 (S2.9): a member of the child's process group is adopted through the group only while the
+  // recorded leader is alive with its recorded creation time, and only when born at or after it.
+  // Once the leader is gone, absence of a conflicting leader is no evidence: a member is ours only
+  // when its pid and creation time match a descendant identity persisted while the job ran (the
+  // `known` set above, refreshed at every heartbeat and stop snapshot). Any other member is never
+  // signalled; it is reported as unverified, which keeps the outcome from reading as `gone`.
   const recorded = job.pid ? (job.leader?.pid === job.pid ? job.leader : known.find((p) => p.pid === job.pid)) ?? null : null;
   const leaderStart = recorded ? startTime(recorded.stamp) : null;
   const liveLeader = job.pid ? rows.find((r) => r.pid === job.pid) : null;
-  const reused = liveLeader && (startTime(liveLeader.stamp) === null || startTime(liveLeader.stamp) !== leaderStart);
-  if (leaderStart !== null && !reused) {
-    for (const row of rows) {
-      if (owned.has(row.pid) || row.pid === process.pid || row.pid === job.companionPid || row.group === undefined || row.group !== job.pid) continue;
-      const born = startTime(row.stamp);
-      if (born !== null && born >= leaderStart) owned.set(row.pid, row);
-    }
+  const leaderVerified = Boolean(liveLeader && leaderStart !== null && startTime(liveLeader.stamp) === leaderStart);
+  const unverified = [];
+  for (const row of rows) {
+    if (owned.has(row.pid) || row.pid === process.pid || row.pid === job.companionPid || row.group === undefined || !job.pid || row.group !== job.pid) continue;
+    const born = startTime(row.stamp);
+    if (leaderVerified && born !== null && born >= leaderStart) owned.set(row.pid, row);
+    // A live leader with another creation time owns a reused group: not ours, and not ambiguous either.
+    else if (!liveLeader && recorded) unverified.push(row);
   }
   // Snapshot all descendants before any parent is killed, including descendants in other groups.
   for (let changed = true; changed;) {
@@ -361,6 +364,11 @@ export function ownedExecution(job, snapshot, platform = process.platform, evide
   if (rows.some((r) => r.inaccessible && (r.pid === job.pid || owned.has(r.pid) || known.some((p) => sameIdentity(p, r))))) unknown = true;
   // An exiting process's command line can read empty before it becomes a zombie; it is still owned.
   if ([...owned.values()].some((r) => !r.stamp || r.stamp === "0" || (!r.raw && !r.exiting))) unknown = true;
+  const pending = unverified.filter((r) => !owned.has(r.pid));
+  if (pending.length) {
+    return { state: "unknown", rows: [...owned.values()], unverified: pending,
+      error: `unverified: ${pending.length} process(es) in the job's process group (${pending.map((r) => r.pid).join(", ")}) match no identity recorded while it ran; not signalled` };
+  }
   return { state: unknown ? "unknown" : owned.size ? "owned" : "gone", rows: [...owned.values()] };
 }
 

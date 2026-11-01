@@ -66,7 +66,11 @@ test("state layout after one turn: jobs/<16 chars>/{meta.json,beat,done,answer.m
     assert.deepEqual(readdirSync(join(home, "jobs", job)).sort(), ["answer.md", "beat", "done", "events.jsonl", "meta.json", "request.json"]);
     assert.deepEqual(readdirSync(join(home, "claims")).sort(), ["null", "requests"]);
     assert.deepEqual(readdirSync(join(home, "claims", "null")), [], "the thread claim was released");
-    assert.deepEqual(readdirSync(join(home, "claims", "requests")), [`${job}.json`], "the immutable tombstone");
+    const requests = readdirSync(join(home, "claims", "requests")).sort();
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0], `${job}.json`, "the immutable tombstone");
+    assert.match(requests[1], /^scope-[0-9a-f]{16}\.json$/, "the provider-neutral request binding");
+    assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(home, "claims", "requests", requests[1]), "utf8"))).filter((k) => ["fingerprint", "provider", "job"].includes(k)).sort(), ["fingerprint", "job", "provider"]);
     const [thread] = readdirSync(join(home, "threads"));
     assert.match(thread, /^null-[0-9a-f-]{36}\.json$/);
     const meta = JSON.parse(readFileSync(join(home, "jobs", job, "meta.json"), "utf8"));

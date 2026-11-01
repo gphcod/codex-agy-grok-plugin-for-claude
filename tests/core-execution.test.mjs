@@ -83,7 +83,10 @@ test("ownsExecution delegates to the adapter; ownedExecution finds owned rows, d
   // S2.8 F1 clarification: macOS lstart stamps are parsed to epoch seconds
   const lj = { id: JOB, pid: 700, companionPid: 100, argv: [], execution: [], leader: { pid: 700, stamp: "Sat Oct 31 12:00:00 2026" } };
   const member = { pid: 701, ppid: 1, group: 700, stamp: "Sat Oct 31 12:00:05 2026", raw: "language-server", argv: null, name: "language-server" };
-  assert.deepEqual(ownedExecution(lj, { state: "ok", rows: [member] }, "darwin", [], nullAdapter).rows.map((r) => r.pid), [701], "a member reparented to pid 1 after the leader exited is owned");
+  // S2.9: once the leader is gone, only a member whose identity was persisted while the job ran is ours
+  assert.deepEqual(ownedExecution({ ...lj, execution: [{ pid: 701, stamp: member.stamp }] }, { state: "ok", rows: [member] }, "darwin", [], nullAdapter).rows.map((r) => r.pid), [701], "a recorded descendant reparented after the leader exited is owned");
+  const lost = ownedExecution(lj, { state: "ok", rows: [member] }, "darwin", [], nullAdapter);
+  assert.deepEqual([lost.state, lost.rows, lost.unverified.map((r) => r.pid)], ["unknown", [], [701]], "an unrecorded member is reported unverified, never adopted");
   const newLeader = { pid: 700, ppid: 1, group: 700, stamp: "Sat Oct 31 13:00:00 2026", raw: "/bin/sleep 600", argv: null, name: "sleep" };
   assert.deepEqual(ownedExecution(lj, { state: "ok", rows: [newLeader, { ...member, stamp: "Sat Oct 31 13:00:01 2026" }] }, "darwin", [], nullAdapter).rows, [], "a live leader with the same pid and a newer creation time: a reused group");
   assert.deepEqual(ownedExecution(lj, { state: "ok", rows: [{ ...member, stamp: "Sat Oct 31 11:59:59 2026" }] }, "darwin", [], nullAdapter).rows, [], "a member born before the recorded leader start is not ours");

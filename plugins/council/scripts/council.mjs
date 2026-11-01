@@ -14,9 +14,9 @@ import { readControlArgs, readText, splitReply, stdinIdleMs } from "./lib/core/s
 import { canonical } from "./lib/core/fs.mjs";
 import { PLUGIN_ROOT, catalogPath, loadCatalog, refreshCatalog } from "./lib/core/catalog.mjs";
 import { TIERS, loadTiers, resolveTier } from "./lib/core/tiers.mjs";
-import { assertNotNested, executionController } from "./lib/core/execution.mjs";
+import { assertNotNested, companionState, executionController } from "./lib/core/execution.mjs";
 import {
-  REQUEST_ID, candidates, claimRequest, homeDir, loadJob, loadRequest, loadThread, loadTombstone, markRequestPrepared, releaseRequest, requestJobId, requestReserved,
+  REQUEST_ID, bindScope, candidates, claimRequest, claimScope, homeDir, loadJob, loadScope, loadThread, loadTombstone, markRequestPrepared, releaseRequest, releaseScope,
 } from "./lib/core/jobs.mjs";
 import { DEADLINE_S, DEFAULT_ROUNDS, INACTIVITY_S, cancelJob, replayRequest, runManagedTurn, waitFor } from "./lib/core/lifecycle.mjs";
 import { renderResult, resultJson, startLine } from "./lib/core/output.mjs";
@@ -77,23 +77,29 @@ export function fingerprint(verb, o, text) {
   return createHash("sha256").update(JSON.stringify([verb, inputs, text])).digest("hex");
 }
 /**
- * A request id's existing binding in this session and workspace, under any provider, so a retry
- * recovers its provider before `--last`, the catalog or the tiers are evaluated again. A binding with
- * the same raw inputs is replayed; any other binding of the id means changed input (exit 2), never a
- * second claim under whichever provider the changed call would resolve to.
+ * Waits on another call's binding of this request id (A7.4, S2.9): a different fingerprint exits 2;
+ * once the binding names its provider and job, the job is replayed; a binding whose call was proven
+ * gone before it named a job is reported as safe to retry with a new id; a released binding is
+ * claimed again. → {replay: claimed-job descriptor} | {retry: true}
  */
-export function findPriorRequest(ctx, requestId, fp) {
-  const found = [];
-  for (const provider of providerNames(ctx.env)) {
-    const id = requestJobId(provider, ctx.session, ctx.cwd, requestId);
-    const tombstone = loadTombstone(ctx.home, id);
-    const reservation = requestReserved(ctx.home, id) ? loadRequest(ctx.home, id) : null;
-    if (tombstone || reservation) found.push({ id, fresh: false, tombstone, reservation, provider, fingerprint: (tombstone ?? reservation)?.fingerprint });
+async function awaitScope(ctx, o, scope, fp, control, sleepMs = 50) {
+  const name = `request id ${o["request-id"]}`;
+  const end = Date.now() + seconds(o.deadline, DEADLINE_S, "deadline") * 1000;
+  for (let checkedAt = 0; ; await new Promise((r) => setTimeout(r, sleepMs))) {
+    if (!fs.existsSync(scope.file)) return { retry: true };
+    const record = loadScope(scope.file);
+    if (record?.fingerprint && record.fingerprint !== fp) throw new UsageError(`${name} was already used with different input; use a new request id`);
+    if (record?.job) return { replay: { id: record.job, fresh: false, tombstone: loadTombstone(ctx.home, record.job), provider: record.provider } };
+    if (record && Date.now() - checkedAt >= 1000) {
+      checkedAt = Date.now();
+      let snapshot;
+      try { snapshot = control.snapshot(); } catch { snapshot = { state: "unknown", rows: [] }; }
+      if (companionState(record, snapshot) === "gone" && !loadScope(scope.file)?.job) {
+        throw new UsageError(`${name}: its first call ended before it chose a provider; nothing ran, so a new request id is safe`);
+      }
+    }
+    if (Date.now() >= end) throw new UsageError(`${name}: the first call with this id has not chosen its provider yet; retry with the same request id to keep waiting`);
   }
-  const match = found.find((r) => r.fingerprint === fp);
-  if (match) return match;
-  if (found.length) throw new UsageError(`request id ${requestId} was already used with different input; use a new request id`);
-  return null;
 }
 
 // --- provider and thread resolution ----------------------------------------------------------------------
@@ -205,28 +211,36 @@ async function runTurn(ctx, io, verb, o, text, literal, hooks) {
   if (requestId !== undefined && !REQUEST_ID.test(requestId)) throw new UsageError("--request-id needs 1 to 128 letters, digits, '.', '_', ':' or '-', starting with a letter or digit");
   const fp = fingerprint(verb, o, text);
   const control = hooks.control ?? executionController();
-  // A7.4: a request id is looked up before anything else; a replay recovers the original provider.
-  if (requestId !== undefined) {
-    const prior = findPriorRequest(ctx, requestId, fp);
-    if (prior) return replayRequest(ctx, o, prior, fp, io.out, { control });
+  // A7.4 (S2.9): one provider-neutral binding per session + realpath(cwd) + request id, taken with an
+  // exclusive create before anything is resolved; a second caller waits on it, replays it, or exits 2.
+  let scope = null;
+  while (requestId !== undefined && !scope) {
+    const claim = claimScope(ctx.home, { session: ctx.session, cwd: ctx.cwd, requestId }, { fingerprint: fp, verb, companionPid: process.pid, companionIdentity: control.self() });
+    if (claim.fresh) { scope = claim; break; }
+    const waited = await awaitScope(ctx, o, claim, fp, control);
+    if (waited.replay) return replayRequest(ctx, o, waited.replay, fp, io.out, { control });
   }
-  const target = resolveTarget(ctx, verb, o);
-  const adapter = await loadAdapter(target.provider, ctx.env);
   const memo = {};
-  let claimed = null;
-  if (requestId !== undefined) {
-    claimed = claimRequest(ctx.home, adapter.id, requestId, { session: ctx.session, cwd: ctx.cwd }, {
-      fingerprint: fp, verb, companionPid: process.pid, companionIdentity: control.self(),
-    });
-    if (!claimed.fresh) return replayRequest(ctx, o, claimed, fp, io.out, { control });
-  }
-  let initial;
+  let claimed = null, adapter, target, initial;
   try {
+    await hooks.beforeResolve?.();
+    target = resolveTarget(ctx, verb, o);
+    adapter = await loadAdapter(target.provider, ctx.env);
+    if (scope) {
+      claimed = claimRequest(ctx.home, adapter.id, requestId, { session: ctx.session, cwd: ctx.cwd }, {
+        fingerprint: fp, verb, companionPid: process.pid, companionIdentity: control.self(),
+      });
+      // A job claim under this binding can only exist from an earlier binding that was released after its tombstone: replay it.
+      if (!claimed.fresh) { const prior = claimed; claimed = null; bindScope(scope.file, adapter.id, prior.id); return replayRequest(ctx, o, prior, fp, io.out, { control }); }
+      bindScope(scope.file, adapter.id, claimed.id);
+    }
     initial = prepareRequest(ctx, adapter, verb, o, text, target, memo);
     adapter.checkRequest?.(initial, ctx.env);
     if (claimed) markRequestPrepared(ctx.home, claimed.id, { provider: adapter.id, requestId, fingerprint: fp, session: ctx.session, cwd: ctx.cwd, verb });
   } catch (error) {
-    if (claimed) releaseRequest(ctx.home, claimed.id); // Nothing ran: a retry may.
+    // Nothing ran: a retry may. The job claim and the binding go together.
+    if (claimed) releaseRequest(ctx.home, claimed.id);
+    if (scope && !(claimed && loadTombstone(ctx.home, claimed.id))) releaseScope(scope.file);
     throw error;
   }
   const result = await runManagedTurn(ctx, adapter, initial, () => prepareRequest(ctx, adapter, verb, o, text, target, memo),

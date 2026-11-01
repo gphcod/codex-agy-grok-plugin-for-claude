@@ -160,6 +160,18 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
       const drainMs = hooks.drainMs ?? DRAIN_MS;
       const pipeWaitMs = hooks.pipeWaitMs ?? PIPE_WAIT_MS;
       const graceMs = hooks.graceMs ?? 1500;
+      const beatMs = hooks.beatMs ?? BEAT_MS;
+      // A7.5 (S2.9): at every heartbeat the identities (pid + creation time) of the owned descendants
+      // are persisted, so a member found later through the process group after the leader is gone
+      // can be recognised by identity instead of by group alone. A failed query changes nothing here.
+      const recordDescendants = () => {
+        try {
+          const found = guarded.inspect(job, guarded.snapshot(QUERY_MS));
+          const before = job.execution.length;
+          job.execution = unique([...job.execution, ...found.rows]);
+          if (job.execution.length !== before) save(job);
+        } catch { /* the next heartbeat or the stop snapshot records them */ }
+      };
       const deadlineMs = options.deadlineMs ?? DEADLINE_S * 1000;
       const inactivityMs = options.inactivityMs ?? INACTIVITY_S * 1000;
       // Snapshot the owned descendants (durable first), then signal: the group with SIGTERM on the
@@ -247,8 +259,8 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
         child.stderr.on("data", (chunk) => { job.stderrTail = ((job.stderrTail ?? "") + chunk).slice(-4096); });
         timer = setInterval(() => {
           const now = Date.now();
-          if (now - beatAt >= BEAT_MS) {
-            if (beat()) beatAt = now;
+          if (now - beatAt >= beatMs) {
+            if (beat()) { beatAt = now; if (!reason) recordDescendants(); }
             else { persistenceFailed = true; stop("heartbeat storage failed"); }
           }
           if (reason) {
@@ -438,7 +450,7 @@ export async function cancelManaged(ctx, job, { timeoutMs = 30000, control = exe
       let found;
       try { found = control.inspect(job, snapshot); }
       catch (e) { return { status: "unknown", code: 1, job: view(), error: e.message }; }
-      if (found.state === "unknown") unsure = "execution ownership/cleanup cannot be confirmed; claim and cancellation request retained";
+      if (found.state === "unknown") unsure = `${found.error ? `${found.error}; ` : ""}execution ownership/cleanup cannot be confirmed; claim and cancellation request retained`;
       else if (found.state === "gone") {
         // Identified execution is stopped, but an unidentified holder of the turn's pipes may not be.
         if (job.unattributedPipes) return { status: "unknown", code: 1, job: view(), error: "execution ownership/cleanup cannot be confirmed; claim and cancellation request retained" };
