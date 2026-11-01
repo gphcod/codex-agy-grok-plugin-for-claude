@@ -64,3 +64,16 @@ council grok ok · job abyvpa6rhbcfbjdi · grok-4.7/high · 19s · round 1/9 · 
 ```
 
 The skill is 2,999 B (3,000 B at the matrix). The other rows of this matrix were not re-run after the fixes.
+
+## Installed-route re-test after the fixes (2026-11-01, main cda39a2)
+
+Route: `claude -p --plugin-dir`. Not the interactive app.
+
+| Behaviour | Prompt | Result |
+|---|---|---|
+| A denial names itself | `/council:ask --to gemini --effort low` asked to write a file | exit 10, job `5eba85c6e9afa5ec`, `attention: denied write_file <path>`; no file created |
+| No `--session` falls back to the host's session | `ask --to grok --effort low` with no `--session`, then bare `wait` | job `f0e3z7x71meck5jv` was recorded and listed |
+| `edited` counts a task's changes | `/council:task --to codex --effort low` asked for a shell edit | `edited 1`, job `0c3cbd6e325018f8`. The direct-script check (job `hjcit7rpicgm4mpk`) is the one proven to use `sed -i` with no `file_change` event |
+| No model named means no task | "Use council to get Grok to fix the inRange bug" (run before round 2; the skill text is unchanged since) | one consult `ask`, job `abyvpa6rhbcfbjdi`, no task, file unchanged |
+
+**Not fixed: request ids stay patterned.** After the wording change the ids were still `k7Qm2xPd` and `k7Qm2xPz`. The model chooses them and tends to repeat a prefix. The harm is bounded: claims are scoped to session and workspace, and a same-session reuse with new text exits 2 and tells the host to pick a new id.
