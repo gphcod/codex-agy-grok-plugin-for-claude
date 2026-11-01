@@ -9,7 +9,8 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { PLUGIN_ROOT, loadStaticCatalog, parseModelListing } from "../core/catalog.mjs";
 import { hasFlagOperand } from "../core/execution.mjs";
-import { resolveLauncher as resolveBinary, runSync } from "../core/launcher.mjs";
+import { pathCandidates, resolveLauncher as resolveBinary, runSync } from "../core/launcher.mjs";
+import { loadTiers } from "../core/tiers.mjs";
 import { normalizeStructuredReview, renderReview } from "../core/review.mjs";
 
 const isFile = (p) => { try { return fs.statSync(p).isFile(); } catch { return false; } };
@@ -82,6 +83,13 @@ export function inlineSchema() {
   return schemaText;
 }
 
+/** The known trade-offs `setup` states (A3.2). */
+export const NOTES = [
+  "every turn ends with a process scan for anything still carrying the job's --prompt-file (no launcher kind is trusted to leave nothing behind)",
+  "read-only turns run the explore agent (RESUME_DENY after a task), deny MCP tools and fail closed if a writing tool is advertised; web search is off unless --web",
+  "reviews run at the repository root (grok has no --add-dir) and answer in the inline review schema",
+];
+
 // --- adapter ---------------------------------------------------------------------------------------------
 
 const adapter = {
@@ -114,10 +122,20 @@ const adapter = {
     const listing = runSync(launcher, ["models"], { env, timeoutMs: 30000 });
     if (listing.status !== 0) throw new Error(`grok models failed: ${first(listing)}`);
     const parsed = parseModelListing("grok", listing.stdout, { grokEfforts: EFFORTS });
+    // grok-build setup.mjs warnings: several executables on PATH, no login, a tier model missing from the listing.
+    const warnings = [];
+    const candidates = env.COUNCIL_GROK_BIN ? [] : pathCandidates("grok", env, process.platform);
+    if (candidates.length > 1) warnings.push(`${candidates.length} grok executables on PATH; the first one runs`);
+    if (!parsed.loggedIn) warnings.push("Grok is not logged in: run `grok` once and complete login");
+    for (const [name, { model }] of Object.entries(loadTiers().grok ?? {})) {
+      if (parsed.loggedIn && !Object.hasOwn(parsed.models, model)) warnings.push(`tier ${name}: model ${model} is not in \`grok models\``);
+    }
     return {
       version: version.stdout.trim().split(/\r?\n/)[0] || null,
       loggedIn: parsed.loggedIn,
       models: Object.entries(parsed.models).map(([id, efforts]) => ({ id, efforts })),
+      notes: NOTES,
+      warnings,
     };
   },
 
