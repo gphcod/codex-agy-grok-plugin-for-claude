@@ -100,17 +100,20 @@ export function renderReview(result, { summary = null, nextSteps = [] } = {}) {
  * failure, a malformed result or an incomplete turn is `incomplete` (exit 10), never an approval.
  * → {result, exit, renderedText}
  */
-export function finalizeReviewTurn({ adapter, answerText = "", answerFile = null, structured = null, unreviewed = [], reviewed = [], incomplete = null }) {
+export function finalizeReviewTurn({ adapter, answerText = "", answerFile = null, structured = null, unreviewed = [], reviewed = [], incomplete = null, noCoverage = false }) {
   let mapped, problem = null;
   // `answerText` is the whole stored answer (never the 24 KiB preview); `answerFile` is where it lives.
   try { mapped = adapter.finalizeReview({ answerText, answerFile, structured, unreviewed: [...unreviewed] }); }
   catch (error) { problem = `the adapter could not read the review: ${error.message}`; }
-  let result = mapped && { verdict: mapped.verdict, findings: mapped.findings, coverage: coverageOf(reviewed.length ? reviewed : mapped.coverage?.reviewed ?? [], unreviewed), incomplete: mapped.incomplete ?? null };
+  // noCoverage (an incomplete turn): nothing counts as reviewed, whatever the adapter listed.
+  let result = mapped && { verdict: mapped.verdict, findings: mapped.findings, coverage: coverageOf(noCoverage ? [] : reviewed.length ? reviewed : mapped.coverage?.reviewed ?? [], unreviewed), incomplete: mapped.incomplete ?? null };
   problem ??= resultProblem(result);
   if (problem) result = incompleteResult(problem, { reviewed, unreviewed });
   if (incomplete && result.verdict !== "incomplete") result = { ...result, verdict: "incomplete", incomplete: typeof incomplete === "string" ? incomplete : "the turn ended incomplete" };
-  const renderedText = problem || typeof mapped?.renderedText !== "string" ? renderReview(result, { summary: mapped?.summary ?? null, nextSteps: mapped?.nextSteps ?? [] }) : mapped.renderedText;
-  return { result, exit: reviewExit(result), renderedText };
+  // An incomplete turn is rendered by the core, so the verdict line says incomplete whatever the adapter rendered.
+  const renderedText = problem || incomplete || typeof mapped?.renderedText !== "string" ? renderReview(result, { summary: mapped?.summary ?? null, nextSteps: mapped?.nextSteps ?? [] }) : mapped.renderedText;
+  // valid: the adapter mapped a complete review (not one it found malformed or missing).
+  return { result, exit: reviewExit(result), renderedText, valid: !problem && mapped?.verdict !== "incomplete" };
 }
 
 // --- templates (gemini-plugin-cc lib/prompts.mjs) -------------------------------------------------------

@@ -90,7 +90,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     stopGroup: (...args) => { beat(); return control.stopGroup(...args); },
   };
   let request = initial, turn = null, child = null, reason = null, persistenceFailed = false, spawnError = null;
-  let drainExpired = false, pipesClosed = false, exhausted = false, announced = false, answer = "", queryError = null;
+  let refused = false, drainExpired = false, pipesClosed = false, exhausted = false, announced = false, answer = "", queryError = null;
   let answerFile = path.join(job.dir, "answer.md");
   const announce = () => {
     if (!announced && !options.json) { announced = true; hooks.announce?.(job); }
@@ -125,6 +125,8 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     // Re-read history after admission so a turn that finished meanwhile is inherited.
     request = prepare(job.id);
     if ((request.thread?.threadId ?? null) !== resumed) throw new Error("the thread changed during admission");
+    // Rechecked under the claim: another turn may have finished meanwhile and left the thread not resumable.
+    if (request.thread && request.thread.resumable === false) throw new UsageError(`${provider} thread ${resumed}: ${request.thread.unconfirmed ?? "not resumable"}`);
     const launcher = adapter.resolveLauncher(ctx.env, process.platform);
     if (!launcher) throw new Error(`${provider} not found; run setup, or set ${adapter.binEnv}`);
     // A5 (S2.8): the adapter reads the caller's environment and the resolved launcher from here, never process.env.
@@ -221,7 +223,8 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
           else if (id.toLowerCase() !== expected.toLowerCase()) throw new Error(`${provider} answered on thread ${id}, expected ${expected}`);
           job.threadId = id; save(job); announce();
         },
-        onText: request.verb === "review" ? null : onText,
+        // Review text is stored too: a finished review replaces it with the rendered result, an incomplete one keeps it.
+        onText,
         onFailure(message) { streamFailure = message; stop(message); },
       });
       await new Promise((resolve) => {
@@ -357,6 +360,8 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     release(child);
     reason ??= error.message;
     if (error instanceof BusyError || error instanceof UsageError) job.admitted = job.admitted && Boolean(turn);
+    // Invalid input found only under the claim (a thread no longer resumable) exits 2, as it would have before admission.
+    if (error instanceof UsageError && !child) refused = true;
     if (!turn) job.admitted = false;
   }
 
@@ -372,7 +377,22 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
   else if (!error && (streamFailure || seen?.failed)) error = streamFailure ?? seen.failed;
   else if (!error && !seen?.completed) error = seen?.error ?? (job.stderrTail?.trim().split(/\r?\n/).at(-1) || `${provider} ended without finishing the turn`);
   else if (!error && child?.exitCode !== 0) error = seen?.error ?? `${provider} exited with code ${child?.exitCode}`;
-  else if (!error && seen?.incomplete) error = seen.incomplete; // A5.1/A3.3: an incomplete turn (print timeout) is exit 1, never 20, on every verb.
+  else if (!error && seen?.incomplete) {
+    error = seen.incomplete; // A5.1/A3.3: an incomplete turn (print timeout) is exit 1, never 20, on every verb.
+    if (isReview) {
+      // Exit 1 stands, but what the review produced is kept: the structured result rendered as an
+      // incomplete review as far as it validates, else the partial text. It grants no coverage.
+      let fullText = "";
+      try { fullText = io.readFileSync(answerFile, "utf8"); } catch { /* no partial text */ }
+      const review = finalizeReviewTurn({ adapter, answerText: fullText, answerFile, structured: seen?.structured ?? null, unreviewed: [...(request.reviewed ?? []), ...(job.unreviewed ?? [])], reviewed: [], incomplete: seen.incomplete, noCoverage: true });
+      job.review = review.result;
+      job.verdict = review.result.verdict;
+      if (review.valid || !parsed?.nonempty) {
+        try { io.writeFileSync(answerFile, review.renderedText); parsed = readAnswer(answerFile); answer = parsed.answer; }
+        catch (failure) { error = `${error}; answer storage failed: ${failure.message}`; }
+      }
+    }
+  }
   else if (!error && isReview) {
     // The adapter reads the whole answer, never the 24 KiB preview; the cap applies only when printing.
     let fullText = "";
@@ -397,7 +417,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     error = `${[reason, queryError].filter(Boolean).join("; ") || "execution ended"}; cleanup pending: ${provider} or a descendant may still be running`;
   }
   Object.assign(job, {
-    status: ["ok", "attention"].includes(outcome) ? "done" : outcome, outcome, code: outcome === "ok" ? 0 : outcome === "attention" ? 10 : 1,
+    status: ["ok", "attention"].includes(outcome) ? "done" : outcome, outcome, code: outcome === "ok" ? 0 : outcome === "attention" ? 10 : refused && outcome === "failed" && cleanupConfirmed ? 2 : 1,
     error, cleanupPending: !cleanupConfirmed, endedAt: new Date().toISOString(),
     edited: [...(seen?.edited ?? [])], failedCommands: seen?.failedCommands ?? [], failedCommandCount: seen?.failedCommandCount ?? 0,
     unconfirmed: isReview ? null : seen?.unconfirmed ?? null, denied: seen?.denied ?? null, costUsd: seen?.costUsd ?? null, usage: seen?.usage ?? null, answerClipped: parsed?.answerClipped ?? false,
