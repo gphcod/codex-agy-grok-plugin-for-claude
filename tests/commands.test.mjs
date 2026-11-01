@@ -22,6 +22,6 @@ test("eleven commands with the required frontmatter and the slash-command form",
     assert.match(text, /If a line of the arguments is exactly `COUNCIL_EOF`/);
   }
   for (const p of ["codex", "gemini", "grok"]) {
-    assert.match(readFileSync(join(commandsDir, `${p}.md`), "utf8"), new RegExp(`council\\.mjs" ask --to ${p} --session`));
+    assert.match(readFileSync(join(commandsDir, `${p}.md`), "utf8"), new RegExp(`council\\.mjs" ask --to ${p} --request-id @RID@ --session`));
   }
 });

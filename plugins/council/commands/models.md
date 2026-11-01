@@ -6,7 +6,7 @@ allowed-tools: Bash(node:*)
 ---
 
 Make one Bash tool call in the foreground. It starts no provider CLI unless the arguments carry `--refresh`; then it runs each provider's model-listing command once.
-If a line of the arguments is exactly `COUNCIL_EOF`, use another delimiter that is not in the text, in both places; otherwise keep the command exactly as shown.
+If a line of the arguments is exactly `COUNCIL_EOF`, use another delimiter that is not in the text, in both places. Apart from that and the request id where the command has one, keep the command exactly as shown.
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/council.mjs" models --session "${CLAUDE_SESSION_ID}" <<'COUNCIL_EOF'

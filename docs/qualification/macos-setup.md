@@ -76,4 +76,4 @@ grok: ready · /Users/cia/.grok/bin/grok (native) · grok 1.0.70 (f50904eaee6c) 
 
 The resolved tiers equal `tiers.json` for all three providers. The live listings match the S1 captures in `docs/spike/`.
 
-The `models` header reads `codex (refreshed, refreshed <time>)`. This is a cosmetic repetition in the core's `runModels`: the catalog source is `refreshed`, and the timestamp is printed with the same word. It is recorded here and was not changed in S6, which may change core code only for a defect that S6.0 exposes.
+The `models` header in the capture above reads `codex (refreshed, refreshed <time>)`, a cosmetic repetition in the core's `runModels`. The capture is kept as it was printed. **Correction (S6.8, milestone 4 review):** the header now reads `codex (refreshed 2026-11-01T14:12:30.151Z)`, or `(static)` before any refresh. That change was tested against the fakes only; this command was not rerun live.

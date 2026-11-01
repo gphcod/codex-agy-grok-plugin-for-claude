@@ -5,9 +5,11 @@
 // The skill's direct call form is run the same way.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { reviewTarget } from "../plugins/council/scripts/lib/core/git.mjs";
+import { RID, heavyExec } from "../scripts/gen-commands.mjs";
 import { PLUGIN_DIR, SESSION, footer, harness, markers } from "./fixtures/three-providers.mjs";
 
 const block = (file) => {
@@ -15,11 +17,17 @@ const block = (file) => {
   assert.ok(m, `${file} has a bash block`);
   return m[1];
 };
-/** Claude Code replaces `$ARGUMENTS` in the command text with the user's arguments, verbatim. */
-const command = (name, args, delimiter = null) => {
+const freshId = () => Array.from(randomBytes(8), (b) => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join("");
+/**
+ * Claude Code replaces `$ARGUMENTS` in the command text with the user's arguments, verbatim (a replacer
+ * function, so `$$`, `$&` and `$'` in the arguments stay literal); Claude replaces `@RID@` with a fresh
+ * request id as the command says (`rid: null` leaves the placeholder, as a careless caller would).
+ */
+const command = (name, args, { delimiter = null, rid = freshId() } = {}) => {
   let body = block(join("commands", `${name}.md`));
-  if (delimiter) body = body.replaceAll("COUNCIL_EOF", delimiter);
-  return body.replaceAll("$ARGUMENTS", args);
+  if (delimiter) body = body.replace(/COUNCIL_EOF/g, () => delimiter);
+  if (rid !== null) body = body.replace(new RegExp(RID, "g"), () => rid);
+  return body.replace(/\$ARGUMENTS/g, () => args);
 };
 const CLAUDE = { CLAUDE_PLUGIN_ROOT: PLUGIN_DIR, CLAUDE_SESSION_ID: SESSION };
 
@@ -45,14 +53,14 @@ test("ask, codex, gemini, grok: leading flags, a literal --, text with -- inside
     assert.match(footer(r.out), /^council codex ok · .* · gpt-6\.1-sol\/high · /, "no option was taken from inside the text");
 
     // Multiline text, quotes, $, backticks: the quoted heredoc passes them unexpanded.
-    const multi = "First line\n\n  second line with 'quotes', \"double\", $HOME and `ticks`\nlast";
+    const multi = "First line\n\n  second line with 'quotes', \"double\", $HOME, $$, $& and $' and `ticks`\nlast";
     r = await h.sh(command("gemini", `--effort low ${multi}`), { ...env, ...markers("gemini", multi) });
     assert.equal(r.code, 0, r.err + r.out);
     assert.match(footer(r.out), /^council gemini ok · .* · gemini-4-argon\/low · /);
 
     // A line equal to the delimiter: the command says to pick another delimiter in both places.
     const collide = "before\nCOUNCIL_EOF\nafter";
-    r = await h.sh(command("ask", `--to codex ${collide}`, "COUNCIL_EOF_1"), { ...env, ...markers("codex", collide) });
+    r = await h.sh(command("ask", `--to codex ${collide}`, { delimiter: "COUNCIL_EOF_1" }), { ...env, ...markers("codex", collide) });
     assert.equal(r.code, 0, r.err + r.out);
     for (const name of ["ask", "codex", "gemini", "grok"]) assert.match(readFileSync(join(PLUGIN_DIR, "commands", `${name}.md`), "utf8"), /If a line of the arguments is exactly `COUNCIL_EOF`, use another delimiter/);
 
@@ -121,11 +129,58 @@ test("reply, review, task, wait, cancel, models, setup through their command blo
   } finally { h.done(); }
 });
 
-test("each command says how to run its Bash call (foreground or background)", () => {
+test("each command says how to run its Bash call: background for review, task, deep, exec tiers at xhigh or above, and heavy efforts", () => {
+  const text = (name) => readFileSync(join(PLUGIN_DIR, "commands", `${name}.md`), "utf8");
+  assert.deepEqual(heavyExec(), { codex: "max", grok: "xhigh" }, "exec tiers from tiers.json that run at xhigh or above");
+  const heavy = /`--tier deep`, `--effort xhigh`, `max` or `ultra`/;
   for (const name of ["ask", "codex", "gemini", "grok", "reply"]) {
-    assert.match(readFileSync(join(PLUGIN_DIR, "commands", `${name}.md`), "utf8"), /in the foreground with timeout 600000, or with `run_in_background: true` when /);
+    assert.match(text(name), heavy, name);
+    assert.match(text(name), /Otherwise run it in the foreground with timeout 600000\./, name);
   }
-  for (const name of ["review", "task"]) assert.match(readFileSync(join(PLUGIN_DIR, "commands", `${name}.md`), "utf8"), /^Make one Bash tool call with `run_in_background: true`\./m);
-  for (const name of ["wait", "cancel"]) assert.match(readFileSync(join(PLUGIN_DIR, "commands", `${name}.md`), "utf8"), /^Make one Bash tool call in the foreground\. It starts no provider CLI\./m);
-  for (const name of ["models", "setup"]) assert.match(readFileSync(join(PLUGIN_DIR, "commands", `${name}.md`), "utf8"), /^Make one Bash tool call in the foreground\. It (starts no provider CLI unless|runs each provider's version)/m);
+  assert.match(text("ask"), /`--tier exec` with `--to codex` or `--to grok` and no `--effort` below xhigh \(their exec tiers run at max and xhigh\)/);
+  assert.match(text("codex"), /`--tier exec` and no `--effort` below xhigh \(codex's exec tier runs at max\)/);
+  assert.match(text("grok"), /`--tier exec` and no `--effort` below xhigh \(grok's exec tier runs at xhigh\)/);
+  assert.doesNotMatch(text("gemini"), /--tier exec/, "gemini's exec tier runs at high: foreground");
+  assert.match(text("reply"), /`--tier exec` on a codex or grok thread with no `--effort` below xhigh, or they set neither and the thread already runs at deep or at xhigh or above\. When you cannot tell, run it in the background\./);
+  for (const name of ["review", "task"]) assert.match(text(name), /^Make one Bash tool call with `run_in_background: true`\./m);
+  for (const name of ["wait", "cancel"]) assert.match(text(name), /^Make one Bash tool call in the foreground\. It starts no provider CLI\./m);
+  for (const name of ["models", "setup"]) assert.match(text(name), /^Make one Bash tool call in the foreground\. It (starts no provider CLI unless|runs each provider's version)/m);
+  for (const name of ["ask", "codex", "gemini", "grok", "reply", "review", "task"]) {
+    assert.match(text(name), / --request-id @RID@ --session /, `${name} carries a request id`);
+    assert.match(text(name), /Replace `@RID@` with 8 random letters and digits/, name);
+  }
+  for (const name of ["wait", "cancel", "models", "setup"]) assert.doesNotMatch(text(name), /@RID@/, name);
+});
+
+test("request ids: the substituted id reaches the entry, a retry replays without a second CLI, an id in the arguments wins, a left placeholder is refused", async () => {
+  const h = harness();
+  try {
+    const env = CLAUDE;
+    const body = command("task", "--to codex --effort low do the edit", { rid: "taskid01" });
+    const first = await h.sh(body, { ...env, ...markers("codex", "do the edit") });
+    assert.equal(first.code, 0, first.err + first.out);
+    assert.equal(h.job(first.job).requestId, "taskid01");
+    assert.ok(existsSync(join(h.home, "claims", "requests", `${first.job}.json`)), "the request tombstone exists");
+    const spawned = h.invocations().length;
+    const retry = await h.sh(body, { ...env, ...markers("codex", "do the edit") });
+    assert.equal(retry.code, 0, retry.err + retry.out);
+    assert.equal(retry.job, first.job);
+    assert.equal(retry.out, first.out, "the retry prints the first result");
+    assert.match(retry.err, / replay=taskid01/);
+    assert.equal(h.invocations().length, spawned, "the retry started no CLI");
+    // The same id with other text is refused rather than replayed.
+    const changed = await h.sh(command("task", "--to codex --effort low other edit", { rid: "taskid01" }), env);
+    assert.equal(changed.code, 2);
+    // An id in the arguments takes precedence over the substituted one.
+    writeFileSync(join(h.repo, "calc.js"), "export const x = 1;\n");
+    const own = await h.sh(command("review", "--to codex --uncommitted --request-id userid02", { rid: "ignored2" }), { ...env, COUNCIL_FAKE_SCENARIO: "review-findings" });
+    assert.equal(own.code, 10, own.err + own.out);
+    assert.equal(h.job(own.job).requestId, "userid02");
+    // A placeholder left in place is refused before anything runs.
+    const before = h.jobIds().length;
+    const left = await h.sh(command("ask", "--to grok hi", { rid: null }), { ...env, ...markers("grok", "hi") });
+    assert.equal(left.code, 2);
+    assert.match(left.err, /--request-id needs 1 to 128 letters/);
+    assert.equal(h.jobIds().length, before);
+  } finally { h.done(); }
 });

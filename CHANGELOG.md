@@ -30,7 +30,7 @@ The release check is S7 of `PLAN.md`: a macOS matrix, a Windows session and the 
 - Fan-out: the skill issues up to three background `ask` calls in one response, each with its own `--request-id`.
 - `--request-id` replay across providers. One binding per session, workspace and id means a retry never starts a second CLI, even when `--last` or the catalog would now resolve differently.
 - Four guard variables (`COUNCIL_DEPTH`, `CODEX_COMPANION_DEPTH`, `GROK_BUILD_DEPTH`, `CLAUDE_PLUGIN_CODEX_DEPTH`) on every child, probes included. council refuses to start when any of them is set.
-- Eleven generated user-only slash commands with a drift check, and one model-visible skill of 2,998 B.
+- Eleven generated user-only slash commands with a drift check. The turn commands carry a fresh `--request-id` that Claude substitutes. One model-visible skill of 2,998 B.
 
 ### Intentional differences
 
