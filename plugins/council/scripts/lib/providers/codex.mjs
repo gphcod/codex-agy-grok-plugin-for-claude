@@ -41,6 +41,17 @@ function messageOf(value) {
   if (typeof raw !== "string") return null;
   try { return JSON.parse(raw)?.error?.message ?? raw; } catch { return raw; }
 }
+/**
+ * Sandbox-denial evidence in a failed command's output: the keywords codex-rs itself uses to decide
+ * that a non-zero exit was likely the sandbox (`is_likely_sandbox_denied`, rust-v0.163.0
+ * sandboxing), checked only on a non-zero exit because a command that succeeds can print them too
+ * (the S1.1 review streams: git's `Operation not permitted` cache warning at exit 0).
+ */
+export const SANDBOX_DENIED = ["operation not permitted", "permission denied", "read-only file system", "seccomp", "sandbox", "landlock", "failed to write file"];
+export function sandboxDenied(output) {
+  const text = String(output ?? "").toLowerCase();
+  return SANDBOX_DENIED.some((k) => text.includes(k));
+}
 const shortCommand = (cmd = "") => String(cmd)
   .replace(/^"?[^"]*?(?:pwsh|powershell|bash|zsh|sh|cmd)(?:\.exe)?"?\s+(?:-Command|-l?c|\/c)\s+/i, "")
   .replace(/^(['"])(.*)\1$/s, "$2").slice(0, 80);
@@ -102,16 +113,20 @@ export function toolPolicy({ verb, launcher, cwd, env = {}, run = runSync }) {
 // --- review output (lib/answer.mjs:16, codex-rs review_format) ------------------------------------------
 
 const FINDING_LINE = /^\s*[-*]\s+\[P(\d)\]\s+(.+?)\s+—\s+(.+):(\d+)(?:-(\d+))?\s*$/;
+/** Codex priorities → council severities (milestone 3 ruling: [P2]/[P3] are MINOR). */
+export const PRIORITY = { 0: "BLOCKER", 1: "MAJOR", 2: "MINOR", 3: "MINOR" };
+export const NO_FINDINGS = "codex reported no findings; its output cannot prove a clean review";
 const MARKER = /\[P\d\]/;
 const HEADER = /^\s*(?:Review comment|Full review comments):\s*$/;
 
 /**
- * The native review text → A5.2. `[P0]` → BLOCKER and `[P1]` → MAJOR, scanned over the whole answer.
- * Codex renders a review as its explanation plus, when there are findings, a "Review comment(s):"
- * block of `- [P<n>] <title> — <path>:<start>-<end>` lines with indented bodies; a model output Codex
- * could not parse becomes explanation text with no findings, so text without a [P0]/[P1] finding can
- * never prove an approval (A5.1, A5.2). Any other finding form (another priority, a marker outside the
- * line shape), an empty answer or Codex's fallback text is `incomplete`.
+ * The native review text → A5.2, scanned over the whole answer: `[P0]` → BLOCKER, `[P1]` → MAJOR,
+ * `[P2]`/`[P3]` → MINOR. Codex renders a review as its explanation plus, when there are findings, a
+ * "Review comment(s):" block of `- [P<n>] <title> — <path>:<start>-<end>` lines with indented bodies.
+ * Reviewer output Codex cannot parse becomes that same explanation with no findings (rust-v0.163.0
+ * core/src/tasks/review.rs:175-194, protocol/src/review_format.rs:57-74), so a marker-free review is
+ * `incomplete` with NO_FINDINGS, never an approval (A5.1, A5.2). A marker outside the finding-line
+ * shape, an empty answer or Codex's fallback text is `incomplete` too.
  */
 export function parseNativeReview(answerText = "") {
   const text = String(answerText).replace(/\r\n?/g, "\n");
@@ -120,10 +135,10 @@ export function parseNativeReview(answerText = "") {
   for (const line of text.split("\n")) {
     if (HEADER.test(line)) { inBlock = true; current = null; continue; }
     const m = FINDING_LINE.exec(line);
-    if (m && (m[1] === "0" || m[1] === "1")) {
+    if (m && Object.hasOwn(PRIORITY, m[1])) {
       const start = Number(m[4]), end = m[5] === undefined ? start : Number(m[5]);
       if (start >= 1 && end >= start) {
-        current = { severity: m[1] === "0" ? "BLOCKER" : "MAJOR", file: m[3].trim(), line: start, ...(end > start ? { lineEnd: end } : {}), title: m[2].trim(), text: "" };
+        current = { severity: PRIORITY[m[1]], file: m[3].trim(), line: start, ...(end > start ? { lineEnd: end } : {}), title: m[2].trim(), text: "" };
         findings.push(current); inBlock = true;
         continue;
       }
@@ -137,8 +152,8 @@ export function parseNativeReview(answerText = "") {
   let incomplete = null;
   if (!text.trim()) incomplete = "Codex returned no review text";
   else if (text.trim() === REVIEW_FALLBACK) incomplete = "Codex's reviewer failed to output a response";
-  else if (unrecognized.length) incomplete = `${unrecognized.length} finding line(s) in a form other than [P0]/[P1] with a location: ${unrecognized.slice(0, 3).map((l) => JSON.stringify(l.slice(0, 120))).join(", ")}`;
-  else if (!findings.length) incomplete = "no [P0]/[P1] finding, and Codex's native review text cannot prove an approval";
+  else if (unrecognized.length) incomplete = `${unrecognized.length} finding line(s) not in Codex's \`- [P0-3] <title> — <path>:<line>\` form: ${unrecognized.slice(0, 3).map((l) => JSON.stringify(l.slice(0, 120))).join(", ")}`;
+  else if (!findings.length) incomplete = NO_FINDINGS;
   return { findings, unrecognized, summary: explanation || null, incomplete };
 }
 
@@ -258,7 +273,10 @@ const adapter = {
           return { edited: item.changes.map((c) => c?.path).filter((p) => typeof p === "string"), toolStep: "file_change" };
         }
         if (item?.type === "command_execution" && Number.isInteger(item.exit_code) && item.exit_code !== 0) {
-          return { failedCommand: { cmd: shortCommand(item.command), exit: item.exit_code }, toolStep: "command_execution" };
+          const failedCommand = { cmd: shortCommand(item.command), exit: item.exit_code };
+          // A3.4: a denied action needs attention (exit 10); an ordinary failing command does not.
+          if (sandboxDenied(item.aggregated_output)) return { failedCommand, denied: `sandbox denied: ${failedCommand.cmd} (exit ${item.exit_code})`, toolStep: "command_execution" };
+          return { failedCommand, toolStep: "command_execution" };
         }
         return item?.type ? { toolStep: item.type } : null;
       default:

@@ -54,6 +54,7 @@ const adapter = {
   /** Optional A5 hook: an adapter refuses a flag it has no tested mapping for (exit 2 before any job). */
   checkRequest(request, env = {}) {
     if (request.web && env.COUNCIL_NULL_NO_WEB === "1") throw new UsageError("--web has no tested mapping for null");
+    if (request.adversarial && env.COUNCIL_NULL_NO_ADVERSARIAL === "1") throw new UsageError("--adversarial has no tested mapping for null");
   },
 
   /** A5 buildTurn: request carries env and launcher; → {args, env, stdin | promptFile, answerFile, readOnly, agent?, contractCarrier, threadId?}. */

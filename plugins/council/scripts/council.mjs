@@ -186,6 +186,9 @@ export function prepareRequest(ctx, adapter, verb, o, text, target, memo) {
     rounds, roundsSet, round: verb === "review" ? null : thread ? (thread.round ?? 0) + 1 : 1,
     target: null, reviewTarget: null, reviewNative: null, reviewPrompt: null, reviewed: [], unreviewed: [],
   };
+  // A5: a flag the adapter has no tested mapping for exits 2 before anything else runs, so a refused
+  // review never resolves its target or collects a diff (milestone 3 review, Argon F5). Once per call.
+  if (!memo.checked) { adapter.checkRequest?.(request, ctx.env); memo.checked = true; }
   if (verb === "review") {
     memo.target ??= reviewTarget(ctx.cwd, { base: o.base, commit: o.commit, uncommitted: o.uncommitted });
     const gitInfo = { root: memo.target.root, target: memo.target, collect: () => (memo.collection ??= collectReview(memo.target)) };
@@ -243,8 +246,7 @@ async function runTurn(ctx, io, verb, o, text, literal, hooks) {
       if (!claimed.fresh) { const prior = claimed; claimed = null; bindScope(scope.file, adapter.id, prior.id); return replayRequest(ctx, o, prior, fp, io.out, { control }); }
       bindScope(scope.file, adapter.id, claimed.id);
     }
-    initial = prepareRequest(ctx, adapter, verb, o, text, target, memo);
-    adapter.checkRequest?.(initial, ctx.env);
+    initial = prepareRequest(ctx, adapter, verb, o, text, target, memo); // runs adapter.checkRequest first
     if (claimed) markRequestPrepared(ctx.home, claimed.id, { provider: adapter.id, requestId, fingerprint: fp, session: ctx.session, cwd: ctx.cwd, verb });
   } catch (error) {
     // Nothing ran: a retry may. The job claim and the binding go together.

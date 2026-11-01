@@ -7,7 +7,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import adapter, { LINE_CAP, MCP_TRADE_OFF, REVIEW_FALLBACK, SANDBOX, parseNativeReview, toolPolicy, waitsForCodex } from "../plugins/council/scripts/lib/providers/codex.mjs";
+import adapter, { LINE_CAP, MCP_TRADE_OFF, NO_FINDINGS, REVIEW_FALLBACK, SANDBOX, parseNativeReview, sandboxDenied, toolPolicy, waitsForCodex } from "../plugins/council/scripts/lib/providers/codex.mjs";
 import { UsageError } from "../plugins/council/scripts/lib/core/args.mjs";
 import { loadStaticCatalog } from "../plugins/council/scripts/lib/core/catalog.mjs";
 import { finalizeReviewTurn } from "../plugins/council/scripts/lib/core/review.mjs";
@@ -268,6 +268,7 @@ test("parseEvent over the recorded minimal, resume and review streams", () => {
     { completed: true, usage: { input_tokens: 16062, cached_input_tokens: 13184, cache_write_input_tokens: 0, output_tokens: 5, reasoning_output_tokens: 0 } }]);
   assert.ok(parse("resume.jsonl").some((e) => e?.threadId), "resume repeats thread.started");
   const review = parse("review-unfocused.jsonl");
+  assert.ok(review.every((e) => !e?.denied), "the recorded git cache warnings (exit 0) are no denial");
   assert.ok(review.filter((e) => e?.toolStep?.startsWith("command: ")).length >= 1, "command steps are reported as progress");
   assert.equal(review.at(-1).completed, true);
 });
@@ -284,6 +285,14 @@ test("parseEvent: failure, error, file_change, failed command, junk", () => {
   assert.deepEqual(p({ type: "item.completed", item: { type: "file_change", status: "failed", changes: [{ path: "a" }] } }), { toolStep: "file_change" }, "a failed patch edits nothing");
   assert.deepEqual(p({ type: "item.completed", item: { type: "command_execution", command: "/bin/zsh -lc 'npm test'", exit_code: 2 } }), { failedCommand: { cmd: "npm test", exit: 2 }, toolStep: "command_execution" });
   assert.deepEqual(p({ type: "item.completed", item: { type: "command_execution", command: "ls", exit_code: 0 } }), { toolStep: "command_execution" });
+  assert.deepEqual(p({ type: "item.completed", item: { type: "command_execution", command: "/bin/zsh -lc 'printf hello > x.txt'", aggregated_output: "zsh: operation not permitted: x.txt\n", exit_code: 1, status: "failed" } }),
+    { failedCommand: { cmd: "printf hello > x.txt", exit: 1 }, denied: "sandbox denied: printf hello > x.txt (exit 1)", toolStep: "command_execution" }, "macOS seatbelt refusal");
+  for (const output of ["touch: a: Read-only file system", "bash: b: Permission denied", "landlock: restricted", "seccomp filter", "Command denied by sandbox: rm", "failed to write file c"]) {
+    assert.ok(p({ type: "item.completed", item: { type: "command_execution", command: "x", aggregated_output: output, exit_code: 1 } }).denied, output);
+  }
+  assert.equal(p({ type: "item.completed", item: { type: "command_execution", command: "npm test", aggregated_output: "1 failing test\n", exit_code: 1 } }).denied, undefined, "an ordinary failure is not a denial");
+  assert.equal(p({ type: "item.completed", item: { type: "command_execution", command: "git status", aggregated_output: "git: warning: couldn't create cache file (errno=Operation not permitted)\n", exit_code: 0 } }).denied, undefined, "keywords at exit 0 are not a denial (S1.1 git warning)");
+  assert.equal(sandboxDenied(null), false);
   assert.deepEqual(p({ type: "item.completed", item: { type: "command_execution", command: "ls", exit_code: null } }), { toolStep: "command_execution" });
   assert.deepEqual(p({ type: "item.started", item: { type: "command_execution", command: "bash -lc \"git status\"" } }), { toolStep: "command: git status" });
   assert.deepEqual(p({ type: "item.started", item: { type: "reasoning" } }), { toolStep: "reasoning" });
@@ -320,17 +329,29 @@ test("finalizeReview: P0 → BLOCKER, ranges, several findings, a finding past 2
   assert.deepEqual(late.findings.map((f) => f.title), ["Late finding"], "the whole answer is scanned, not the 24 KiB preview");
 });
 
-test("finalizeReview → incomplete (exit 10): other priorities, unparseable lines, empty, fallback text, prose without findings", () => {
+test("finalizeReview: well-formed [P2] and [P3] findings are MINOR (milestone 3 ruling)", () => {
+  const r = adapter.finalizeReview({ answerText: "Small things.\n\nFull review comments:\n\n- [P2] Naming — /r/a.js:4-4\n  minor\n- [P3] Nit — /r/b.js:1-2\n  tiny\n- [P1] Real bug — /r/c.js:9\n  body" });
+  assert.equal(r.verdict, "changes");
+  assert.equal(r.incomplete, null);
+  assert.deepEqual(r.findings.map((f) => [f.severity, f.file, f.line, f.lineEnd ?? null, f.title]), [
+    ["MINOR", "/r/a.js", 4, null, "Naming"], ["MINOR", "/r/b.js", 1, 2, "Nit"], ["MAJOR", "/r/c.js", 9, null, "Real bug"],
+  ]);
+  const minorOnly = finalizeReviewTurn({ adapter, answerText: "Review comment:\n\n- [P3] Nit — /r/b.js:1-1\n  tiny" });
+  assert.deepEqual([minorOnly.result.verdict, minorOnly.exit], ["changes", 10], "a MINOR finding still needs attention (A5.2)");
+  assert.match(minorOnly.renderedText, /\nF1 MINOR \/r\/b\.js:1: Nit\n/);
+});
+
+test("finalizeReview → incomplete (exit 10): unparseable lines, empty, fallback text, prose without findings", () => {
   const cases = [
-    ["Review comment:\n\n- [P2] Naming — /r/a.js:4-4\n  minor", /form other than \[P0\]\/\[P1\]/],
-    ["Review comment:\n\n- [P1] Real bug — /r/a.js:4-4\n  body\n- [P3] Nit — /r/b.js:1-1", /1 finding line/],
-    ["- [P1] no location given", /form other than/],
-    ["Something [P1] mentioned inline", /form other than/],
+    ["Review comment:\n\n- [P4] Unknown priority — /r/a.js:4-4\n  minor", /1 finding line\(s\) not in Codex's `- \[P0-3\] <title> — <path>:<line>` form/],
+    ["Review comment:\n\n- [P1] Real bug — /r/a.js:4-4\n  body\n- [P2] no location", /1 finding line/],
+    ["- [P1] no location given", /not in Codex's/],
+    ["Something [P1] mentioned inline", /not in Codex's/],
     ["", /no review text/],
     ["   \n", /no review text/],
     [REVIEW_FALLBACK, /reviewer failed to output a response/],
-    ["Looks fine to me, nothing to flag.", /no \[P0\]\/\[P1\] finding, and Codex's native review text cannot prove an approval/],
-    ["No findings. The change is correct.", /cannot prove an approval/],
+    ["Looks fine to me, nothing to flag.", /^codex reported no findings; its output cannot prove a clean review$/],
+    ["No findings. The change is correct.", /^codex reported no findings; its output cannot prove a clean review$/],
   ];
   for (const [text, reason] of cases) {
     const r = adapter.finalizeReview({ answerText: text });
@@ -341,6 +362,8 @@ test("finalizeReview → incomplete (exit 10): other priorities, unparseable lin
     assert.equal(turn.result.verdict, "incomplete");
     if (text.trim()) assert.ok(turn.renderedText.includes(`Codex review output:\n\n${text.trimEnd()}`), "Codex's own text is kept after the verdict");
   }
+  assert.equal(NO_FINDINGS, "codex reported no findings; its output cannot prove a clean review");
+  assert.match(finalizeReviewTurn({ adapter, answerText: "All good." }).renderedText, /^Verdict: incomplete \(codex reported no findings; its output cannot prove a clean review\)\./);
   const mixed = adapter.finalizeReview({ answerText: cases[1][0] });
   assert.deepEqual(mixed.findings.map((f) => f.title), ["Real bug"], "recognized findings stay reported");
   assert.deepEqual(parseNativeReview("- [P1] Bad range — /r/a.js:9-3").findings, [], "an inverted range is not a location");
