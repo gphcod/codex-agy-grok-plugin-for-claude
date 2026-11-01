@@ -14,4 +14,4 @@ $ARGUMENTS
 COUNCIL_EOF
 ```
 
-Act on the output or summarize it briefly; do not repeat it. `/council:wait <job>` prints a finished result again.
+Act on the output or summarize it briefly; do not repeat it. A background call reports through its task notification; `/council:wait <job>` prints a finished result again. After `thread locked` or `session not confirmed`, start a new ask; after `cleanup pending`, run `/council:cancel <job>`.

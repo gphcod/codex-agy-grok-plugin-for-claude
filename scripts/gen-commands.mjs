@@ -10,7 +10,8 @@ export const repoRoot = resolve(here, "..");
 export const templatePath = join(repoRoot, "scripts", "templates", "command.md");
 export const commandsDir = join(repoRoot, "plugins", "council", "commands");
 
-const FOREGROUND = "Make one Bash tool call: foreground with timeout 600000, or `run_in_background: true` for `--tier deep` or an effort of xhigh, max or ultra.";
+const FOREGROUND = "Make one Bash tool call: in the foreground with timeout 600000, or with `run_in_background: true` when the arguments carry `--tier deep` or `--effort xhigh`, `max` or `ultra`.";
+const REPLY = "Make one Bash tool call: in the foreground with timeout 600000, or with `run_in_background: true` when the arguments carry `--tier deep` or `--effort xhigh`, `max` or `ultra`, or the thread already runs at one of those (a reply inherits it).";
 const BACKGROUND = "Make one Bash tool call with `run_in_background: true`.";
 const CONTROL = "Make one Bash tool call in the foreground. It starts no provider CLI.";
 
@@ -27,49 +28,49 @@ export const COMMANDS = {
     fixedFlags: "",
     description: "Continue a thread with a delta reply (provider inherited, read-only)",
     hint: "[--thread <job|thread> | --last] [--model <m>] [--effort <e>] <reply>",
-    rule: FOREGROUND,
+    rule: REPLY,
   },
   review: {
     verb: "review",
     fixedFlags: "",
     description: "Review uncommitted changes, a branch against a base, or one commit",
     hint: "--to codex|gemini|grok [--base <ref> | --commit <sha> | --uncommitted] [--adversarial] [--tier consult|deep] [focus]",
-    rule: BACKGROUND + " Exit 10 means findings need attention.",
+    rule: BACKGROUND + " Exit 10 means findings, an incomplete review or a denied action need attention.",
   },
   task: {
     verb: "task",
     fixedFlags: "",
     description: "Delegate work that may edit the working tree (user-authorized only)",
     hint: "--to codex|gemini|grok [--thread <id>] [--tier exec] <task>",
-    rule: BACKGROUND + " The user authorizes every task; never start one on your own.",
+    rule: BACKGROUND + " The user authorizes every task by running this command; never start one on your own.",
   },
   wait: {
     verb: "wait",
     fixedFlags: "",
     description: "List this session's council jobs or await one and print its result",
     hint: "[job] [--timeout <s>]",
-    rule: CONTROL + " Exit 20 means the job is still running.",
+    rule: CONTROL + " It waits up to `--timeout` seconds (90 by default); exit 20 means the job is still running.",
   },
   cancel: {
     verb: "cancel",
     fixedFlags: "",
     description: "Stop a council job and confirm its cleanup",
-    hint: "[job]",
-    rule: CONTROL,
+    hint: "[job] [--timeout <s>]",
+    rule: CONTROL + " It returns once cleanup is confirmed.",
   },
   models: {
     verb: "models",
     fixedFlags: "",
     description: "Print the model catalog and cached listings; --refresh re-runs the listings",
     hint: "[--to codex|gemini|grok] [--refresh]",
-    rule: CONTROL + " With `--refresh` it runs each provider's model-listing command once.",
+    rule: "Make one Bash tool call in the foreground. It starts no provider CLI unless the arguments carry `--refresh`; then it runs each provider's model-listing command once.",
   },
   setup: {
     verb: "setup",
     fixedFlags: "",
     description: "Check binaries, login, versions, catalog age and resolved tiers for each provider",
     hint: "[--to codex|gemini|grok]",
-    rule: CONTROL + " It runs each provider's documented probe commands.",
+    rule: "Make one Bash tool call in the foreground. It runs each provider's version, login and model-listing probes and no model turn.",
   },
   codex: {
     verb: "ask",

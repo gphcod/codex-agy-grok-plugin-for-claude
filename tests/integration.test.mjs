@@ -1,105 +1,24 @@
 // S6.0: the three adapters together, each against its fake, in one COUNCIL_HOME, one session and one
 // workspace. Every call is a separate companion process (`node council.mjs …`), as Claude's Bash calls
-// are. No test can start a real CLI: COUNCIL_<P>_BIN name wrappers that log the invocation (argv and the
-// guard variables) and then run the fake in-process, and PATH holds only trap `codex`, `agy` and `grok`
-// scripts (which log and exit 97) before /usr/bin:/bin, so a fall-through to PATH is recorded and fails.
+// are. No test can start a real CLI (tests/fixtures/three-providers.mjs: wrapped fakes, trap PATH).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
 import { GUARD_VARS, ownedExecution, processSnapshot } from "../plugins/council/scripts/lib/core/execution.mjs";
-import { createJob, listJobs, loadJob, loadThread, markDone, prune, saveJob, stateOf } from "../plugins/council/scripts/lib/core/jobs.mjs";
+import { createJob, listJobs, loadThread, markDone, prune, saveJob, stateOf } from "../plugins/council/scripts/lib/core/jobs.mjs";
 import { canonical } from "../plugins/council/scripts/lib/core/fs.mjs";
 import codex from "../plugins/council/scripts/lib/providers/codex.mjs";
 import gemini from "../plugins/council/scripts/lib/providers/gemini.mjs";
-import grok, { RESUME_DENY, oneLineContract } from "../plugins/council/scripts/lib/providers/grok.mjs";
-import { GIT_ENV, git } from "./fixtures/build-repos.mjs";
+import grok, { RESUME_DENY } from "../plugins/council/scripts/lib/providers/grok.mjs";
+import { PROVIDERS, SESSION, footer, harness } from "./fixtures/three-providers.mjs";
 
-const ENTRY = fileURLToPath(new URL("../plugins/council/scripts/council.mjs", import.meta.url));
-const FIXTURES = fileURLToPath(new URL("./fixtures/", import.meta.url));
-const CONTRACT = readFileSync(new URL("../plugins/council/contract.md", import.meta.url), "utf8").replace(/\r\n?/g, "\n").trim();
-const PROVIDERS = ["codex", "gemini", "grok"];
 const ADAPTERS = { codex, gemini, grok };
-const FAKES = { codex: "fake-codex.mjs", gemini: "fake-agy.mjs", grok: "fake-grok.mjs" };
-const BINS = { codex: "COUNCIL_CODEX_BIN", gemini: "COUNCIL_AGY_BIN", grok: "COUNCIL_GROK_BIN" };
 const CONSULT = { codex: "gpt-6\\.1-sol/high", gemini: "gemini-4-argon/high", grok: "grok-4\\.7/high" };
 const READ_ONLY_DENY = ["write_file(*)", "edit_file(*)", "command(*)", "unsandboxed(*)", "mcp(*)", "execute_url(*)"];
-const SESSION = "int-session";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const flag = (args, name) => { const i = args.indexOf(name); return i < 0 ? undefined : args[i + 1]; };
-const footer = (out) => out.trim().split("\n").at(-1);
-
-/** The content markers each fake checks for a plain turn carrying `text` (decisions S1.9 F1). */
-function markers(provider, text) {
-  if (provider === "codex") return { COUNCIL_FAKE_EXPECT_CONTRACT: CONTRACT, COUNCIL_FAKE_EXPECT_PROMPT: text };
-  if (provider === "grok") return { COUNCIL_FAKE_EXPECT_CONTRACT: oneLineContract(CONTRACT), COUNCIL_FAKE_EXPECT_PROMPT: text };
-  return { COUNCIL_FAKE_EXPECT_CONTRACT: CONTRACT, COUNCIL_FAKE_EXPECT_PROMPT: `${CONTRACT}\n\n${text}` };
-}
-
-function harness() {
-  const root = mkdtempSync(join(tmpdir(), "council-int-"));
-  const home = join(root, "council");
-  const userHome = join(root, "home");
-  mkdirSync(join(userHome, ".gemini", "antigravity-cli"), { recursive: true });
-  const repo = join(root, "repo");
-  mkdirSync(repo);
-  git(repo, ["init", "-q"]);
-  writeFileSync(join(repo, "calc.js"), "export const sum = (items) => { let s = 0; for (let i = 0; i < items.length; i++) s += items[i]; return s; };\n");
-  git(repo, ["add", "-A"]);
-  git(repo, ["commit", "-q", "-m", "main"]);
-  const cwd = canonical(repo);
-  const calls = join(root, "calls.log");
-  const traps = join(root, "traps.log");
-  writeFileSync(calls, ""); writeFileSync(traps, "");
-  const trapDir = join(root, "trap-bin");
-  mkdirSync(trapDir);
-  for (const bin of ["codex", "agy", "grok"]) {
-    writeFileSync(join(trapDir, bin), `#!/bin/sh\necho "${bin} $*" >> "${traps}"\nexit 97\n`);
-    chmodSync(join(trapDir, bin), 0o755);
-  }
-  const bins = {};
-  for (const p of PROVIDERS) {
-    bins[p] = join(root, `wrap-${p}.mjs`);
-    writeFileSync(bins[p], [
-      `import { appendFileSync } from "node:fs";`,
-      `appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ provider: ${JSON.stringify(p)}, argv: process.argv.slice(2), pid: process.pid, guards: ${JSON.stringify(GUARD_VARS)}.filter((g) => process.env[g]) }) + "\\n");`,
-      `await import(${JSON.stringify(pathToFileURL(join(FIXTURES, FAKES[p])).href)});`,
-    ].join("\n") + "\n");
-  }
-  const base = {};
-  for (const [k, v] of Object.entries(process.env)) {
-    if (GUARD_VARS.includes(k) || k.startsWith("COUNCIL_") || k === "GROK_CLAUDE_RULES_ENABLED") continue;
-    base[k] = v;
-  }
-  Object.assign(base, GIT_ENV, {
-    HOME: userHome, PATH: `${trapDir}:/usr/bin:/bin`, COUNCIL_HOME: home, COUNCIL_STDIN_DEADLINE_MS: "300", COUNCIL_FAKE_JOB_DIR: join(home, "jobs"),
-    COUNCIL_CODEX_BIN: bins.codex, COUNCIL_AGY_BIN: bins.gemini, COUNCIL_GROK_BIN: bins.grok,
-  });
-  /** One companion process; resolves when it exits. `started` resolves with the job id from the start line. */
-  const run = (argv, env = {}) => {
-    const child = spawn(process.execPath, [ENTRY, ...argv], { cwd: repo, env: { ...base, ...env }, stdio: ["ignore", "pipe", "pipe"] });
-    let out = "", err = "";
-    child.stdout.on("data", (d) => { out += d; });
-    child.stderr.on("data", (d) => { err += d; });
-    const done = new Promise((resolve) => child.on("close", (code) => resolve({ code, out, err, job: /job[= ]([a-z0-9]{16})/.exec(err + out)?.[1] })));
-    return done;
-  };
-  /** A threaded turn of `provider` with the fake's content markers. */
-  const turn = (provider, argv, text, env = {}) => run([...argv, "--session", SESSION, "--", text], { ...markers(provider, text), ...env });
-  const job = (id) => loadJob(canonical(home), id);
-  const jobIds = () => { try { return readdirSync(join(home, "jobs")).filter((n) => /^[a-z0-9]{16}$/.test(n)); } catch { return []; } };
-  const invocations = () => readFileSync(calls, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
-  const trapped = () => readFileSync(traps, "utf8");
-  const done = () => {
-    assert.equal(trapped(), "", "no call reached a codex, agy or grok on PATH");
-    rmSync(root, { recursive: true, force: true });
-  };
-  return { root, home, repo, cwd, run, turn, job, jobIds, invocations, trapped, done };
-}
 
 /** Waits until the companion recorded a running job with a child pid for each provider. */
 async function runningJobs(h, providers, ms = 15000) {
