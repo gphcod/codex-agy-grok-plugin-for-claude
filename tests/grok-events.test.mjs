@@ -109,24 +109,42 @@ test("a task turn: write tools allowed, completed edits recorded relative to cwd
   assert.equal(text, "Editing.\n\nDone.", "text before and after a tool call are separate messages");
 });
 
-test("session confirmation on the end event", () => {
-  assert.match(read([catalogue(), end({ sessionId: undefined })]).state.failed, /session not confirmed/);
-  assert.match(read([catalogue(), end({ sessionId: 7 })]).state.failed, /session not confirmed/);
+test("session confirmation on the end event (review Q4)", () => {
+  // missing id: the answer stands, completed, no thread confirmed, the core's unconfirmed hint
+  for (const missing of [undefined, null, ""]) {
+    const r = read([catalogue(), { type: "text", data: "pong" }, end({ sessionId: missing })]);
+    assert.equal(r.state.failed, null);
+    assert.deepEqual([r.state.completed, r.text, r.threads.length, r.state.unconfirmed], [true, "pong", 0, "session not confirmed: start a new ask"]);
+    assert.equal(r.state.costUsd, 0.01125, "cost and usage are kept");
+  }
+  // another or a malformed id: fatal
   assert.match(read([catalogue(), end({ sessionId: "11111111-2222-4333-8444-555555555555" })]).state.failed, /answered on session "11111111-2222-4333-8444-555555555555", expected 6f1c/);
-  assert.equal(read([catalogue(), end({ sessionId: SID.toUpperCase() })]).state.failed, null, "case-insensitive");
+  assert.match(read([catalogue(), end({ sessionId: 7 })]).state.failed, /answered on session 7/);
+  const ok = read([catalogue(), end({ sessionId: SID.toUpperCase() })]);
+  assert.deepEqual([ok.state.failed, ok.state.unconfirmed], [null, null], "case-insensitive");
   const snake = read([catalogue(), { type: "end", stop_reason: "end_turn", session_id: SID, structured_output: { verdict: "approve" } }]);
   assert.equal(snake.state.completed, true);
   assert.deepEqual(snake.state.structured, { verdict: "approve" });
+  // a missing id keeps the structured review too
+  const review = read([catalogue(), end({ sessionId: undefined, structuredOutput: { verdict: "approve" } })]);
+  assert.deepEqual(review.state.structured, { verdict: "approve" });
   // without an end event the turn never completes, and no session is confirmed
   const cut = read([catalogue(), { type: "text", data: "partial" }]);
   assert.deepEqual([cut.state.completed, cut.threads.length], [false, 0]);
 });
 
-test("stop reasons other than end_turn fail; max_turns_reached fails; error events are kept", () => {
-  assert.match(read([catalogue(), end({ stopReason: "cancelled" })]).state.failed, /a tool needed permission headless Grok cannot ask for/);
-  assert.match(read([catalogue(), end({ stopReason: "max_tokens" })]).state.failed, /Grok stopped with reason "max_tokens"/);
-  assert.match(read([catalogue(), end({ stopReason: undefined })]).state.failed, /Grok stopped with reason null/);
-  assert.match(read([catalogue(), { type: "max_turns_reached" }, end()]).state.failed, /max turns reached/);
+test("stop reasons other than end_turn and max_turns_reached keep the answer and are incomplete; error events are kept", () => {
+  const cancelled = read([catalogue(), { type: "text", data: "half" }, end({ stopReason: "cancelled" })]);
+  assert.equal(cancelled.state.failed, null);
+  assert.equal(cancelled.text, "half");
+  assert.deepEqual(cancelled.threads, [SID], "the session is still confirmed");
+  assert.equal(cancelled.state.incomplete, "incomplete: Grok cancelled the turn (a tool needed permission headless Grok cannot ask for)");
+  assert.equal(read([catalogue(), end({ stopReason: "max_tokens" })]).state.incomplete, 'incomplete: Grok stopped with reason "max_tokens"');
+  assert.match(read([catalogue(), end({ stopReason: undefined })]).state.incomplete, /Grok stopped with reason null/);
+  const turns = read([catalogue(), { type: "text", data: "partial" }, { type: "max_turns_reached" }, end({ structuredOutput: { verdict: "approve" } })]);
+  assert.deepEqual([turns.state.failed, turns.text, turns.state.completed], [null, "partial", true]);
+  assert.equal(turns.state.incomplete, "incomplete: Grok stopped: max turns reached");
+  assert.deepEqual(turns.state.structured, { verdict: "approve" }, "structured output is not discarded");
   const err = read([{ type: "error", message: "x".repeat(3000) }]);
   assert.equal(err.state.error.length, 2000);
   assert.equal(read([{ type: "error" }]).state.error, "Grok reported an error");

@@ -100,7 +100,14 @@ if (!EFFORTS.includes(effort) || sc === "effort-error") {
 const extra = (process.env.COUNCIL_FAKE_GROK_ADVERTISE ?? "").split(",").filter(Boolean);
 const tools = [...(readOnly ? ["read_file", "list_dir", "grep"] : ["read_file", "list_dir", "grep", "write", "search_replace", "run_terminal_command"]), ...extra];
 const usage = { input_tokens: 5061, output_tokens: 28, cache_read_input_tokens: 1920, cache_creation_input_tokens: 0, reasoning_tokens: 27 };
-const end = (extra = {}) => emit({
+// COUNCIL_FAKE_GROK_END (synthetic): no-session (end without sessionId), other-session (another id),
+// max-turns (a max_turns_reached event, then the end event).
+const endMode = process.env.COUNCIL_FAKE_GROK_END ?? "";
+const end = (extra = {}) => endMode === "no-session" ? emitEnd({ ...extra, sessionId: undefined })
+  : endMode === "other-session" ? emitEnd({ ...extra, sessionId: "00000000-0000-4000-8000-000000000000" })
+  : endMode === "max-turns" ? (emit({ type: "max_turns_reached" }), emitEnd({ ...extra, stopReason: "max_turns" }))
+  : emitEnd(extra);
+const emitEnd = (extra = {}) => emit({
   type: "end", stopReason: "end_turn", sessionId, requestId: "423451da-d490-46ad-ac2e-49c7da9f4d4e", cwd: process.cwd(),
   usage: { ...usage, total_tokens: 7009 }, num_turns: 1, total_cost_usd: 0.01125, total_cost_usd_ticks: 112500000,
   modelUsage: { [model]: { inputTokens: 5061, outputTokens: 28, cacheReadInputTokens: 1920, cacheCreationInputTokens: 0, modelCalls: 1, costUSD: 0.01125 } }, ...extra,

@@ -8,7 +8,7 @@ Every command, flag, footer field and documented caveat of grok-build-plugin-cc 
 |---|---|---|---|
 | `ask` (new read-only session, explore agent) | `ask --to grok` | same | Explore recipe, `--session-id <uuid>`; `/council:grok` equals `/council:ask --to grok`. |
 | `reply <job\|session> \| --last` | `reply --thread <job\|thread> \| --last` | same | Read-only, `-r <session>`; explore, or RESUME_DENY once the session ran the default agent. A leading job id as first word still works (core `splitReply`). Provider is inherited and locked; a conflicting `--to` exits 2. |
-| `review [--base <ref>] [focus]` | `review --to grok [--base <ref> \| --commit <sha> \| --uncommitted] [--adversarial] [focus]` | intentionally different | Same collected-diff route with an inline `--json-schema` and no `--rules`. Adds `--commit` and `--uncommitted` (A5.2) and `--adversarial`. The prompt is the shared `prompts/review.md` / `prompts/adversarial-review.md` instead of grok-build's `reviewPrompt`. Grok runs with `--cwd` at the repository root (grok has no `--add-dir`); grok-build used the caller's directory. |
+| `review [--base <ref>] [focus]` | `review --to grok [--base <ref> \| --commit <sha> \| --uncommitted] [--adversarial] [focus]` | intentionally different | Same collected-diff route with an inline `--json-schema` and no `--rules`. Adds `--commit` and `--uncommitted` (A5.2) and `--adversarial`. The prompt is the shared `prompts/review.md` / `prompts/adversarial-review.md` instead of grok-build's `reviewPrompt`. Grok runs with `--cwd` at the repository root (grok 1.0.70 lists `--add-dir`, but its sessions refuse it (`additionalDirectories is not supported`, S1 spike)); grok-build used the caller's directory. |
 | `rescue [--thread <id>]` | `task --to grok` / `task --thread <job\|thread>` | renamed | Write recipe (default agent, HOSTILE disallowed, `--deny Bash(git push*)`, `--deny Bash(rm -rf *)`), `exec` tier by default, as `rescue` had. |
 | `wait [job] [--timeout s] [--json]` | `wait [job] [--timeout s] [--json]` | same | 90 s default, exit 20 while running; lists jobs of this session and workspace across providers (`--to grok` filters). |
 | `cancel [job] [--timeout s] [--json]` | `cancel [job] [--timeout s] [--json]` | same | 30 s default; confirms cleanup; "the session stays resumable" reads "the thread stays resumable". |
@@ -29,7 +29,7 @@ Every command, flag, footer field and documented caveat of grok-build-plugin-cc 
 | `--rounds n`, `GROK_BUILD_ROUNDS` | `--rounds n`, `COUNCIL_ROUNDS` | renamed | Default 9; a set budget is inherited. |
 | `--request-id <id>` | `--request-id <id>` | same | Replay of the first result; changed input exits 2. grok-build's `NEW_ID` placeholder refusal is not ported (S2 decision). |
 | `--timeout`, `--deadline`, `--inactivity-timeout` | same | same | 1200 s inactivity, 14400 s deadline; `--timeout` on `wait`/`cancel` only. |
-| `--json` | `--json` | intentionally different | A3.4 object: `provider, job, thread, session, model, modelVerified, effort, requestedEffort, tier, round, rounds, verdict, findings, coverage, edited, failedCommands, costUsd, exit, answerFile, …`. grok-build's `session`/`requestedSession` become `thread`/`session` (Claude session); `editedCount` is `edited.length`; `stopReason` is gone because a stop other than `end_turn` now fails the turn with its reason in `error`. |
+| `--json` | `--json` | intentionally different | A3.4 object: `provider, job, thread, session, model, modelVerified, effort, requestedEffort, tier, round, rounds, verdict, findings, coverage, edited, failedCommands, costUsd, exit, answerFile, …`. grok-build's `session`/`requestedSession` become `thread`/`session` (Claude session); `editedCount` is `edited.length`; `stopReason` is gone because a stop other than `end_turn` now ends the turn as `incomplete: <reason>` in `error`. |
 | `GROK_BINARY` | `COUNCIL_GROK_BIN` | renamed | Then PATH, then `%USERPROFILE%\.grok\bin\grok.exe` on Windows, as before. |
 | `GROK_BUILD_DEPTH` guard | four guard variables | intentionally different | Every child gets `COUNCIL_DEPTH`, `CODEX_COMPANION_DEPTH`, `GROK_BUILD_DEPTH`, `CLAUDE_PLUGIN_CODEX_DEPTH`; any of them set refuses the call (A5.1). |
 
@@ -50,7 +50,7 @@ Every command, flag, footer field and documented caveat of grok-build-plugin-cc 
 | `error: <msg>` | same | same | |
 | `cleanup pending; next: cancel <job>; do not resume` | same | same | |
 | `next: reply <job>` | same | same | |
-| `session not confirmed; start a new ask` | `error: session not confirmed: …` (exit 1) | intentionally different | An end event without a session id fails the turn instead of finishing it with a hint; no thread record is written, so there is nothing to reply to. A stream without an end event fails as before (`grok ended without finishing the turn`, or the error event / stderr line). |
+| `session not confirmed; start a new ask` | `session not confirmed: start a new ask` | same | An end event without a session id keeps the answer and exit 0 and prints the hint instead of `next: reply`; the thread is marked not resumable, so `reply`/`task --thread` on it exits 2 with the hint (review Q4, core `unconfirmed`). An end event naming another session fails (exit 1). A stream without an end event fails as before (`grok ended without finishing the turn`, or the error event / stderr line). |
 | — | `thread locked: …` | intentionally different | codex-plugin-cc's 12 s held-pipe rule, now for every provider. |
 
 ## Isolation and reader behaviour
@@ -64,7 +64,7 @@ Every command, flag, footer field and documented caveat of grok-build-plugin-cc 
 | Reader FORBIDDEN catalogue check, MCP/forbidden call check, tool before validation, end before validation | `parseEvent` | same | Moved from the reader into the adapter (A5.1) through `state.turn` (core fix d09247d); fails closed before any text (`tests/grok.test.mjs`). |
 | Edit paths from `rawInput`, diff content, locations, `EditsApplied` | `parseEvent` `edited` | same | |
 | Text after a tool call separated by a blank line | same | same | |
-| `max_turns_reached` → failure; `end_turn` only normal stop; `cancelled` stop text | same | same | |
+| `max_turns_reached` → failure; `end_turn` only normal stop; `cancelled` stop text | `incomplete: <reason>` | intentionally different | The answer is kept and printed; the turn exits 1 with `error: incomplete: <reason>` (core `incomplete`); the session stays confirmed and resumable; structured output is kept in the reader state. grok-build failed the turn the same way but reported it as an error, not as incomplete. |
 | Session id check on `end` | same plus core `onThread` | same | |
 | Review validation `reviewProblem`, `renderReview` | core `reviewProblem`, `normalizeStructuredReview`, `renderReview` | intentionally different | Same validation; mapped into A5.2 (BLOCKER/MAJOR/MINOR, `changes`/`approve`/`incomplete`); malformed output is `incomplete`, exit 10, as grok-build failed it (exit 1 there). |
 | 1 MiB JSONL line cap | `maxLineBytes` 1 MiB | same | |
@@ -74,7 +74,7 @@ Every command, flag, footer field and documented caveat of grok-build-plugin-cc 
 | Caveat | council | Status |
 |---|---|---|
 | Post-exit scan after every exit (no qualified clean exit) | `trustsCleanExit` always false; `setup` note | same |
-| `session not confirmed` | error instead of a hint (see footer table) | intentionally different |
+| `session not confirmed` | footer hint, thread not resumable | same |
 | Lost or cleanup-pending job blocks its session until `cancel` confirms | core A7.8 | same |
 | Grok starts Claude plugins' MCP servers despite `GROK_CLAUDE_MCPS_ENABLED=0`; read-only turns cannot call them | `--deny MCPTool(*)` plus the call guard | same |
 | Grok loads a trusted repository's CLAUDE.md / AGENTS.md | unchanged behaviour of the CLI | same |
