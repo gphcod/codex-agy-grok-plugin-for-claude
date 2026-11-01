@@ -46,7 +46,7 @@ Text can also come on stdin with no `--`. With no input, use `</dev/null`. Stdin
 |---|---|---|
 | `ask --to <p>` | New thread, one answer | read-only |
 | `reply --thread <job\|thread>`, `--last`, or the job id as the first word | Delta on an existing thread. The provider comes from the record; a different `--to` exits 2. Model, effort and tier are inherited unless given | read-only, also after a task |
-| `review --to <p> [--base <ref> \| --commit <sha> \| --uncommitted] [--adversarial] [focus]` | Structured review. With no target flag: uncommitted changes when the tree is dirty, otherwise the branch against the default branch | read-only |
+| `review --to <p> [--base <ref> \| --commit <sha> \| --uncommitted] [--adversarial] [focus]` | Structured review. With no target flag: uncommitted changes when the tree is dirty, otherwise the branch against the default branch. `--base <ref>` reviews from the merge base through the working tree, including untracked files | read-only |
 | `task --to <p> [--thread <id>]` | Work that may edit the working tree. Runs only when you ask for it; the skill never starts one on its own | edit |
 | `wait [job] [--timeout <s>]` | Lists this session's jobs in this workspace, or waits for one (90 s default) and prints its result again. Returns 20 while the job runs; stops nothing | — |
 | `cancel [job] [--timeout <s>]` | Stops a job and confirms cleanup (30 s default) | — |
