@@ -445,8 +445,10 @@ test("a busy thread exits 1 without a second child on it", async () => {
     const busy = await h.call(["reply", "--session", "s1", "--thread", job, "--", "meanwhile"]);
     assert.equal(busy.code, 1);
     assert.match(busy.out, /error: thread [0-9a-f-]{36} is busy as job [a-z0-9]{16}; wait or cancel/);
-    assert.equal(h.spawns().length, 2, "ask and the slow reply only");
+    // Counted once the slow reply has finished: its child logs itself only after reading stdin,
+    // which can trail the job id under load.
     assert.equal((await slow.promise).code, 0);
+    assert.equal(h.spawns().length, 2, "ask and the slow reply only");
   } finally { h.done(); }
 });
 
