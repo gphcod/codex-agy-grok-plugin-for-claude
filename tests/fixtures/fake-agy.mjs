@@ -3,7 +3,18 @@
 // S1.2 captures in tests/fixtures/streams/agy (provenance.json names the probe for each).
 // Scenarios: ok, resume, denied (S1.2 denied-write), effort-error (S1.2 effort matrix),
 // review-findings (S1.2 json-schema), review-malformed (synthetic), slow, hold-pipes.
-import { existsSync, readFileSync } from "node:fs";
+// Adapter-test seams (S5.5), all synthetic and agy-specific:
+//   COUNCIL_FAKE_AGY_LOG=<file>      one JSON line per accepted turn: argv, settings, stdin content, pid
+//   COUNCIL_FAKE_AGY_RESULT=<kind>   terminal-result variants on the ok scenario: print-timeout,
+//                                    duplicate, missing, error, empty, denied-actions,
+//                                    denied-actions-empty (signature plus an empty array),
+//                                    denied-empty-response (signature, empty response)
+//   COUNCIL_FAKE_AGY_CHILD=group|orphan  start a language-server-like child in agy's process group
+//                                    and write its pid to COUNCIL_FAKE_AGY_CHILD_PIDFILE; `orphan`
+//                                    waits COUNCIL_FAKE_AGY_HOLD_MS, answers and exits, leaving the
+//                                    child reparented to pid 1 (no capture: S1.2 saw no child)
+import { spawn } from "node:child_process";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import {
   deepEqual, emit, expectContract, expectInJobDir, expectPrompt, fail, holdPipes, parseArgs, printAndExit, readRepoSchema, readSpike, readStdin, readStreamFixture, requireGuards, scenario, sleep, slowMs, uuid,
 } from "./fake-common.mjs";
@@ -81,6 +92,14 @@ if (suffix && effort !== undefined && effort !== suffix) selectionError(`invalid
 if (effort !== undefined && !EFFORTS.includes(effort)) selectionError(`invalid model selection (--model "${model}" --effort "${effort}"): ${model} has no "${effort}" effort (available: low, medium, high)`);
 if (sc === "effort-error") selectionError(`invalid model selection (--model "${model}" --effort "xhigh"): ${model} has no "xhigh" effort (available: low, medium, high)`);
 
+if (process.env.COUNCIL_FAKE_AGY_LOG) appendFileSync(process.env.COUNCIL_FAKE_AGY_LOG, JSON.stringify({ argv, settings, content: message.message.content, pid: process.pid, cwd: process.cwd() }) + "\n");
+const childMode = process.env.COUNCIL_FAKE_AGY_CHILD;
+if (childMode === "group" || childMode === "orphan") {
+  const ls = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)", "language-server"], { stdio: "ignore" });
+  if (process.env.COUNCIL_FAKE_AGY_CHILD_PIDFILE) writeFileSync(process.env.COUNCIL_FAKE_AGY_CHILD_PIDFILE, String(ls.pid));
+  if (childMode === "orphan") { ls.unref(); await sleep(Number(process.env.COUNCIL_FAKE_AGY_HOLD_MS ?? 500)); }
+}
+
 const cid = conversation ?? uuid();
 const usage = { input_tokens: 7684, output_tokens: 5, thinking_tokens: 0, cache_read_tokens: 0, total_tokens: 7689 };
 const step = (step_index, state, step_type, extra = {}) => emit({ event: "step_update", step_update: { conversation_id: cid, step_index, state, step_type, ...extra } });
@@ -125,8 +144,23 @@ if (sc === "review-findings" || sc === "review-malformed") {
   process.exit(0);
 }
 const text = conversation ? "pong" : "pong";
-step(1, "ACTIVE", "agent_response", { text_delta: text });
-step(1, "DONE", "agent_response", { text_delta: "\n", duration_seconds: 3.06, usage });
+const variant = process.env.COUNCIL_FAKE_AGY_RESULT;
+const denialStep = () => {
+  const path = `${process.cwd()}/probe-denied.txt`;
+  step(2, "ERROR", "tool", { tool_name: "write_file", duration_seconds: 1.31, tool_info: { name: "write_file", parameters: { Path: path }, error: { type: "TOOL_ERROR", message: `permission check failed for write_file "${path}": Permission denied for write_file(${path}). Matches user-configured deny rule.` } } });
+};
+if (variant === "denied-actions-empty" || variant === "denied-empty-response") denialStep();
+if (variant !== "denied-empty-response" && variant !== "empty") {
+  step(1, "ACTIVE", "agent_response", { text_delta: text });
+  step(1, "DONE", "agent_response", { text_delta: "\n", duration_seconds: 3.06, usage });
+}
 if (sc === "hold-pipes") holdPipes();
+if (variant === "missing") process.exit(0);
+if (variant === "print-timeout") { process.stderr.write("[agy] print timeout after 5s with turn in progress; returning partial output\n"); result({ response: text, finished_reason: "print_timeout", usage: zeroUsage() }); process.exit(0); }
+if (variant === "error") { result({ status: "ERROR", response: "", error: "backend unavailable", finished_reason: "error" }); process.stderr.write("error: backend unavailable\n"); process.exit(1); }
+if (variant === "empty" || variant === "denied-empty-response") { result({ response: "" }); process.exit(0); }
+if (variant === "denied-actions") { result({ response: text + "\n", denied_actions: [{ tool: "write_file", path: `${process.cwd()}/x` }] }); process.exit(0); }
+if (variant === "denied-actions-empty") { result({ response: text + "\n", denied_actions: [] }); process.exit(0); }
 result({ response: text + "\n" });
+if (variant === "duplicate") result({ response: text + "\n" });
 process.exit(0);
