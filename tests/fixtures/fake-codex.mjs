@@ -3,13 +3,20 @@
 // S1.1 captures in tests/fixtures/streams/codex (provenance.json names the probe for each).
 // Scenarios: ok, resume, denied, effort-error (synthetic: the real CLI accepted every effort token
 // probed, see docs/spike/codex.md), review-findings, review-malformed (synthetic), slow, hold-pipes.
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { dirname } from "node:path";
 import {
   emit, expectContract, expectInJobDir, expectPrompt, fail, holdPipes, parseArgs, printAndExit, readSpike, readStdin, readStreamFixture, requireGuards, scenario, sleep, slowMs, uuid,
 } from "./fake-common.mjs";
 
 const argv = process.argv.slice(2);
+// Adapter tests (S3.4): COUNCIL_FAKE_CODEX_LOG records every invocation, so a test counts the CLI
+// processes a call starts (model turn plus MCP discovery); a separate name from the null child's
+// COUNCIL_FAKE_SPAWN_LOG keeps core spawn counts unaffected when the core probes this fake.
+if (process.env.COUNCIL_FAKE_CODEX_LOG) {
+  appendFileSync(process.env.COUNCIL_FAKE_CODEX_LOG, JSON.stringify({ argv, cwd: process.cwd(), guards: ["COUNCIL_DEPTH", "CODEX_COMPANION_DEPTH", "GROK_BUILD_DEPTH", "CLAUDE_PLUGIN_CODEX_DEPTH"].filter((g) => process.env[g]) }) + "\n");
+}
 const SANDBOXES = ["read-only", "workspace-write", "danger-full-access"];
 const EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultra"];
 // Recorded stderr of `exec review --uncommitted … -` (S1.1 review-combined probe).
@@ -24,7 +31,8 @@ if (argv[0] === "mcp" && argv[1] === "list") {
   // override every server reports disabled, as CODEX lib/tools.mjs expects on its second call.
   if (!argv.includes("--json")) fail("mcp list needs --json");
   const overridden = argv.some((a) => a.startsWith("mcp_servers="));
-  const names = ["node_repl", "openaiDeveloperDocs", "tradier", "tradier_sandbox"];
+  // COUNCIL_FAKE_MCP_SERVERS=none: a machine with no enabled server (one discovery call, S1.1).
+  const names = process.env.COUNCIL_FAKE_MCP_SERVERS === "none" ? [] : ["node_repl", "openaiDeveloperDocs", "tradier", "tradier_sandbox"];
   await printAndExit(JSON.stringify(names.map((name) => ({ name, enabled: !overridden }))) + "\n");
 }
 
@@ -146,6 +154,15 @@ if (sc === "hold-pipes") {
   holdPipes();
   finish("pong");
   process.exit(0);
+}
+// COUNCIL_FAKE_CODEX_EDIT=<relative path>: a workspace-write turn edits that file and reports a
+// completed file_change item (shape from codex-plugin-cc lib/reader.mjs; no capture: read-only probes).
+const sandbox = form === "fresh" ? args.one("-s") : config.get("sandbox_mode");
+if (process.env.COUNCIL_FAKE_CODEX_EDIT && sandbox === "workspace-write") {
+  const target = join(process.cwd(), process.env.COUNCIL_FAKE_CODEX_EDIT);
+  writeFileSync(target, "edited by fake codex\n");
+  emit({ type: "item.started", item: { id: "item_9", type: "file_change", changes: [{ path: target, kind: "update" }], status: "in_progress" } });
+  emit({ type: "item.completed", item: { id: "item_9", type: "file_change", changes: [{ path: target, kind: "update" }], status: "completed" } });
 }
 // ok and resume
 finish(form === "review" ? "No findings. The change is correct." : form === "resume" ? "pong again" : "pong");
