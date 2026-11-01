@@ -118,3 +118,60 @@ test("a thread marked not resumable between resolution and the claim: exit 2 wit
     assert.match(after.err, new RegExp(`${hint}\\n$`), "the next call is refused before admission");
   } finally { s.done(); }
 });
+
+// Regression of the commit above (Codex reproduction): a valid structured review whose raw text is one
+// minified JSON line over the 1 MiB answer-line limit must finalize from the structured output, never
+// fail on a preview scan of the raw text.
+const BIG = {
+  verdict: "needs-attention", summary: "Many small issues.", next_steps: ["fix them"],
+  findings: Array.from({ length: 60 }, (_, i) => ({ severity: "low", title: `Issue ${i + 1}`, body: "x".repeat(20 * 1024), file: `f${i}.js`, line_start: 1, line_end: 1, confidence: 0.5, recommendation: "r" })),
+};
+const bigRaw = (incompleteToo) => {
+  const a = Object.create(Object.getPrototypeOf(nullAdapter), Object.getOwnPropertyDescriptors(nullAdapter));
+  a.parseEvent = (line, state) => {
+    const ev = nullAdapter.parseEvent(line, state);
+    if (ev?.textDelta) return { textDelta: JSON.stringify(BIG) };
+    if (ev?.completed) return { ...ev, structured: BIG, ...(incompleteToo ? { incomplete: "incomplete: stopped early" } : {}) };
+    return ev;
+  };
+  return a;
+};
+
+test("a valid review whose raw JSON text exceeds the 1 MiB answer line finalizes from its structured output (exit 10, 60 findings)", async () => {
+  assert.ok(JSON.stringify(BIG).length > 1024 * 1024);
+  const s = setup({ COUNCIL_FAKE_ANSWER: "streamed" });
+  try {
+    const { job, answer } = await run(s, bigRaw(false));
+    assert.equal(job.code, 10, job.error);
+    assert.equal(job.error, null);
+    assert.equal(job.review.findings.length, 60);
+    assert.match(answer, /^Verdict: changes requested\. Many small issues\.\n/);
+  } finally { s.done(); }
+});
+
+test("an incomplete review with the same oversized raw text renders its structured result", async () => {
+  const s = setup({ COUNCIL_FAKE_ANSWER: "streamed" });
+  try {
+    const { job, answer } = await run(s, bigRaw(true));
+    assert.equal(job.code, 1);
+    assert.equal(job.error, "incomplete: stopped early");
+    assert.equal(job.review.findings.length, 60);
+    assert.match(answer, /^Verdict: incomplete \(incomplete: stopped early\)\. Many small issues\.\n/);
+  } finally { s.done(); }
+});
+
+test("an incomplete review whose only output is an unreadable raw text falls back to the incomplete verdict", async () => {
+  const s = setup({ COUNCIL_FAKE_ANSWER: "streamed", COUNCIL_FAKE_REVIEW: "none" });
+  try {
+    const a = Object.create(Object.getPrototypeOf(nullAdapter), Object.getOwnPropertyDescriptors(nullAdapter));
+    a.parseEvent = (line, state) => {
+      const ev = nullAdapter.parseEvent(line, state);
+      if (ev?.textDelta) return { textDelta: "y".repeat(1024 * 1024 + 10) };
+      return ev?.completed ? { ...ev, incomplete: "incomplete: stopped early" } : ev;
+    };
+    const { job, answer } = await run(s, a);
+    assert.equal(job.code, 1);
+    assert.equal(job.error, "incomplete: stopped early");
+    assert.match(answer, /^Verdict: incomplete \(missing structured review output\)\./);
+  } finally { s.done(); }
+});
