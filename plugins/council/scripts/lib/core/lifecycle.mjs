@@ -367,10 +367,15 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
 
   const seen = reader?.state;
   let parsed = null;
-  try { parsed = readAnswer(answerFile); answer = parsed.answer; }
-  catch (error) { if (error.code !== "ENOENT") reason ??= `answer storage failed: ${error.message}`; }
-  let outcome = "failed", error = reason;
   const isReview = request.verb === "review";
+  const parseAnswer = () => { parsed = readAnswer(answerFile); answer = parsed.answer; };
+  // A review's raw text is never preview-scanned before its structured result is finalized: valid
+  // structured output can be one minified JSON line over the answer-line limit. It is only a fallback.
+  if (!isReview) {
+    try { parseAnswer(); }
+    catch (error) { if (error.code !== "ENOENT") reason ??= `answer storage failed: ${error.message}`; }
+  }
+  let outcome = "failed", error = reason;
   if (reason === "cancelled") outcome = "cancelled";
   else if (!error && persistenceFailed) error = "job storage failed";
   else if (!error && spawnError) error = `could not start ${provider}: ${spawnError.message}`;
@@ -387,8 +392,10 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
       const review = finalizeReviewTurn({ adapter, answerText: fullText, answerFile, structured: seen?.structured ?? null, unreviewed: [...(request.reviewed ?? []), ...(job.unreviewed ?? [])], reviewed: [], incomplete: seen.incomplete, noCoverage: true });
       job.review = review.result;
       job.verdict = review.result.verdict;
-      if (review.valid || !parsed?.nonempty) {
-        try { io.writeFileSync(answerFile, review.renderedText); parsed = readAnswer(answerFile); answer = parsed.answer; }
+      let partial = false;
+      if (!review.valid) { try { parseAnswer(); partial = parsed.nonempty; } catch { parsed = null; } }
+      if (!partial) {
+        try { io.writeFileSync(answerFile, review.renderedText); parseAnswer(); }
         catch (failure) { error = `${error}; answer storage failed: ${failure.message}`; }
       }
     }
@@ -401,7 +408,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     job.review = review.result;
     job.verdict = review.result?.verdict ?? null;
     if (review.renderedText !== undefined && review.renderedText !== null) {
-      try { io.writeFileSync(answerFile, review.renderedText); parsed = readAnswer(answerFile); answer = parsed.answer; }
+      try { io.writeFileSync(answerFile, review.renderedText); parseAnswer(); }
       catch (failure) { error = `answer storage failed: ${failure.message}`; }
     }
     // A denied action needs attention on a review as on every other verb, whatever the verdict.
@@ -410,6 +417,8 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
   else if (!error && !parsed) error = `${provider} wrote no answer`;
   else if (!error && !parsed.nonempty) error = `${provider} returned no answer`;
   else if (!error) outcome = seen?.denied ? "attention" : parsed.questions ? "attention" : "ok";
+  // A review that failed before finalization shows whatever text it streamed, best effort.
+  if (isReview && !parsed) { try { parseAnswer(); } catch { parsed = null; answer = ""; } }
   if (!cleanupConfirmed) {
     // Unconfirmed cleanup fails the turn whatever it produced; the footer still says if the answer was whole.
     if (job.unattributedPipes) job.answerComplete = ["ok", "attention"].includes(outcome);
