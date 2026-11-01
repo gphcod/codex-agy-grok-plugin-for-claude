@@ -89,7 +89,9 @@ function main(argv) {
     console.error(`no ${mode} test files found`);
     return 1;
   }
-  const result = spawnSync(process.execPath, ["--test", ...files], { stdio: "inherit", cwd: repoRoot });
+  // A suite run from inside Claude Code must not see that session: the entry falls back to its id.
+  const { CLAUDE_CODE_SESSION_ID: _host, ...env } = process.env;
+  const result = spawnSync(process.execPath, ["--test", ...files], { stdio: "inherit", cwd: repoRoot, env });
   return result.status ?? 1;
 }
 

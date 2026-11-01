@@ -28,7 +28,7 @@ function setup() {
   mkdirSync(cwd);
   const log = join(root, "spawns.log");
   writeFileSync(log, "");
-  const env = { ...process.env, COUNCIL_FAKE_SPAWN_LOG: log, COUNCIL_TEST_NULL_ADAPTER: "1", COUNCIL_TEST_ABSENT_PROVIDERS: ABSENT, COUNCIL_HOME: join(root, "home"), COUNCIL_STDIN_DEADLINE_MS: "300" };
+  const env = { ...process.env, CLAUDE_CODE_SESSION_ID: "", COUNCIL_FAKE_SPAWN_LOG: log, COUNCIL_TEST_NULL_ADAPTER: "1", COUNCIL_TEST_ABSENT_PROVIDERS: ABSENT, COUNCIL_HOME: join(root, "home"), COUNCIL_STDIN_DEADLINE_MS: "300" };
   for (const g of GUARD_VARS) delete env[g];
   delete env.COUNCIL_FAKE_SCENARIO;
   const spawns = () => readFileSync(log, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));

@@ -37,9 +37,13 @@ export function assertNotNested(env = process.env) {
   const by = nestedBy(env);
   if (by) throw new UsageError(`refusing a nested call: this process runs inside a provider turn started by a plugin (${by} is set)`);
 }
-/** The child environment: the caller's, the adapter's additions, then all four guard variables. */
+/**
+ * The child environment: the caller's, the adapter's additions, then all four guard variables. The
+ * host's session id stays behind: whatever a provider starts is not that session.
+ */
 export function childEnv(base, extra = {}) {
   const env = { ...base, ...extra };
+  delete env.CLAUDE_CODE_SESSION_ID;
   for (const name of GUARD_VARS) env[name] = "1";
   return env;
 }

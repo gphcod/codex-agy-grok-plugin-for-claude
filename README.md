@@ -68,7 +68,7 @@ Slash commands: `/council:ask`, `/council:reply`, `/council:review`, `/council:t
 - `--request-id <id>`: 1–128 characters, `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`. Retrying an identical call with the same id replays or awaits the first result and never starts a second CLI. The same id with different input exits 2.
 - `--deadline <s>` (default 14400) and `--inactivity-timeout <s>` (default 1200) stop a turn and clean up, exit 1. `wait --timeout` only stops waiting.
 - `--json`: one JSON object instead of the text output: `provider, job, thread, session, model, modelVerified, effort, requestedEffort, tier, round, rounds, verdict, findings, coverage, edited, failedCommands, costUsd, exit, answerFile`, plus `verb, status, elapsedMs, error, attention, cleanupPending, answer, clipped`. `attention` is the footer's reason, or null.
-- `--session <id>`: the Claude session that scopes `--last`, bare `wait` and bare `cancel`.
+- `--session <id>`: the Claude session that scopes `--last`, bare `wait` and bare `cancel`. When it is absent, empty or still the literal `${CLAUDE_SESSION_ID}`, council uses `CLAUDE_CODE_SESSION_ID` from the environment if that is UUID-like, and otherwise runs with no session. Provider children never receive that variable.
 
 Any flag that a provider has no tested mapping for exits 2 before a job is recorded and before any process starts.
 

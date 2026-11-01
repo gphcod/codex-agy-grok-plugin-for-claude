@@ -30,7 +30,7 @@ function harness() {
   const log = join(root, "spawns.log");
   writeFileSync(log, "");
   // A provider module that exists in this build (S3–S5) is probed through its fake, never the real CLI.
-  const base = { ...process.env, COUNCIL_TEST_NULL_ADAPTER: "1", COUNCIL_HOME: home, COUNCIL_FAKE_SPAWN_LOG: log, COUNCIL_STDIN_DEADLINE_MS: "300", ...FAKE_BINS };
+  const base = { ...process.env, CLAUDE_CODE_SESSION_ID: "", COUNCIL_TEST_NULL_ADAPTER: "1", COUNCIL_HOME: home, COUNCIL_FAKE_SPAWN_LOG: log, COUNCIL_STDIN_DEADLINE_MS: "300", ...FAKE_BINS };
   for (const g of GUARD_VARS) delete base[g];
   for (const k of ["COUNCIL_FAKE_SCENARIO", "COUNCIL_NULL_ID", "COUNCIL_NULL_INPUT", "COUNCIL_NULL_OUTPUT", "COUNCIL_NULL_CONSULT", "COUNCIL_NULL_NO_WEB"]) delete base[k];
   /** Runs main() in-process; resolves {code, out, err}. `stdin`: a string (ended) or a stream. */

@@ -349,6 +349,17 @@ async function ownershipControl(ctx, job) {
 
 // --- main ----------------------------------------------------------------------------------------------
 
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * The session that scopes `--last`, bare `wait` and bare `cancel`: `--session`, else, when it is absent,
+ * empty or still the literal `${…}`, the host's CLAUDE_CODE_SESSION_ID if UUID-like. A provider child
+ * never carries that variable (childEnv).
+ */
+export function sessionOf(options, env) {
+  if (options.session && !options.session.includes("${")) return options.session;
+  return SESSION_ID.test(env.CLAUDE_CODE_SESSION_ID ?? "") ? env.CLAUDE_CODE_SESSION_ID : null;
+}
+
 /**
  * main(argv, env, io) → exit code. `io` = {stdout, stderr, stdin, cwd}; hooks are test seams passed to
  * runManagedTurn. Errors print as `council: <message>` on stderr, or as JSON under --json.
@@ -368,8 +379,7 @@ export async function main(argv, env = process.env, io = {}, hooks = {}) {
     else ({ options, positionals } = await readControlArgs(options, positionals, stdinIo));
     // After stdin, so the refusal follows its --json too; nothing has run yet (A5.1 depth guard).
     assertNotNested(env);
-    const session = options.session && !options.session.includes("${") ? options.session : null;
-    const ctx = { env, home: homeDir(env), cwd: canonical(io.cwd ?? process.cwd()), session };
+    const ctx = { env, home: homeDir(env), cwd: canonical(io.cwd ?? process.cwd()), session: sessionOf(options, env) };
     const sink = { out, err };
     if (TURN_VERBS.includes(verb)) return await runTurn(ctx, sink, verb, options, text, literal, hooks);
     if ((verb === "wait" || verb === "cancel") && options.to !== undefined) checkProvider(options.to, env);

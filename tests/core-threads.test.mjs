@@ -19,7 +19,7 @@ function harness() {
   const root = mkdtempSync(join(tmpdir(), "council-threads-"));
   const cwd = join(root, "work");
   mkdirSync(cwd);
-  const env = { ...process.env, COUNCIL_TEST_NULL_ADAPTER: "1", COUNCIL_TEST_ABSENT_PROVIDERS: ABSENT, COUNCIL_HOME: join(root, "home"), COUNCIL_STDIN_DEADLINE_MS: "300" };
+  const env = { ...process.env, CLAUDE_CODE_SESSION_ID: "", COUNCIL_TEST_NULL_ADAPTER: "1", COUNCIL_TEST_ABSENT_PROVIDERS: ABSENT, COUNCIL_HOME: join(root, "home"), COUNCIL_STDIN_DEADLINE_MS: "300" };
   for (const g of GUARD_VARS) delete env[g];
   delete env.COUNCIL_FAKE_SCENARIO;
   const call = async (argv, extra = {}) => {
