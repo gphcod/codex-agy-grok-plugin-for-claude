@@ -32,3 +32,13 @@ test("package.json has no dependencies and the required scripts", () => {
   assert.equal(pkg.engines.node, ">=18.20.8 <19 || >=22.19.0");
   for (const s of ["test", "test:live", "gen", "gen:check", "measure"]) assert.ok(pkg.scripts[s], s);
 });
+
+test("one version across package.json, plugin.json and the marketplace entry", () => {
+  const read = (...p) => JSON.parse(readFileSync(join(root, ...p), "utf8"));
+  const version = read("package.json").version;
+  assert.match(version, /^\d+\.\d+\.\d+(-rc\.\d+)?$/);
+  assert.equal(read("plugins", "council", ".claude-plugin", "plugin.json").version, version);
+  const m = read(".claude-plugin", "marketplace.json");
+  assert.equal(m.plugins[0].version, version);
+  assert.equal(m.metadata.version, version);
+});
