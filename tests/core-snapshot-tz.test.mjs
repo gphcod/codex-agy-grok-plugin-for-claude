@@ -4,7 +4,7 @@ import { processSnapshot, startTime } from "../plugins/council/scripts/lib/core/
 
 // macOS lstart stamps are identity evidence compared across processes: the query must not depend
 // on the caller's time zone, or a cancel run under another TZ reads a live owner as gone.
-test("the darwin process query runs with TZ=UTC whatever the caller's TZ", () => {
+test("the darwin process query runs with TZ=UTC whatever the caller's TZ", { skip: typeof process.getuid !== "function" && "darwin query needs process.getuid (absent on Windows)" }, () => {
   const seen = [];
   const run = (cmd, args, opts) => { seen.push(opts.env.TZ); return { status: 0, stdout: `  101     1   101   ${process.getuid?.() ?? 501} S    Sun Nov  1 14:39:06 2026 /bin/sleep 9\n` }; };
   const previous = process.env.TZ;
