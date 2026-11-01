@@ -129,7 +129,9 @@ export function resolveTarget(ctx, verb, o) {
   if (o.last && verb !== "reply") throw new UsageError("--last applies to reply");
   let job = null, provider = null, threadId = null;
   if (o.last) {
-    job = candidates(ctx.home, ctx).find((j) => j.admitted !== false && j.threadId && j.verb !== "review");
+    // A fresh turn whose provider never confirmed its thread has no thread id; it is still the latest
+    // thread-starting job, so it is selected and refused below with its hint, never skipped.
+    job = candidates(ctx.home, ctx).find((j) => j.admitted !== false && (j.threadId || j.unconfirmed) && j.verb !== "review");
     if (!job) throw new UsageError(`no earlier thread in this ${ctx.session ? "session and " : ""}workspace; start one with ask`);
   } else {
     const ref = o.thread;
@@ -287,7 +289,7 @@ async function runModels(ctx, io, o, refs) {
   if (o.json) io.out(`${JSON.stringify(rows)}\n`);
   else for (const r of rows) {
     if (!r.available) { io.out(`${r.provider}: ${r.error}\n`); continue; }
-    io.out(`${r.provider} (${r.source}${r.updatedAt ? `, refreshed ${r.updatedAt}` : ""})${r.refreshError ? ` · refresh failed: ${r.refreshError}` : ""}\n`);
+    io.out(`${r.provider} (${r.updatedAt ? `${r.source} ${r.updatedAt}` : r.source})${r.refreshError ? ` · refresh failed: ${r.refreshError}` : ""}\n`);
     for (const [id, efforts] of Object.entries(r.models)) io.out(`  ${id}: ${efforts.join(", ") || "-"}\n`);
     io.out(`  tiers: ${Object.entries(r.tiers ?? {}).map(([t, v]) => `${t} ${v.model}/${v.effort}`).join(" · ")}\n`);
   }

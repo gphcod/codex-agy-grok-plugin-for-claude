@@ -141,7 +141,7 @@ test("(e) models --refresh and setup across all three; every probe child carries
   try {
     const models = await h.run(["models", "--refresh"]);
     assert.equal(models.code, 0, models.err + models.out);
-    for (const p of PROVIDERS) assert.match(models.out, new RegExp(`^${p} \\(.*refreshed .*\\)$`, "m"), models.out);
+    for (const p of PROVIDERS) assert.match(models.out, new RegExp(`^${p} \\(refreshed [^,()]+\\)$`, "m"), models.out);
     for (const p of PROVIDERS) assert.ok(existsSync(join(h.home, "catalog", `${p}.json`)), `${p} catalog cached`);
     const setup = await h.run(["setup"]);
     assert.equal(setup.code, 0, setup.err + setup.out);

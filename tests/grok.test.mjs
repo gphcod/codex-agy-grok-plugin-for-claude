@@ -333,7 +333,7 @@ test("setup --to grok and models --refresh --to grok through the fake", async ()
     assert.doesNotMatch(s.out, /warning:/);
     const m = await h.call(["models", "--to", "grok", "--refresh"]);
     assert.equal(m.code, 0, m.out + m.err);
-    assert.match(m.out, /^grok \(refreshed, refreshed /m);
+    assert.match(m.out, /^grok \(refreshed \d{4}-\d\d-\d\dT[0-9:.]+Z\)$/m);
     assert.match(m.out, /^ {2}grok-4\.7: low, medium, high, xhigh$/m);
     const cached = JSON.parse(readFileSync(join(h.home, "catalog", "grok.json"), "utf8"));
     assert.deepEqual(Object.keys(cached.models), ["grok-4.7", "grok-4.7-build-fast", "grok-4.6", "grok-4.5"]);

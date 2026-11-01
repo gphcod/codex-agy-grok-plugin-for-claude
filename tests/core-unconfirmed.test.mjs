@@ -72,6 +72,12 @@ test("fresh turn: answer kept, exit 0, hint in the footer, no thread record; rep
     const ctx = { ...s.ctx, env: { COUNCIL_TEST_NULL_ADAPTER: "1" } };
     assert.throws(() => resolveTarget(ctx, "reply", { thread: job.id }), (e) => e.exitCode === 2 && e.message === `job ${job.id}: ${HINT}`);
     assert.throws(() => resolveTarget(ctx, "task", { thread: job.id }), (e) => e.exitCode === 2 && e.message.endsWith(HINT));
+    // --last selects the fresh unconfirmed job (the latest thread-starting turn) and refuses with its
+    // hint, rather than skipping it for an older confirmed thread (milestone 4 review, Argon).
+    const older = createJob(s.home, { provider: "null", verb: "ask", cwd: s.cwd, session: "s", threadId: "22222222-2222-4333-8444-555555555555", admitted: true, outcome: "ok", admittedAt: new Date(Date.now() - 60000).toISOString() });
+    saveJob(older);
+    saveThread(s.home, { provider: "null", threadId: older.threadId, cwd: s.cwd });
+    assert.throws(() => resolveTarget(ctx, "reply", { last: true }), (e) => e.exitCode === 2 && e.message === `job ${job.id}: ${HINT}`);
   } finally { s.done(); }
 });
 

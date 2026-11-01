@@ -253,7 +253,7 @@ test("setup and models --refresh through the fake: launcher, version, login, MCP
     assert.match(JSON.parse(off.out)[0].notes[0], /^mcp: off for ask, reply and review/);
     const refresh = await h.call(["models", "--to", "codex", "--refresh"]);
     assert.equal(refresh.code, 0, refresh.out);
-    assert.match(refresh.out, /^codex \(refreshed, refreshed /);
+    assert.match(refresh.out, /^codex \(refreshed \d{4}-\d\d-\d\dT[0-9:.]+Z\)$/m);
     assert.match(refresh.out, /\n {2}gpt-6\.1-sol: low, medium, high, xhigh, max, ultra\n/);
     const cached = JSON.parse(readFileSync(join(h.home, "catalog", "codex.json"), "utf8"));
     assert.equal(cached.version, "codex-cli 0.163.0");
