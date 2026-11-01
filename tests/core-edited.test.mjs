@@ -303,3 +303,35 @@ test("real Git: chmod +x counts, on an already dirty file and on a clean one", {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("a path that is not UTF-8 means not listed whole: event-only, never a silent match", () => {
+  const dir = repo();
+  try {
+    const raw = (word, bytes) => (cmd, args, opts) => {
+      const r = spawnSync(cmd, args, opts);
+      return args.includes(word) ? { ...r, status: 0, stdout: bytes } : r;
+    };
+    const invalid = Buffer.concat([Buffer.from("?? bad-"), Buffer.from([0xff, 0xfe]), Buffer.from(".txt\0")]);
+    assert.equal(worktreeSnapshot(dir, { run: raw("status", invalid) }), null, "whatever the platform allows on disk");
+    assert.ok(worktreeSnapshot(dir, { run: raw("status", Buffer.from("?? naïve.txt\0")) }), "valid UTF-8 stays listed");
+    const before = worktreeSnapshot(dir);
+    writeFileSync(join(dir, "a.txt"), "a2\n");
+    git(dir, ["commit", "-q", "-am", "moved"]);
+    assert.deepEqual(worktreeChanges(dir, before, { run: raw("diff", Buffer.from([0xff, 0])) }), [], "the HEAD diff too");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("real Git: a raw-byte file name is event-only for a task and does not fail a read-only turn", async (t) => {
+  const h = harness();
+  try {
+    const name = Buffer.concat([Buffer.from(`${h.repo}/raw-`), Buffer.from([0xff, 0xfe]), Buffer.from(".txt")]);
+    try { writeFileSync(name, "x\n"); }
+    catch (error) { t.skip(`this file system refuses the name (${error.code})`); return; }
+    assert.equal(worktreeSnapshot(h.repo), null);
+    const ask = await h.turn("codex", ["ask", "--to", "codex", "--effort", "low"], "a question");
+    assert.equal(ask.code, 0, ask.err + ask.out);
+    const task = await h.turn("grok", ["task", "--to", "grok", "--effort", "low"], "an edit", { ...shellEdit(["shell.js", "x\n"]), COUNCIL_FAKE_GROK_EDIT: "event.js" });
+    assert.equal(task.code, 0, task.err + task.out);
+    assert.deepEqual(h.job(task.job).edited, ["event.js"]);
+  } finally { h.done(); }
+});
+

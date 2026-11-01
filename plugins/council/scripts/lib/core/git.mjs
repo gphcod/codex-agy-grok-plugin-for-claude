@@ -142,10 +142,12 @@ function boundedGit(cwd, args, { timeoutMs, maxBytes, run, input }) {
   return run("git", ["--no-optional-locks", ...args], { cwd, input, env: { ...process.env, LC_ALL: "C", GIT_OPTIONAL_LOCKS: "0" }, encoding: "buffer", shell: false, windowsHide: true, timeout: timeoutMs, maxBuffer: maxBytes });
 }
 const bounds = (options) => ({ ...SNAPSHOT, run: spawnSync, now: Date.now, ...options });
+/** Git's path bytes as text. Throws on invalid UTF-8: two such names could decode to one and compare equal. */
+const strictUtf8 = (bytes) => new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
 /**
  * {root, head, states}: HEAD (null on an unborn branch) and an entry per dirty path, relative to the
  * repository root. Null when the tree cannot be listed whole (outside a repository, a git failure or
- * timeout, output past the byte bound, over maxFiles or past the wall clock): the caller keeps the
+ * timeout, output past the byte bound, a path that is not UTF-8, over maxFiles or past the wall clock): the caller keeps the
  * provider's own edit events. Past the byte budget only the comparison weakens. Never throws.
  */
 export function worktreeSnapshot(cwd, options) {
@@ -160,12 +162,12 @@ export function worktreeSnapshot(cwd, options) {
   try {
     const top = call(cwd, ["rev-parse", "--show-toplevel"]);
     if (!top || top.status !== 0) return null;
-    const root = top.stdout.toString("utf8").replace(/\r?\n$/, "");
+    const root = strictUtf8(top.stdout).replace(/\r?\n$/, "");
     const head = call(root, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
     if (!head || (head.status !== 0 && head.status !== 1)) return null;
     const status = call(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
     if (!status || status.status !== 0) return null;
-    const paths = statusPaths(status.stdout.toString("utf8"));
+    const paths = statusPaths(strictUtf8(status.stdout));
     if (paths.length > o.maxFiles) return null;
     const budget = { left: o.maxBytes }, states = new Map();
     for (const p of paths) {
@@ -192,7 +194,7 @@ export function worktreeChanges(cwd, before, options) {
       const empty = () => boundedGit(after.root, ["hash-object", "-t", "tree", "--stdin"], { ...o, input: "" }).stdout.toString("utf8").trim();
       const moved = boundedGit(after.root, ["diff", "--name-only", "--no-renames", "-z", before.head ?? empty(), after.head ?? empty()], o);
       if (moved.error || moved.status !== 0) return [];
-      for (const p of moved.stdout.toString("utf8").split("\0").filter(Boolean)) changed.add(p);
+      for (const p of strictUtf8(moved.stdout).split("\0").filter(Boolean)) changed.add(p);
     }
     return [...changed].map((p) => path.join(after.root, p));
   } catch { return []; }
