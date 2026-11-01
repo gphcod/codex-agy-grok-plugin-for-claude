@@ -181,7 +181,7 @@ test("the post-exit scan: a survivor is stopped and the turn fails clean; an unk
     const u = await run(s, { hooks: { control: unknown } });
     assert.equal(u.job.code, 1);
     assert.equal(u.job.cleanupPending, true);
-    assert.equal(u.job.error, "process query failed: ps exited 1; cleanup pending: null or a descendant may still be running");
+    assert.equal(u.job.error, "cleanup pending: null or a descendant may still be running; process query failed: ps exited 1");
     assert.equal(u.job.claimHeld, true);
   } finally { s.done(); }
 });

@@ -25,8 +25,6 @@ export const JOB_ID = /^[a-z0-9]{1,16}$/;
 export const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 /** What a replay says when the request's job body was pruned: never a second CLI. */
 export const EXPIRED = "result expired";
-/** What a retry says when a request's records are gone: it never starts a CLI, and never calls that safe. */
-export const MISSING = "whose records were deleted or cannot be read; nothing was started again, and whether the provider ran for it is unknown. Use a new request id";
 
 /**
  * One canonical local state root (A7.1). It is created before it is resolved: a root that did not

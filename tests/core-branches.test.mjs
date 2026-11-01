@@ -43,7 +43,7 @@ test("A7.8: a cleanup-pending job blocks its thread even after its claim was rel
     markDone(stale);
     const { job } = await run(s, { over: { verb: "reply", thread: { threadId: "t-blocked" }, round: 2 } });
     assert.equal(job.code, 1);
-    assert.equal(job.error, `thread t-blocked requires cleanup of job ${stale.id}; run cancel ${stale.id}`);
+    assert.equal(job.error, `run cancel ${stale.id}: thread t-blocked requires cleanup of that job`);
     assert.equal(job.claimHeld, false, "the turn released the claim it took before refusing");
   } finally { s.done(); }
 });

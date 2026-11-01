@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { PROVIDERS } from "./catalog.mjs";
+import { MESSAGES } from "./output.mjs";
 
 // Native thread ids are UUIDs or similar tokens the CLIs return; never a path.
 export const THREAD = /^[a-zA-Z0-9_-]{1,128}$/;
@@ -62,7 +63,7 @@ export function claimThread(home, provider, thread, job, io = fs) {
     if (found.state === "owned" && found.token === job.ownerToken && found.job === job.id) {
       return; // the same turn can receive its requested id again
     }
-    throw new BusyError(`thread ${thread} is busy${found.job ? ` as job ${found.job}; wait or cancel ${found.job}` : "; unidentified claim: quiesce this state root before manual recovery"}`, found.job ?? null);
+    throw new BusyError(found.job ? MESSAGES.threadBusy(thread, found.job) : MESSAGES.threadBusyUnidentified(thread), found.job ?? null);
   }
   // A failed publication intentionally leaves an empty/unreadable claim. Never reclaim by age.
   try {

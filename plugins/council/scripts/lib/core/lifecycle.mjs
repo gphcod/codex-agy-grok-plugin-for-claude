@@ -10,13 +10,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { BusyError, claimHeld, claimThread, releaseClaims } from "./claims.mjs";
 import {
-  EXPIRED, MISSING, blockingJob, candidates, cleanupNeeded, createJob, findJob, lastEvent, loadJob, loadRequest, loadTombstone, markDone, markStopped,
+  EXPIRED, blockingJob, candidates, cleanupNeeded, createJob, findJob, lastEvent, loadJob, loadRequest, loadTombstone, markDone, markStopped,
   neverPrepared, requestReserved, resultRecord, saveJob, saveThread, stateOf,
 } from "./jobs.mjs";
 import { QUERY_MS, childEnv, companionState, executionController, recordRecoveryEvidence } from "./execution.mjs";
 import { spawnChild } from "./launcher.mjs";
 import { createReader } from "./reader.mjs";
-import { attentionReason, elapsed, elapsedOf, readAnswer, renderResult, resultJson, startLine } from "./output.mjs";
+import { MESSAGES, attentionReason, elapsed, elapsedOf, readAnswer, renderResult, resultJson, startLine } from "./output.mjs";
 import { refreshBeat, BEAT_MS } from "./heartbeat.mjs";
 import { UsageError, seconds } from "./args.mjs";
 import { finalizeReviewTurn } from "./review.mjs";
@@ -105,7 +105,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
       // Neither wait nor cancel frees a thread whose output an unidentified process held.
       const holder = error instanceof BusyError && error.job ? loadJob(ctx.home, error.job) : null;
       if (holder?.done && holder.unattributedPipes && !holder.stopped) {
-        error.message = `thread ${id} is busy as job ${error.job}, whose output an unidentified process kept open, so it stays locked; continue with a new ask`;
+        error.message = MESSAGES.threadLocked(id, error.job);
       }
       throw error;
     }
@@ -113,7 +113,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     save(job);
     // A7.8: a lost or cleanup-pending job blocks its thread until cancel confirms, even without a claim.
     const old = blockingJob(ctx.home, provider, id, job.id);
-    if (old) throw new BusyError(`thread ${id} requires cleanup of job ${old.id}; run cancel ${old.id}`, old.id);
+    if (old) throw new BusyError(MESSAGES.threadCleanup(id, old.id), old.id);
   };
   let reader = null, edits = null;
   let cleanupConfirmed = true; // No spawn yet.
@@ -426,7 +426,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     // Unconfirmed cleanup fails the turn whatever it produced; the footer still says if the answer was whole.
     if (job.unattributedPipes) job.answerComplete = ["ok", "attention"].includes(outcome);
     outcome = "failed";
-    error = `${[reason, queryError].filter(Boolean).join("; ") || "execution ended"}; cleanup pending: ${provider} or a descendant may still be running`;
+    error = MESSAGES.cleanupPending(provider, [reason, queryError].filter(Boolean).join("; "));
   }
   Object.assign(job, {
     status: ["ok", "attention"].includes(outcome) ? "done" : outcome, outcome, code: outcome === "ok" ? 0 : outcome === "attention" ? 10 : refused && outcome === "failed" && cleanupConfirmed ? 2 : 1,
@@ -585,18 +585,18 @@ export async function replayRequest(ctx, o, claimed, fingerprint, out, { control
   let tombstone = claimed.tombstone ?? loadTombstone(ctx.home, id);
   let checkedAt = 0;
   while (!tombstone) {
-    if (!requestReserved(ctx.home, id)) throw new UsageError(`${name}: its first call failed before the provider started and freed the id; retry with the same id to run it`);
+    if (!requestReserved(ctx.home, id)) throw new UsageError(MESSAGES.requestFreed(name));
     const reservation = loadRequest(ctx.home, id);
     if (reservation && reservation.fingerprint && reservation.fingerprint !== fingerprint) throw new UsageError(`${name} was already used with different input; use a new request id`);
-    if (!reservation && Date.now() >= unreadableBy) throw new UsageError(`${name} names job ${id}, ${MISSING}`);
+    if (!reservation && Date.now() >= unreadableBy) throw new UsageError(MESSAGES.requestMissing(name, id));
     if (reservation && Date.now() - checkedAt >= 1000) {
       checkedAt = Date.now();
       let snapshot;
       try { snapshot = control.snapshot(); } catch { snapshot = { state: "unknown", rows: [] }; }
       // Only a call known to be gone is abandoned; an unknown answer keeps waiting.
       if (companionState(reservation, snapshot) === "gone" && !(tombstone = loadTombstone(ctx.home, id))) {
-        if (!neverPrepared(ctx.home, id, reservation)) throw new UsageError(`${name} names job ${id}, ${MISSING}`);
-        throw new UsageError(`${name} names job ${id}, whose call ended before the provider started; nothing ran, so a new request id is safe`);
+        if (!neverPrepared(ctx.home, id, reservation)) throw new UsageError(MESSAGES.requestMissing(name, id));
+        throw new UsageError(MESSAGES.requestNeverRan(name, id));
       }
     }
     tombstone ??= loadTombstone(ctx.home, id);

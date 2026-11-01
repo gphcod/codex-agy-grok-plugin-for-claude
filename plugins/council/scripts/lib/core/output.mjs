@@ -36,6 +36,22 @@ export function attentionReason({ isReview, review = null, denied = null, denied
   if (isReview) return review?.incomplete ? oneLine(review.incomplete, ATTENTION_MAX) : deny;
   return deny ?? (questions ? QUESTIONS_REASON : null);
 }
+/**
+ * X3: the footer clips `error:` at 200 B, so a message that can exceed it says what to do first and
+ * why after. Each is listed with its action in tests/core-messages.test.mjs.
+ */
+export const MESSAGES = {
+  threadBusy: (thread, job) => `thread ${thread} is busy as job ${job}; wait or cancel ${job}`,
+  threadBusyUnidentified: (thread) => `quiesce this state root before manual recovery: thread ${thread} is busy with an unidentified claim`,
+  threadLocked: (thread, job) => `continue with a new ask: thread ${thread} is busy as job ${job}, whose output an unidentified process kept open, so it stays locked`,
+  threadCleanup: (thread, job) => `run cancel ${job}: thread ${thread} requires cleanup of that job`,
+  cleanupPending: (provider, why) => `cleanup pending: ${provider} or a descendant may still be running; ${why || "execution ended"}`,
+  requestGone: (name) => `a new request id is safe: the first call of ${name} ended before it chose a provider; nothing ran`,
+  requestUnchosen: (name) => `retry with the same request id to keep waiting: the first call of ${name} has not chosen its provider yet`,
+  requestFreed: (name) => `retry with the same id to run it: the first call of ${name} failed before the provider started and freed the id`,
+  requestNeverRan: (name, job) => `a new request id is safe: ${name} names job ${job}, whose call ended before the provider started; nothing ran`,
+  requestMissing: (name, job) => `use a new request id: ${name} names job ${job}, whose records were deleted or cannot be read; nothing was started again, and whether the provider ran for it is unknown`,
+};
 export const pendingCleanup = (job) => Boolean((job.cleanupPending && !job.stopped) || job.claimHeld);
 
 export function elapsed(ms) {

@@ -19,7 +19,7 @@ import {
   REQUEST_ID, bindScope, candidates, claimRequest, claimScope, homeDir, loadJob, loadScope, loadThread, loadTombstone, markRequestPrepared, releaseRequest, releaseScope,
 } from "./lib/core/jobs.mjs";
 import { DEADLINE_S, DEFAULT_ROUNDS, INACTIVITY_S, cancelJob, replayRequest, runManagedTurn, waitFor } from "./lib/core/lifecycle.mjs";
-import { renderResult, resultJson, startLine } from "./lib/core/output.mjs";
+import { MESSAGES, renderResult, resultJson, startLine } from "./lib/core/output.mjs";
 import { collectReview, reviewTarget } from "./lib/core/git.mjs";
 import { renderReviewPrompt } from "./lib/core/review.mjs";
 import { pathCandidates } from "./lib/core/launcher.mjs";
@@ -104,10 +104,10 @@ async function awaitScope(ctx, o, scope, fp, control, sleepMs = 50) {
       let snapshot;
       try { snapshot = control.snapshot(); } catch { snapshot = { state: "unknown", rows: [] }; }
       if (companionState(record, snapshot) === "gone" && !loadScope(scope.file)?.job) {
-        throw new UsageError(`${name}: its first call ended before it chose a provider; nothing ran, so a new request id is safe`);
+        throw new UsageError(MESSAGES.requestGone(name));
       }
     }
-    if (Date.now() >= end) throw new UsageError(`${name}: the first call with this id has not chosen its provider yet; retry with the same request id to keep waiting`);
+    if (Date.now() >= end) throw new UsageError(MESSAGES.requestUnchosen(name));
   }
 }
 

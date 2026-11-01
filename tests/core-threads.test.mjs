@@ -101,7 +101,7 @@ test("a stop whose shutdown budget runs out ends with cleanup pending, never a c
       assert.ok(Date.now() - started < 8000);
       assert.equal(job.code, 1);
       assert.equal(job.cleanupPending, true);
-      assert.match(job.error, /^wall-clock deadline passed; cleanup pending: null or a descendant may still be running$/);
+      assert.match(job.error, /^cleanup pending: null or a descendant may still be running; wall-clock deadline passed$/);
       assert.equal(job.claimHeld, true, "the thread stays claimed until cancel confirms");
     } finally { if (childPid) try { process.kill(childPid, "SIGKILL"); } catch { /* already gone */ } }
     writeFileSync(join(h.root, "ok"), "");

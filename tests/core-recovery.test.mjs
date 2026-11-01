@@ -53,7 +53,7 @@ test("replayRequest: a first call proven gone before preparing frees nothing sil
     const claimed = claimRequest(s.home, "null", "gone", { session: "s", cwd: s.cwd }, { fingerprint: "fp", companionPid: 999999, companionIdentity: { pid: 999999, stamp: "x" } });
     const view = claimRequest(s.home, "null", "gone", { session: "s", cwd: s.cwd });
     await usage(replayRequest(s.ctx, { "request-id": "gone" }, view, "fp", sink(), { control: liveControl([]), sleepMs: 10 }),
-      new RegExp(`request id gone names job ${claimed.id}, whose call ended before the provider started; nothing ran, so a new request id is safe`));
+      new RegExp(`a new request id is safe: request id gone names job ${claimed.id}, whose call ended before the provider started; nothing ran`));
   } finally { s.done(); }
 });
 
@@ -64,7 +64,7 @@ test("replayRequest: a released claim, a reservation with other input, and a tom
     const view = claimRequest(s.home, "null", "r", { session: "s", cwd: s.cwd });
     await usage(replayRequest(s.ctx, { "request-id": "r" }, view, "fp-2", sink(), { control: liveControl([]) }), /was already used with different input/);
     rmSync(join(s.home, "jobs", claimed.id), { recursive: true });
-    await usage(replayRequest(s.ctx, { "request-id": "r" }, view, "fp-1", sink(), { control: liveControl([]) }), /its first call failed before the provider started and freed the id; retry with the same id to run it/);
+    await usage(replayRequest(s.ctx, { "request-id": "r" }, view, "fp-1", sink(), { control: liveControl([]) }), /retry with the same id to run it: the first call of request id r failed before the provider started and freed the id/);
     const fresh = claimRequest(s.home, "null", "t", { session: "s", cwd: s.cwd }, { fingerprint: "fp-1" });
     markRequestPrepared(s.home, fresh.id, { provider: "null", requestId: "t", fingerprint: "fp-1", session: "s", cwd: s.cwd, verb: "ask" });
     const again = claimRequest(s.home, "null", "t", { session: "s", cwd: s.cwd });

@@ -214,3 +214,6 @@ Fixes after the S7.1 matrices, as ruled by the coordinator. X1, X2 and X3 apply 
   - A symlink is compared by its target, without reading through it. A directory (an embedded repository or submodule) is only present or absent, so edits inside one stay event-only.
   - With a snapshot, event paths are compared through their real directory, so a symlinked spelling counts once.
   - Known limit: anything else that changes the tree during the turn counts too (the user, a concurrent job).
+- **X3: messages that survive the footer's clip.** `error:` and `attention:` are cut at 200 B, which lost the actionable tail of a message. The messages that can exceed it now live in `MESSAGES` in `output.mjs` and say what to do first: thread locked or needing cleanup, an unidentified claim, cleanup pending, and the request-id refusals. `tests/core-messages.test.mjs` builds each one at the longest ids the code accepts and asserts its action survives; a new entry without a case fails the test. Left as they are:
+  - Stderr-only refusals that carry no action, such as a thread belonging to another workspace.
+  - `was already used with different input; use a new request id`, which fits at 195 B and whose wording C3 relies on.

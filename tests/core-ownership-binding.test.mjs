@@ -147,7 +147,7 @@ test("request binding: a different fingerprint exits 2, a released binding is cl
     writeFileSync(gone.file, JSON.stringify({ ...loadScope(gone.file), fingerprint: undefined }));
     const g = await s.call(["ask", "--to", "null", "--request-id", "gone", "--", "x"]);
     assert.equal(g.code, 2);
-    assert.match(g.err, /request id gone: its first call ended before it chose a provider; nothing ran, so a new request id is safe/);
+    assert.match(g.err, /a new request id is safe: the first call of request id gone ended before it chose a provider; nothing ran/);
     // a call that fails before its tombstone releases the binding, so the same id runs again
     const bad = await s.call(["ask", "--to", "null", "--request-id", "again", "--model", "fast", "--effort", "bogus", "--", "x"]);
     assert.equal(bad.code, 2);
