@@ -70,6 +70,13 @@ export function ratio(root = repoRoot) {
 }
 
 function main(argv) {
+  // An unknown flag (for example `--help`) must never fall through to running a test set,
+  // least of all the paid live set.
+  const unknown = argv.filter((a) => a !== "--live" && a !== "--ratio");
+  if (unknown.length) {
+    console.error(`run-tests: unknown argument ${unknown.join(" ")}; usage: run-tests.mjs [--live | --ratio]`);
+    return 2;
+  }
   if (argv.includes("--ratio")) {
     const r = ratio();
     const shown = Number.isFinite(r.ratio) ? r.ratio.toFixed(2) : "n/a (no core files)";

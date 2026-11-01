@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { spawnSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -44,4 +45,10 @@ test("a live file name never matches the default pattern", () => {
   }
   assert.equal(isDefaultName("core-jobs.test.mjs"), true);
   assert.equal(isLiveSelection("x.live.test.mjs"), false, "a live-named file outside tests/live is in neither set");
+});
+
+test("an unknown argument exits 2 and runs no test set", () => {
+  const r = spawnSync(process.execPath, ["scripts/run-tests.mjs", "--live", "--help"], { encoding: "utf8" });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /unknown argument --help/);
 });
