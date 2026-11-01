@@ -15,13 +15,16 @@ const FAILED_DETAILS_CAP = 100;
  * Chunk-bounded JSONL reader for one turn. `adapter.parseEvent(line, state)` returns the A5 event
  * shape ({threadId?, textDelta?, toolStep?, completed?, fatal?, denied?, incomplete?, structured?,
  * edited?, failedCommand?, costUsd?, usage?}) or null. `onThread(id)` runs before the id is
- * published so the caller can claim it; a throw there fails the turn.
+ * published so the caller can claim it; a throw there fails the turn. `turn` is the adapter's own
+ * buildTurn result, exposed read-only as `state.turn`, so parseEvent can apply per-turn rules (the
+ * grok adapter's read-only tool guard needs the turn's mode) without module-level state.
  */
-export function createReader({ adapter, cwd = process.cwd(), onThread, onText, onEvent, onFailure, maxLineBytes = adapter?.maxLineBytes ?? LINE_CAP } = {}) {
+export function createReader({ adapter, cwd = process.cwd(), turn = null, onThread, onText, onEvent, onFailure, maxLineBytes = adapter?.maxLineBytes ?? LINE_CAP } = {}) {
   if (!adapter || typeof adapter.parseEvent !== "function") throw new Error("createReader needs an adapter with parseEvent");
   const state = {
     threadId: null, completed: false, failed: null, error: null, denied: null, incomplete: null, structured: null,
     edited: new Set(), failedCommands: [], failedCommandCount: 0, costUsd: null, usage: null, lastEvent: null, lastTool: null, events: 0, hasText: false,
+    turn,
   };
   const decoder = new StringDecoder("utf8");
   let buffer = "", bytes = 0, broken = false;

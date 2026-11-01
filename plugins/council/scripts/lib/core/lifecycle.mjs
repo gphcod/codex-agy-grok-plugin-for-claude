@@ -213,7 +213,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
         catch (error) { persistenceFailed = true; stop(`answer storage failed: ${error.message}`); }
       };
       reader = createReader({
-        adapter, cwd: job.cwd, maxLineBytes: adapter.maxLineBytes,
+        adapter, cwd: job.cwd, turn, maxLineBytes: adapter.maxLineBytes,
         onThread(id) {
           // A resumed or preassigned thread must come back unchanged before anything is published (grok-build reader.mjs:115).
           const expected = resumed ?? turn.threadId ?? null;

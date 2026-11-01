@@ -92,7 +92,7 @@
  * @property {(request: Request, env: object) => void} [checkRequest]  throws UsageError (exit 2) before any job
  * @property {(ctx: {job: object, request: Request, turn: Turn, home: string, env: object}) => void} [beforeTurn]  once, before the spawn; a throw fails the turn
  * @property {(ctx: {job: object, request: Request, turn: Turn, home: string, env: object}, outcome: {outcome: string, code: number, error: string|null}) => void} [afterTurn]  once, after finalization with verified cleanup; independent of beforeTurn
- * @property {(line: string, state: object) => ParsedEvent|null} parseEvent
+ * @property {(line: string, state: object) => ParsedEvent|null} parseEvent  state.turn is this turn's buildTurn result (S4 core fix)
  * @property {(gitInfo: {root: string, target: object, collect: () => object}, request: Request) => ReviewPlan} reviewPlan
  * @property {(input: {answerText: string, answerFile: string|null, structured: object|null, unreviewed: string[]}) => ReviewResult & {renderedText?: string, summary?: string, nextSteps?: string[]}} finalizeReview  answerText is the whole stored answer
  */

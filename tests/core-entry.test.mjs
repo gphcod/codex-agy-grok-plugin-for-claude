@@ -8,13 +8,18 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import { BINARIES, fingerprint, main, providerNames } from "../plugins/council/scripts/council.mjs";
+import { fileURLToPath } from "node:url";
+import { BINARIES, adapterFile, fingerprint, main, providerNames } from "../plugins/council/scripts/council.mjs";
 import { GUARD_VARS } from "../plugins/council/scripts/lib/core/execution.mjs";
 import { loadJob, loadThread, requestJobId, requestReserved } from "../plugins/council/scripts/lib/core/jobs.mjs";
 import { canonical } from "../plugins/council/scripts/lib/core/fs.mjs";
 import { commitAll, git, initRepo, isolateGit } from "./fixtures/build-repos.mjs";
 
 isolateGit();
+/** Providers whose module is not in this build; the S3–S5 branches each add one (registry by existsSync). */
+const UNBUILT = ["codex", "gemini", "grok"].filter((p) => !existsSync(adapterFile(p, {})));
+const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
+const FAKE_BINS = { COUNCIL_CODEX_BIN: fixture("fake-codex.mjs"), COUNCIL_AGY_BIN: fixture("fake-agy.mjs"), COUNCIL_GROK_BIN: fixture("fake-grok.mjs") };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function harness() {
@@ -24,7 +29,8 @@ function harness() {
   mkdirSync(cwd);
   const log = join(root, "spawns.log");
   writeFileSync(log, "");
-  const base = { ...process.env, COUNCIL_TEST_NULL_ADAPTER: "1", COUNCIL_HOME: home, COUNCIL_FAKE_SPAWN_LOG: log, COUNCIL_STDIN_DEADLINE_MS: "300" };
+  // A provider module that exists in this build (S3–S5) is probed through its fake, never the real CLI.
+  const base = { ...process.env, COUNCIL_TEST_NULL_ADAPTER: "1", COUNCIL_HOME: home, COUNCIL_FAKE_SPAWN_LOG: log, COUNCIL_STDIN_DEADLINE_MS: "300", ...FAKE_BINS };
   for (const g of GUARD_VARS) delete base[g];
   for (const k of ["COUNCIL_FAKE_SCENARIO", "COUNCIL_NULL_ID", "COUNCIL_NULL_INPUT", "COUNCIL_NULL_OUTPUT", "COUNCIL_NULL_CONSULT", "COUNCIL_NULL_NO_WEB"]) delete base[k];
   /** Runs main() in-process; resolves {code, out, err}. `stdin`: a string (ended) or a stream. */
@@ -94,9 +100,7 @@ test("provider selection: --to is required, checked, and a provider outside this
       [["review"], /review needs --to/],
       [["task", "--", "x"], /task needs --to/],
       [["ask", "--to", "bard", "--", "x"], /--to must be one of codex, gemini, grok/],
-      [["ask", "--to", "codex", "--", "x"], /provider codex not available in this build/],
-      [["ask", "--to", "gemini", "--", "x"], /provider gemini not available in this build/],
-      [["ask", "--to", "grok", "--", "x"], /provider grok not available in this build/],
+      ...UNBUILT.map((p) => [["ask", "--to", p, "--", "x"], new RegExp(`provider ${p} not available in this build`)]),
       [["ask", "--to", "null", "--thread", "abc", "--", "x"], /ask starts a new thread; continue one with reply --thread/],
       [["ask", "--to", "null", "--last", "--", "x"], /--last applies to reply/],
       [["ask", "--to", "null", "--commit", "HEAD", "--", "x"], /--commit applies to review/],
@@ -506,25 +510,25 @@ test("models and setup: unavailable providers reported, null probed and refreshe
   try {
     const models = await h.call(["models"]);
     assert.equal(models.code, 0);
-    for (const p of ["codex", "gemini", "grok"]) assert.match(models.out, new RegExp(`^${p}: provider ${p} not available in this build$`, "m"));
+    for (const p of UNBUILT) assert.match(models.out, new RegExp(`^${p}: provider ${p} not available in this build$`, "m"));
     assert.match(models.out, /^null \(static\)\n  null-model: low, medium, high, xhigh, max\n  null-fast: low, medium\n  tiers: consult null-model\/high · exec null-fast\/medium · deep null-model\/xhigh$/m);
     const refresh = await h.call(["models", "--to", "null", "--refresh", "--json"]);
     const [row] = JSON.parse(refresh.out);
     assert.equal(row.source, "refreshed");
     assert.ok(existsSync(join(h.home, "catalog", "null.json")));
-    const codex = await h.call(["models", "--to", "codex"]);
-    assert.equal(codex.out, "codex: provider codex not available in this build\n");
+    for (const p of UNBUILT) assert.equal((await h.call(["models", "--to", p])).out, `${p}: provider ${p} not available in this build\n`);
     const bad = await h.call(["models", "--to", "bard"]);
     assert.equal(bad.code, 2);
     const setup = await h.call(["setup", "--json"]);
     assert.equal(setup.code, 0);
     const rows = JSON.parse(setup.out);
-    assert.deepEqual(rows.map((r) => [r.provider, r.available]), [["codex", false], ["gemini", false], ["grok", false], ["null", true], ["null2", true]]);
+    assert.deepEqual(rows.map((r) => [r.provider, r.available]), [...["codex", "gemini", "grok"].map((p) => [p, !UNBUILT.includes(p)]), ["null", true], ["null2", true]]);
+    for (const r of rows.filter((x) => x.available)) assert.equal(r.ready, true, `${r.provider} probed through its fake: ${r.warnings}`);
     const nul = rows.find((r) => r.provider === "null");
     assert.deepEqual([nul.ready, nul.version, nul.loggedIn, nul.launcher.kind], [true, "null 0.0.0", true, "node-script"]);
     assert.deepEqual(nul.tiers, { consult: "null-model/high", exec: "null-fast/medium", deep: "null-model/xhigh" });
     const text = await h.call(["setup"]);
-    for (const p of ["codex", "gemini", "grok"]) assert.match(text.out, new RegExp(`^${p}: provider ${p} not available in this build · ${BINARIES[p]} -> `, "m"));
+    for (const p of UNBUILT) assert.match(text.out, new RegExp(`^${p}: provider ${p} not available in this build · ${BINARIES[p]} -> `, "m"));
     assert.equal((await h.call(["setup", "extra"])).code, 2);
     const broken = await h.call(["setup", "--to", "null"], { env: { COUNCIL_NULL_BIN: join(h.root, "missing.mjs") } });
     assert.equal(broken.code, 1, "an available provider that cannot be probed is not ready");
