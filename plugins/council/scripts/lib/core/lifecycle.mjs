@@ -115,7 +115,6 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     if (old) throw new BusyError(`thread ${id} requires cleanup of job ${old.id}; run cancel ${old.id}`, old.id);
   };
   let reader = null;
-  let beforeTurnRan = false;
   let cleanupConfirmed = true; // No spawn yet.
   let streamFailure = null;
   let stop = (why) => { reason ??= why; };
@@ -128,7 +127,8 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     if ((request.thread?.threadId ?? null) !== resumed) throw new Error("the thread changed during admission");
     const launcher = adapter.resolveLauncher(ctx.env, process.platform);
     if (!launcher) throw new Error(`${provider} not found; run setup, or set ${adapter.binEnv}`);
-    turn = adapter.buildTurn({ ...request, jobId: job.id, jobDir: job.dir, provider });
+    // A5 (S2.8): the adapter reads the caller's environment and the resolved launcher from here, never process.env.
+    turn = adapter.buildTurn({ ...request, jobId: job.id, jobDir: job.dir, provider, env: ctx.env, launcher });
     if (!turn || !Array.isArray(turn.args)) throw new Error(`${provider} adapter returned no launch arguments`);
     if (turn.answerFile) answerFile = turn.answerFile;
     // A preassigned id (Grok-like) is claimed before the spawn; a discovered one on its first event.
@@ -145,8 +145,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     await hooks.beforeSpawn?.(job);
     if (!cancelled() && adapter.beforeTurn) {
       // A5: once, after admission and before the spawn; a throw fails the turn with nothing started.
-      adapter.beforeTurn({ job, request, turn, home: ctx.home });
-      beforeTurnRan = true;
+      adapter.beforeTurn({ job, request, turn, home: ctx.home, env: ctx.env });
     }
     if (cancelled()) {
       reason = "cancelled";
@@ -177,8 +176,10 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
           reason ??= `storage/process query: ${error.message}`;
           return; // Do not orphan descendants by killing their parent before ownership is durable.
         }
-        if (!escalate) {
-          if (job.pid && running(child)) guarded.stopGroup(job.pid, graceMs).catch(() => {});
+        // POSIX first pass: SIGTERM to the group, escalation later through identity-checked stops.
+        // Windows has no group signal: the identity-checked `taskkill /T /F` runs at once, as the donors did.
+        if (!escalate && (control.platform ?? process.platform) !== "win32") {
+          if (job.pid && running(child)) guarded.stopGroup(job.pid).catch(() => {});
           return;
         }
         for (const row of found?.rows ?? []) {
@@ -201,7 +202,13 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
       };
       reader = createReader({
         adapter, cwd: job.cwd, maxLineBytes: adapter.maxLineBytes,
-        onThread(id) { if (!resumed && !turn.threadId) claim(id); else if (turn.threadId && id.toLowerCase() !== turn.threadId.toLowerCase()) throw new Error(`${provider} answered on thread ${id}, expected ${turn.threadId}`); job.threadId = id; save(job); announce(); },
+        onThread(id) {
+          // A resumed or preassigned thread must come back unchanged before anything is published (grok-build reader.mjs:115).
+          const expected = resumed ?? turn.threadId ?? null;
+          if (!expected) claim(id);
+          else if (id.toLowerCase() !== expected.toLowerCase()) throw new Error(`${provider} answered on thread ${id}, expected ${expected}`);
+          job.threadId = id; save(job); announce();
+        },
         onText: request.verb === "review" ? null : onText,
         onFailure(message) { streamFailure = message; stop(message); },
       });
@@ -254,6 +261,10 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
         }, Math.max(20, Math.min(250, Math.min(deadlineMs, inactivityMs) / 10)));
         job.pid = child.pid ?? null;
         job.pgid = child.pid ?? null; // Spawned detached: the child leads its own group.
+        // A7.5 (S2.8): record the leader's creation time, so a reused group is never adopted later.
+        if (job.pid && (control.platform ?? process.platform) !== "win32") {
+          try { job.leader = control.identify?.(job.pid) ?? null; } catch { job.leader = null; }
+        }
         try {
           save(job); // Recovery finds this child by its exact operands; no per-turn process query.
           if (cancelled()) stop("cancelled"); // Covers the cancellation-before/while-spawning race.
@@ -351,14 +362,18 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
   else if (!error && child?.exitCode !== 0) error = seen?.error ?? `${provider} exited with code ${child?.exitCode}`;
   else if (!error && seen?.incomplete) error = seen.incomplete; // A5.1/A3.3: an incomplete turn (print timeout) is exit 1, never 20, on every verb.
   else if (!error && isReview) {
-    const review = finalizeReviewTurn({ adapter, answerText: parsed?.answer ?? "", structured: seen?.structured ?? null, unreviewed: job.unreviewed ?? [], reviewed: request.reviewed ?? [] });
+    // The adapter reads the whole answer, never the 24 KiB preview; the cap applies only when printing.
+    let fullText = "";
+    try { fullText = io.readFileSync(answerFile, "utf8"); } catch (failure) { if (failure.code !== "ENOENT") error ??= `answer storage failed: ${failure.message}`; }
+    const review = finalizeReviewTurn({ adapter, answerText: fullText, answerFile, structured: seen?.structured ?? null, unreviewed: job.unreviewed ?? [], reviewed: request.reviewed ?? [] });
     job.review = review.result;
     job.verdict = review.result?.verdict ?? null;
     if (review.renderedText !== undefined && review.renderedText !== null) {
       try { io.writeFileSync(answerFile, review.renderedText); parsed = readAnswer(answerFile); answer = parsed.answer; }
       catch (failure) { error = `answer storage failed: ${failure.message}`; }
     }
-    if (!error) outcome = review.exit === 10 ? "attention" : "ok";
+    // A denied action needs attention on a review as on every other verb, whatever the verdict.
+    if (!error) outcome = review.exit === 10 || seen?.denied ? "attention" : "ok";
   }
   else if (!error && !parsed) error = `${provider} wrote no answer`;
   else if (!error && !parsed.nonempty) error = `${provider} returned no answer`;
@@ -379,20 +394,23 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
   try {
     beat();
     await hooks.beforeFinalize?.(job);
+    // A7.6: the thread record follows every threaded turn that confirmed its thread. It is written
+    // while the claim is still held and before completion is published, so a failed write never
+    // leaves a published result whose thread metadata is stale.
+    if (job.threadId && !isReview && job.admitted) {
+      (hooks.saveThread ?? saveThread)(ctx.home, { provider, threadId: job.threadId, cwd: job.cwd, model: job.model, effort: job.effort, tier: job.tier, round: job.round, rounds: job.rounds, roundsSet: job.roundsSet, web: job.web, agent: turn?.agent ?? null, lastJob: job.id, lastVerb: job.verb, readOnly: job.readOnly });
+    }
     save(job); finishMarker(job); // No other process writes these result artifacts.
     if (cleanupConfirmed) releaseClaims(ctx.home, job);
-    // A7.6: the thread record follows every threaded turn that confirmed its thread.
-    if (job.threadId && !isReview && job.admitted) {
-      saveThread(ctx.home, { provider, threadId: job.threadId, cwd: job.cwd, model: job.model, effort: job.effort, tier: job.tier, round: job.round, rounds: job.rounds, roundsSet: job.roundsSet, agent: turn?.agent ?? null, lastJob: job.id, lastVerb: job.verb, readOnly: job.readOnly });
-    }
   } catch (failure) {
     // Retain the claim if durable finalization or release could not be completed.
     job.code = 1; job.outcome = "failed"; job.cleanupPending = true;
     job.error = `finalization failed: ${failure.message}`;
   }
   // A5: afterTurn runs once, after finalization, and only once cleanup is verified (also on failure or cancel).
-  if (beforeTurnRan && adapter.afterTurn && cleanupConfirmed) {
-    try { adapter.afterTurn({ job, request, turn, home: ctx.home }, { outcome: job.outcome, code: job.code, error: job.error }); }
+  // The two hooks are independent: afterTurn needs only a built turn, not a beforeTurn.
+  if (turn && adapter.afterTurn && cleanupConfirmed) {
+    try { adapter.afterTurn({ job, request, turn, home: ctx.home, env: ctx.env }, { outcome: job.outcome, code: job.code, error: job.error }); }
     catch (failure) { job.afterTurnError = failure.message; try { save(job); } catch { /* the result stands */ } }
   }
   announce();

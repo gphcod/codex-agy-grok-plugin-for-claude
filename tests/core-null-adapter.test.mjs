@@ -39,37 +39,39 @@ test("profile defaults and overrides", () => {
   assert.deepEqual(profile({ COUNCIL_NULL_ID: "discovered", COUNCIL_NULL_INPUT: "prompt-file", COUNCIL_NULL_OUTPUT: "answer-file", COUNCIL_NULL_TRUST: "1" }), { id: "discovered", input: "prompt-file", output: "answer-file", trust: true });
 });
 
-test("buildTurn shapes per profile", () => {
+test("buildTurn shapes per profile, read from the env the core passes", () => {
   const dir = tmp();
   try {
-    const saved = { ...process.env };
-    try {
-      Object.assign(process.env, { COUNCIL_NULL_ID: "preassigned", COUNCIL_NULL_INPUT: "stdin", COUNCIL_NULL_OUTPUT: "stream" });
-      const t1 = adapter.buildTurn(request(dir));
-      assert.ok(t1.args.includes("--thread"), "preassigned passes --thread");
-      assert.match(t1.threadId, /^[0-9a-f-]{36}$/);
-      assert.equal(t1.stdin, "<contract/>\n\nhello");
-      assert.equal(t1.answerFile, null);
-      assert.equal(t1.readOnly, true);
-      Object.assign(process.env, { COUNCIL_NULL_ID: "discovered", COUNCIL_NULL_INPUT: "prompt-file", COUNCIL_NULL_OUTPUT: "answer-file" });
-      const t2 = adapter.buildTurn(request(dir));
-      assert.ok(!t2.args.includes("--thread"), "discovered passes no --thread on a fresh turn");
-      assert.equal(t2.threadId, null);
-      assert.equal(t2.promptFile, join(dir, "prompt.md"));
-      assert.equal(t2.answerFile, join(dir, "answer.md"));
-      assert.equal(t2.stdin, undefined);
-      const t3 = adapter.buildTurn(request(dir, { verb: "reply", thread: { threadId: "t-123" } }));
-      assert.ok(t3.args.includes("--thread") && t3.args.includes("t-123"), "a resumed discovered thread passes its id");
-      const t4 = adapter.buildTurn(request(dir, { verb: "task", readOnly: false }));
-      assert.ok(t4.args.includes("--write"));
-      assert.equal(t4.readOnly, false);
-      const t5 = adapter.buildTurn(request(dir, { verb: "review", reviewPrompt: "REVIEW PROMPT" }));
-      assert.ok(t5.args.includes("--review"));
-      assert.equal(t5.promptText, "REVIEW PROMPT");
-    } finally {
-      for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
-      Object.assign(process.env, saved);
-    }
+    const before = { ...process.env };
+    const t1 = adapter.buildTurn(request(dir, { env: { COUNCIL_NULL_ID: "preassigned", COUNCIL_NULL_INPUT: "stdin", COUNCIL_NULL_OUTPUT: "stream" } }));
+    assert.ok(t1.args.includes("--thread"), "preassigned passes --thread");
+    assert.match(t1.threadId, /^[0-9a-f-]{36}$/);
+    assert.equal(t1.stdin, "<contract/>\n\nhello");
+    assert.equal(t1.answerFile, null);
+    assert.equal(t1.readOnly, true);
+    const env2 = { COUNCIL_NULL_ID: "discovered", COUNCIL_NULL_INPUT: "prompt-file", COUNCIL_NULL_OUTPUT: "answer-file" };
+    const t2 = adapter.buildTurn(request(dir, { env: env2 }));
+    assert.ok(!t2.args.includes("--thread"), "discovered passes no --thread on a fresh turn");
+    assert.equal(t2.threadId, null);
+    assert.equal(t2.promptFile, join(dir, "prompt.md"));
+    assert.equal(t2.answerFile, join(dir, "answer.md"));
+    assert.equal(t2.stdin, undefined);
+    const t3 = adapter.buildTurn(request(dir, { env: env2, verb: "reply", thread: { threadId: "t-123" } }));
+    assert.ok(t3.args.includes("--thread") && t3.args.includes("t-123"), "a resumed discovered thread passes its id");
+    const t4 = adapter.buildTurn(request(dir, { verb: "task", readOnly: false, web: true }));
+    assert.ok(t4.args.includes("--write"));
+    assert.ok(t4.args.includes("--web"));
+    assert.equal(t4.readOnly, false);
+    const t5 = adapter.buildTurn(request(dir, { env: env2, verb: "review", reviewPrompt: "REVIEW PROMPT" }));
+    assert.ok(t5.args.includes("--review"));
+    assert.equal(t5.promptText, "REVIEW PROMPT");
+    assert.deepEqual({ ...process.env }, before, "the adapter never touches process.env");
+    const trusted = adapter.resolveLauncher({ COUNCIL_NULL_TRUST: "1" });
+    assert.equal(adapter.trustsCleanExit(trusted), true);
+    assert.equal(adapter.trustsCleanExit(adapter.resolveLauncher({})), false);
+    assert.throws(() => adapter.checkRequest({ web: true }, { COUNCIL_NULL_NO_WEB: "1" }), /--web has no tested mapping/);
+    assert.doesNotThrow(() => adapter.checkRequest({ web: true }, {}));
+    assert.deepEqual(adapter.tiersFor({ COUNCIL_NULL_CONSULT: "null-fast/low" }).consult, { model: "null-fast", effort: "low" });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

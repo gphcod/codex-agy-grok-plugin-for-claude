@@ -100,9 +100,10 @@ export function renderReview(result, { summary = null, nextSteps = [] } = {}) {
  * failure, a malformed result or an incomplete turn is `incomplete` (exit 10), never an approval.
  * → {result, exit, renderedText}
  */
-export function finalizeReviewTurn({ adapter, answerText = "", structured = null, unreviewed = [], reviewed = [], incomplete = null }) {
+export function finalizeReviewTurn({ adapter, answerText = "", answerFile = null, structured = null, unreviewed = [], reviewed = [], incomplete = null }) {
   let mapped, problem = null;
-  try { mapped = adapter.finalizeReview({ answerText, structured, unreviewed: [...unreviewed] }); }
+  // `answerText` is the whole stored answer (never the 24 KiB preview); `answerFile` is where it lives.
+  try { mapped = adapter.finalizeReview({ answerText, answerFile, structured, unreviewed: [...unreviewed] }); }
   catch (error) { problem = `the adapter could not read the review: ${error.message}`; }
   let result = mapped && { verdict: mapped.verdict, findings: mapped.findings, coverage: coverageOf(reviewed.length ? reviewed : mapped.coverage?.reviewed ?? [], unreviewed), incomplete: mapped.incomplete ?? null };
   problem ??= resultProblem(result);

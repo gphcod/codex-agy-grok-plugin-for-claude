@@ -223,9 +223,10 @@ export function currentIdentity(pid = process.pid, options = {}) {
  * row has argv and the operand is matched exactly. On macOS `ps` gives only the raw command line, so
  * the match needs the job's recorded argv: the raw line must end with the recorded argument suffix
  * (which contains the operand) and start with the recorded launcher or the bare provider binary,
- * never a path substring (grok-build lib/execution.mjs:229-240).
+ * never a path substring (grok-build lib/execution.mjs:229-240). `bins` are the provider's binary
+ * names (`["grok"]`), which qualify even when the recorded launcher was a node script.
  */
-export function hasFlagOperand(row, flag, value, job = null, platform = process.platform) {
+export function hasFlagOperand(row, flag, value, job = null, platform = process.platform, bins = []) {
   if (typeof value !== "string" || !value) return false;
   if (Array.isArray(row.argv)) return row.argv.some((s, i) => s === flag && norm(row.argv[i + 1], platform) === norm(value, platform));
   if (typeof row.raw !== "string") return false;
@@ -238,8 +239,10 @@ export function hasFlagOperand(row, flag, value, job = null, platform = process.
     const program = row.raw.slice(0, -suffix.length - 1);
     const launcherArgs = Array.isArray(job.argv) ? job.argv.slice(0, job.argv.length - recordedArgs.length) : [];
     const recorded = launcherArgs.join(" ");
-    const bin = path.basename(launcherArgs[0] ?? job.bin ?? "");
-    return program === recorded || (bin && new RegExp(`(?:^|/)${bin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`).test(program));
+    // The provider binary names come from the adapter: with `node /npm/grok` recorded, a native
+    // `/vendor/grok` carrying the job's operand is still this job's (grok-build lib/execution.mjs:239).
+    const names = [...new Set([...bins, path.basename(launcherArgs[0] ?? "")].filter(Boolean))];
+    return program === recorded || names.some((bin) => new RegExp(`(?:^|/)${bin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`).test(program));
   }
   // No recorded argv: whole-token match of the pair.
   return row.raw.includes(` ${flag} ${value} `) || row.raw.endsWith(` ${flag} ${value}`);
@@ -300,8 +303,28 @@ export function recordRecoveryEvidence(job, rows) {
 export const BARE_BINARIES = ["codex", "codex.exe", "agy", "agy.exe", "grok", "grok.exe", "node", "node.exe"];
 
 /** Discover native backends behind dead launchers and retain separately grouped known descendants. */
+/**
+ * A creation time comparable within one platform's snapshot, or null: Linux start ticks and Windows
+ * creation ticks are integers; a macOS `ps -o lstart=` stamp ("Sat Oct 31 12:26:47 2026") is parsed
+ * to epoch seconds, never compared as text.
+ */
+export function startTime(stamp) {
+  if (typeof stamp !== "string" || !stamp) return null;
+  if (/^\d+$/.test(stamp)) return BigInt(stamp);
+  const ms = Date.parse(stamp);
+  return Number.isNaN(ms) ? null : BigInt(Math.floor(ms / 1000));
+}
+// Windows never reparents, so a process whose parent died can name a pid reused by an owned
+// process; a real child is never older than its parent. Unparseable stamps do not decide.
+function bornAfter(child, parent) {
+  const c = startTime(child.stamp), p = startTime(parent.stamp);
+  return c === null || p === null || c >= p;
+}
+
 export function ownedExecution(job, snapshot, platform = process.platform, evidence = [], adapter = null) {
   if (snapshot.state !== "ok") return { state: "unknown", rows: [], ...(snapshot.error && { error: snapshot.error }) };
+  // Without the provider's ownsProcess nothing can be told apart: unknown, never `gone` (no stop, no release).
+  if (typeof adapter?.ownsProcess !== "function") return { state: "unknown", rows: [], error: `ownership of job ${job.id ?? "?"} cannot be checked without its provider module` };
   const rows = snapshot.rows;
   const known = [...(job.execution ?? []), ...evidence];
   const owned = new Map();
@@ -310,14 +333,24 @@ export function ownedExecution(job, snapshot, platform = process.platform, evide
   for (const row of rows) {
     if (row.pid === process.pid) continue;
     if (ownsExecution(row, job, platform, adapter) || known.some((p) => sameIdentity(p, row))) owned.set(row.pid, row);
-    // A7.5: on macOS the snapshot carries the process group, so a member reparented to pid 1 is still found.
-    else if (job.pid && row.group !== undefined && row.group === job.pid && row.pid !== job.companionPid) owned.set(row.pid, row);
     if (!row.raw && !row.inaccessible && names.has(String(row.name ?? "").toLowerCase())) unknown = true;
   }
+  // A7.5: a live row whose group is the child's pid is owned iff (a) no live process has pid ==
+  // job.pid with a creation time different from the recorded leader's, and (b) the row was born at or
+  // after the recorded leader start. That finds members reparented to pid 1 after the leader exited,
+  // and refuses a reused group, whose new leader carries the same pid and a later creation time.
+  const recorded = job.pid ? (job.leader?.pid === job.pid ? job.leader : known.find((p) => p.pid === job.pid)) ?? null : null;
+  const leaderStart = recorded ? startTime(recorded.stamp) : null;
+  const liveLeader = job.pid ? rows.find((r) => r.pid === job.pid) : null;
+  const reused = liveLeader && (startTime(liveLeader.stamp) === null || startTime(liveLeader.stamp) !== leaderStart);
+  if (leaderStart !== null && !reused) {
+    for (const row of rows) {
+      if (owned.has(row.pid) || row.pid === process.pid || row.pid === job.companionPid || row.group === undefined || row.group !== job.pid) continue;
+      const born = startTime(row.stamp);
+      if (born !== null && born >= leaderStart) owned.set(row.pid, row);
+    }
+  }
   // Snapshot all descendants before any parent is killed, including descendants in other groups.
-  // Windows never reparents, so a process whose parent died can name a pid reused by an owned
-  // process; a real child is never older than its parent.
-  const bornAfter = (child, parent) => !/^\d+$/.test(child.stamp ?? "") || !/^\d+$/.test(parent.stamp ?? "") || BigInt(child.stamp) >= BigInt(parent.stamp);
   for (let changed = true; changed;) {
     changed = false;
     for (const row of rows) {
@@ -372,13 +405,14 @@ export function isProcessGroupAlive(pgid, { kill = process.kill.bind(process) } 
  * then SIGKILL for whatever is left after `graceMs`. Windows has no group signal; the per-row
  * taskkill /T /F of stopIdentity is the whole stop there.
  */
-export async function stopProcessGroup(pid, { platform = process.platform, graceMs = GRACE_MS, kill = process.kill.bind(process), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+export async function stopProcessGroup(pid, { platform = process.platform, graceMs = GRACE_MS, kill = process.kill.bind(process), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), escalate = true } = {}) {
   if (!Number.isInteger(pid) || pid <= 0 || platform === "win32") return { attempted: false, delivered: false, escalated: false };
   const signal = (name) => {
     try { kill(-pid, name); return true; }
     catch { try { kill(pid, name); return true; } catch { return false; } }
   };
   const delivered = signal("SIGTERM");
+  if (!escalate) return { attempted: true, delivered, escalated: false };
   const deadline = Date.now() + graceMs;
   while (isProcessGroupAlive(pid, { kill }) && Date.now() < deadline) await sleep(50);
   let escalated = false;
@@ -395,8 +429,12 @@ export function executionController(options = {}) {
     platform,
     snapshot: (timeout = QUERY_MS) => snapshot({ platform, timeout, powershell: options.powershell, run: options.run, proc: options.proc }),
     self: () => selfIdentity(platform, { snapshot, powershell: options.powershell, run: options.run }),
+    /** The identity of one pid (a scoped query), used to record the child as its group's leader right after the spawn. */
+    identify: (pid, timeout = QUERY_MS) => { const r = snapshot({ pid, platform, timeout, powershell: options.powershell, run: options.run, proc: options.proc }); return r.state === "ok" ? r.rows.find((row) => row.pid === pid) ?? null : null; },
     inspect: (job, snap) => ownedExecution(job, snap, platform, recoveryEvidence(job), adapter),
     stop: (row, timeout = QUERY_MS, signal = "SIGKILL") => stopIdentity(row, { ...options, platform, snapshot, timeout, signal }),
-    stopGroup: (pid, graceMs = options.graceMs ?? GRACE_MS) => stopProcessGroup(pid, { platform, graceMs, kill: options.kill, sleep: options.sleep }),
+    // The lifecycle's group stop is SIGTERM only: the escalation to SIGKILL goes through stop(), which
+    // verifies each process's identity first, never to a bare group id that may have been reused.
+    stopGroup: (pid) => stopProcessGroup(pid, { platform, kill: options.kill, sleep: options.sleep, escalate: false }),
   };
 }

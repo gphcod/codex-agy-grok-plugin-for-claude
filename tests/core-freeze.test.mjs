@@ -25,7 +25,7 @@ test("the null adapter implements every A5 member with the frozen shapes", () =>
     assert.equal(typeof nullAdapter[key], type, key);
   }
   const launcher = nullAdapter.resolveLauncher(process.env, process.platform);
-  assert.deepEqual(Object.keys(launcher).sort(), ["args", "command", "kind", "path"]);
+  for (const key of ["args", "command", "kind", "path"]) assert.ok(key in launcher, key);
   assert.equal(typeof nullAdapter.trustsCleanExit(launcher), "boolean");
   const probe = nullAdapter.probe(launcher);
   assert.deepEqual(Object.keys(probe).sort(), ["loggedIn", "models", "version"]);
@@ -34,8 +34,8 @@ test("the null adapter implements every A5 member with the frozen shapes", () =>
     const turn = nullAdapter.buildTurn({ verb: "ask", jobId: "abcdefghij123456", jobDir: dir, model: "null-model", effort: "high", text: "t", contract: "c", thread: null, readOnly: true });
     for (const key of ["args", "env", "answerFile", "readOnly", "contractCarrier"]) assert.ok(key in turn, key);
     assert.ok("stdin" in turn || "promptFile" in turn, "stdin or promptFile");
-    const plan = nullAdapter.reviewPlan({ diff: "d" }, { adversarial: true });
-    assert.deepEqual(plan, { native: false, diff: "d", template: "adversarial-review", schemaCarrier: "none" });
+    const plan = nullAdapter.reviewPlan({ root: dir, target: null, collect: () => ({}) }, { adversarial: true });
+    assert.deepEqual(plan, { native: false, template: "adversarial-review", schemaCarrier: "none" }, "the core collects the diff; the plan names the template");
     const result = nullAdapter.finalizeReview({ answerText: "", structured: null, unreviewed: [] });
     assert.deepEqual(["coverage", "findings", "incomplete", "verdict"].every((k) => k in result), true);
   } finally { rmSync(dir, { recursive: true, force: true }); }

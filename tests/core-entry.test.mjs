@@ -121,7 +121,7 @@ test("provider selection: --to is required, checked, and a provider outside this
     assert.equal(plain.code, 2);
     assert.match(plain.err, /--to must be one of codex, gemini, grok/, "the null adapter exists only in test mode");
     assert.deepEqual(providerNames({}), ["codex", "gemini", "grok"]);
-    assert.deepEqual(providerNames({ COUNCIL_TEST_NULL_ADAPTER: "1" }), ["codex", "gemini", "grok", "null"]);
+    assert.deepEqual(providerNames({ COUNCIL_TEST_NULL_ADAPTER: "1" }), ["codex", "gemini", "grok", "null", "null2"]);
   } finally { h.done(); }
 });
 
@@ -298,9 +298,7 @@ test("request id: a claim released when preparation fails, so the same id may ru
     const fail = await h.call(["ask", "--to", "null", "--session", "s1", "--request-id", "prep", "--model", "fast", "--effort", "bogus", "--", "x"]);
     assert.equal(fail.code, 2);
     assert.equal(requestReserved(canonical(h.home), id), false, "released");
-    // the null adapter reads its switches from process.env, like its profile
-    process.env.COUNCIL_NULL_NO_WEB = "1";
-    const web = await h.call(["ask", "--to", "null", "--session", "s1", "--request-id", "prep", "--web", "--", "x"]).finally(() => { delete process.env.COUNCIL_NULL_NO_WEB; });
+    const web = await h.call(["ask", "--to", "null", "--session", "s1", "--request-id", "prep", "--web", "--", "x"], { env: { COUNCIL_NULL_NO_WEB: "1" } });
     assert.equal(web.code, 2);
     assert.match(web.err, /--web has no tested mapping for null/, "an adapter's checkRequest refuses before any job");
     assert.equal(requestReserved(canonical(h.home), id), false);
@@ -311,7 +309,7 @@ test("request id: a claim released when preparation fails, so the same id may ru
   } finally { h.done(); }
 });
 
-test("request id: reply --last replay recovers the original provider and job after another job became the latest, or the tiers and catalog changed", async () => {
+test("request id: reply --last replay recovers the original provider and job after another provider's job became the latest, or the tiers and catalog changed", async () => {
   const h = harness();
   try {
     const a = await h.call(["ask", "--to", "null", "--session", "s1", "--", "thread A"]);
@@ -319,18 +317,25 @@ test("request id: reply --last replay recovers the original provider and job aft
     const r = await h.call(["reply", "--session", "s1", "--last", "--request-id", "r-last", "--", "follow-up"]);
     assert.equal(r.code, 0, r.err);
     const replyJob = h.jobOf(r.err);
-    assert.match(r.err, new RegExp(`thread=${threadA}`));
-    const b = await h.call(["ask", "--to", "null", "--session", "s1", "--", "thread B"]);
-    assert.notEqual(/thread=([0-9a-f-]{36})/.exec(b.err)[1], threadA);
+    assert.match(r.err, new RegExp(`provider=null job=${replyJob} thread=${threadA}`));
+    const b = await h.call(["ask", "--to", "null2", "--session", "s1", "--", "thread B on another provider"]);
+    assert.match(b.err, /provider=null2 /);
     mkdirSync(join(h.home, "catalog"), { recursive: true });
     writeFileSync(join(h.home, "catalog", "null.json"), JSON.stringify({ updatedAt: "2026-11-01T00:00:00Z", models: { "null-model": [] } }));
     const spawned = h.spawns().length;
-    process.env.COUNCIL_NULL_CONSULT = "null-fast/low";
-    const replay = await h.call(["reply", "--session", "s1", "--last", "--request-id", "r-last", "--", "follow-up"]).finally(() => { delete process.env.COUNCIL_NULL_CONSULT; });
+    const replay = await h.call(["reply", "--session", "s1", "--last", "--request-id", "r-last", "--", "follow-up"], { env: { COUNCIL_NULL_CONSULT: "null-fast/low" } });
     assert.equal(replay.code, 0, replay.err);
-    assert.equal(h.jobOf(replay.out), replyJob, "the original job, not one on thread B");
-    assert.match(replay.out, / · null-model\/high · /, "the original resolution, not the changed tiers or catalog");
+    assert.equal(h.jobOf(replay.out), replyJob, "the original null job, not one on null2's thread");
+    assert.match(replay.out, /^council null ok · .* · null-model\/high · /m, "the original provider and resolution, not the changed tiers or catalog");
     assert.equal(h.spawns().length, spawned, "nothing spawned");
+    // S2.8 F3: changed input under the same id never claims a second job under the newly latest provider
+    const changed = await h.call(["reply", "--session", "s1", "--last", "--request-id", "r-last", "--", "different follow-up"]);
+    assert.equal(changed.code, 2);
+    assert.match(changed.err, /request id r-last was already used with different input; use a new request id/);
+    assert.equal(h.spawns().length, spawned, "no second child");
+    const otherProvider = await h.call(["ask", "--to", "null2", "--session", "s1", "--request-id", "r-last", "--", "follow-up"]);
+    assert.equal(otherProvider.code, 2, "the id is bound to null for this session and workspace");
+    assert.equal(h.jobs().filter((j) => j === replyJob).length, 1);
   } finally { h.done(); }
 });
 
@@ -514,7 +519,7 @@ test("models and setup: unavailable providers reported, null probed and refreshe
     const setup = await h.call(["setup", "--json"]);
     assert.equal(setup.code, 0);
     const rows = JSON.parse(setup.out);
-    assert.deepEqual(rows.map((r) => [r.provider, r.available]), [["codex", false], ["gemini", false], ["grok", false], ["null", true]]);
+    assert.deepEqual(rows.map((r) => [r.provider, r.available]), [["codex", false], ["gemini", false], ["grok", false], ["null", true], ["null2", true]]);
     const nul = rows.find((r) => r.provider === "null");
     assert.deepEqual([nul.ready, nul.version, nul.loggedIn, nul.launcher.kind], [true, "null 0.0.0", true, "node-script"]);
     assert.deepEqual(nul.tiers, { consult: "null-model/high", exec: "null-fast/medium", deep: "null-model/xhigh" });

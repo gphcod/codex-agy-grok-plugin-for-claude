@@ -27,21 +27,26 @@ import { pathCandidates } from "./lib/core/launcher.mjs";
 export { VERBS };
 /** Display names of the provider binaries, for `setup` when a provider module is not in this build. */
 export const BINARIES = { codex: "codex", gemini: "agy", grok: "grok" };
-const NULL_ADAPTER = path.resolve(PLUGIN_ROOT, "..", "..", "tests", "fixtures", "null-adapter.mjs");
-/** Options that never change what runs (codex-plugin-cc lib/requests.mjs NOT_INPUTS, plus wait's timeout). */
-const NOT_INPUTS = new Set(["json", "request-id", "session", "timeout"]);
+const FIXTURES = path.resolve(PLUGIN_ROOT, "..", "..", "tests", "fixtures");
+/** Test-only providers: two ids, so cross-provider paths can be tested without a real provider module. */
+const TEST_PROVIDERS = { null: "null-adapter.mjs", null2: "null2-adapter.mjs" };
+/**
+ * Options that never change what runs: output, scope and timing (codex-plugin-cc lib/requests.mjs:10,
+ * plus wait's timeout and the two turn timers), so a retry with a longer deadline replays.
+ */
+const NOT_INPUTS = new Set(["json", "request-id", "session", "timeout", "deadline", "inactivity-timeout"]);
 const REVIEW_ONLY = ["base", "commit", "uncommitted", "adversarial"];
 
 export const USAGE = `usage: council <${VERBS.join("|")}> [--options] [-- text] (text on stdin otherwise)`;
 
 // --- provider registry -------------------------------------------------------------------------------
 
-/** codex, gemini, grok; plus `null` only when COUNCIL_TEST_NULL_ADAPTER=1. */
+/** codex, gemini, grok; plus the test providers `null` and `null2` only when COUNCIL_TEST_NULL_ADAPTER=1. */
 export function providerNames(env) {
-  return env.COUNCIL_TEST_NULL_ADAPTER === "1" ? [...PROVIDERS, "null"] : [...PROVIDERS];
+  return env.COUNCIL_TEST_NULL_ADAPTER === "1" ? [...PROVIDERS, ...Object.keys(TEST_PROVIDERS)] : [...PROVIDERS];
 }
 export function adapterFile(provider, env) {
-  if (provider === "null") return env.COUNCIL_TEST_NULL_ADAPTER === "1" ? NULL_ADAPTER : null;
+  if (Object.hasOwn(TEST_PROVIDERS, provider)) return env.COUNCIL_TEST_NULL_ADAPTER === "1" ? path.join(FIXTURES, TEST_PROVIDERS[provider]) : null;
   return path.join(PLUGIN_ROOT, "scripts", "lib", "providers", `${provider}.mjs`);
 }
 function checkProvider(provider, env) {
@@ -60,8 +65,8 @@ export async function loadAdapter(provider, env) {
 export function catalogFor(home, adapter) {
   return loadCatalog(home, adapter.id, PROVIDERS.includes(adapter.id) ? {} : { staticEntry: adapter.catalog ?? {} });
 }
-export function tiersFor(adapter) {
-  return PROVIDERS.includes(adapter.id) ? loadTiers() : { [adapter.id]: adapter.tiers };
+export function tiersFor(adapter, env = {}) {
+  return PROVIDERS.includes(adapter.id) ? loadTiers() : { [adapter.id]: typeof adapter.tiersFor === "function" ? adapter.tiersFor(env) : adapter.tiers };
 }
 
 // --- request identity (A7.4) ---------------------------------------------------------------------------
@@ -72,16 +77,22 @@ export function fingerprint(verb, o, text) {
   return createHash("sha256").update(JSON.stringify([verb, inputs, text])).digest("hex");
 }
 /**
- * A request id's earlier claim with the same raw inputs, found under any provider binding, so a
- * retry recovers its provider before `--last`, the catalog or the tiers are evaluated again.
+ * A request id's existing binding in this session and workspace, under any provider, so a retry
+ * recovers its provider before `--last`, the catalog or the tiers are evaluated again. A binding with
+ * the same raw inputs is replayed; any other binding of the id means changed input (exit 2), never a
+ * second claim under whichever provider the changed call would resolve to.
  */
 export function findPriorRequest(ctx, requestId, fp) {
+  const found = [];
   for (const provider of providerNames(ctx.env)) {
     const id = requestJobId(provider, ctx.session, ctx.cwd, requestId);
     const tombstone = loadTombstone(ctx.home, id);
     const reservation = requestReserved(ctx.home, id) ? loadRequest(ctx.home, id) : null;
-    if ((tombstone ?? reservation)?.fingerprint === fp) return { id, fresh: false, tombstone, reservation, provider };
+    if (tombstone || reservation) found.push({ id, fresh: false, tombstone, reservation, provider, fingerprint: (tombstone ?? reservation)?.fingerprint });
   }
+  const match = found.find((r) => r.fingerprint === fp);
+  if (match) return match;
+  if (found.length) throw new UsageError(`request id ${requestId} was already used with different input; use a new request id`);
   return null;
 }
 
@@ -146,7 +157,7 @@ export function prepareRequest(ctx, adapter, verb, o, text, target, memo) {
   const tier = o.tier ?? (verb === "task" ? "exec" : undefined);
   if (tier !== undefined && !TIERS.includes(tier)) throw new UsageError(`--tier must be one of ${TIERS.join(", ")}`);
   const resolved = resolveTier(provider, tier, { model: o.model, effort: o.effort }, catalog, {
-    tiers: tiersFor(adapter), inherited: verb === "reply" ? thread : null, tierExplicit: o.tier !== undefined,
+    tiers: tiersFor(adapter, ctx.env), inherited: verb === "reply" ? thread : null, tierExplicit: o.tier !== undefined,
   });
   const roundsSet = o.rounds !== undefined || thread?.roundsSet === true;
   const rounds = o.rounds !== undefined ? roundCount(o.rounds, "--rounds") : roundsSet ? thread.rounds
@@ -155,7 +166,8 @@ export function prepareRequest(ctx, adapter, verb, o, text, target, memo) {
     verb, provider, cwd: ctx.cwd, session: ctx.session ?? null, tier: resolved.tier, model: resolved.model, modelVerified: resolved.modelVerified,
     effort: resolved.effort, requestedEffort: resolved.requestedEffort ?? resolved.effort, thread, readOnly: verb !== "task", text,
     contract: memo.contract ??= fs.readFileSync(path.join(PLUGIN_ROOT, "contract.md"), "utf8").replace(/\r\n?/g, "\n").trim(),
-    web: Boolean(o.web), adversarial: Boolean(o.adversarial), deadline: seconds(o.deadline, DEADLINE_S, "deadline"),
+    // --web is inherited from the thread unless given explicitly (grok-build grok.mjs:142).
+    web: o.web !== undefined ? Boolean(o.web) : Boolean(thread?.web), adversarial: Boolean(o.adversarial), deadline: seconds(o.deadline, DEADLINE_S, "deadline"),
     rounds, roundsSet, round: verb === "review" ? null : thread ? (thread.round ?? 0) + 1 : 1,
     target: null, reviewTarget: null, reviewNative: null, reviewPrompt: null, reviewed: [], unreviewed: [],
   };
@@ -184,6 +196,9 @@ async function runTurn(ctx, io, verb, o, text, literal, hooks) {
   // Every argument is checked before a request id is claimed: a rejected call leaves nothing behind.
   const timers = { inactivityMs: seconds(o["inactivity-timeout"], INACTIVITY_S, "inactivity-timeout") * 1000, deadlineMs: seconds(o.deadline, DEADLINE_S, "deadline") * 1000 };
   for (const flag of REVIEW_ONLY) if (o[flag] !== undefined && verb !== "review") throw new UsageError(`--${flag} applies to review`);
+  // A review starts no thread, so it has no round budget; and it reads the collected diff, never the web (grok-build refused --web on reviews).
+  if (verb === "review" && o.rounds !== undefined) throw new UsageError("--rounds does not apply to review");
+  if (verb === "review" && o.web !== undefined) throw new UsageError("--web does not apply to review");
   if (o.refresh !== undefined) throw new UsageError("--refresh applies to models");
   if (o.rounds !== undefined) roundCount(o.rounds, "--rounds");
   const requestId = o["request-id"];
@@ -208,7 +223,7 @@ async function runTurn(ctx, io, verb, o, text, literal, hooks) {
   let initial;
   try {
     initial = prepareRequest(ctx, adapter, verb, o, text, target, memo);
-    adapter.checkRequest?.(initial);
+    adapter.checkRequest?.(initial, ctx.env);
     if (claimed) markRequestPrepared(ctx.home, claimed.id, { provider: adapter.id, requestId, fingerprint: fp, session: ctx.session, cwd: ctx.cwd, verb });
   } catch (error) {
     if (claimed) releaseRequest(ctx.home, claimed.id); // Nothing ran: a retry may.
@@ -235,12 +250,12 @@ async function runModels(ctx, io, o, refs) {
       try {
         const launcher = adapter.resolveLauncher(ctx.env, process.platform);
         if (!launcher) throw new Error(`${provider} not found; set ${adapter.binEnv}`);
-        refreshCatalog(ctx.home, provider, adapter.probe(launcher));
+        refreshCatalog(ctx.home, provider, adapter.probe(launcher, ctx.env));
       } catch (error) { refreshError = error.message; }
     }
     const catalog = catalogFor(ctx.home, adapter);
     const models = { ...Object.fromEntries(Object.entries(catalog.families ?? {})), ...catalog.models };
-    rows.push({ provider, available: true, source: catalog.source, updatedAt: catalog.updatedAt, models, aliases: catalog.aliases, tiers: tiersFor(adapter)[provider], refreshError });
+    rows.push({ provider, available: true, source: catalog.source, updatedAt: catalog.updatedAt, models, aliases: catalog.aliases, tiers: tiersFor(adapter, ctx.env)[provider], refreshError });
   }
   if (o.json) io.out(`${JSON.stringify(rows)}\n`);
   else for (const r of rows) {
@@ -267,12 +282,12 @@ async function runSetup(ctx, io, o, refs) {
       const launcher = adapter.resolveLauncher(ctx.env, process.platform);
       if (!launcher) throw new Error(`${provider} not found; set ${adapter.binEnv}`);
       row.launcher = { kind: launcher.kind, path: launcher.path };
-      const probe = adapter.probe(launcher);
+      const probe = adapter.probe(launcher, ctx.env);
       Object.assign(row, { version: probe.version ?? null, loggedIn: probe.loggedIn ?? null, ready: probe.loggedIn !== false });
       const catalog = catalogFor(ctx.home, adapter);
       row.catalog = { source: catalog.source, updatedAt: catalog.updatedAt, file: catalogPath(ctx.home, provider) };
       for (const t of TIERS) {
-        const r = resolveTier(provider, t, {}, catalog, { tiers: tiersFor(adapter) });
+        const r = resolveTier(provider, t, {}, catalog, { tiers: tiersFor(adapter, ctx.env) });
         row.tiers[t] = `${r.model}/${r.effort}${r.modelVerified ? "" : " (model unverified)"}`;
         if (!r.modelVerified) row.warnings.push(`tier ${t}: ${r.model} is not in the catalog`);
       }
@@ -323,6 +338,7 @@ export async function main(argv, env = process.env, io = {}, hooks = {}) {
     const ctx = { env, home: homeDir(env), cwd: canonical(io.cwd ?? process.cwd()), session };
     const sink = { out, err };
     if (TURN_VERBS.includes(verb)) return await runTurn(ctx, sink, verb, options, text, literal, hooks);
+    if ((verb === "wait" || verb === "cancel") && options.to !== undefined) checkProvider(options.to, env);
     if (verb === "wait") return await waitFor(ctx, options, positionals, out, { provider: options.to ?? null });
     if (verb === "cancel") return await cancelJob(ctx, options, positionals, out, { provider: options.to ?? null, controlFor: (job) => hooks.controlFor?.(job) ?? ownershipControl(ctx, job) });
     if (verb === "models") return await runModels(ctx, sink, options, positionals);

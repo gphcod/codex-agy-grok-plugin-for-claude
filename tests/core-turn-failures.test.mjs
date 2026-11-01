@@ -112,18 +112,18 @@ test("answers: none, blank, and open questions", async () => {
     const none = await run(s, { env: { COUNCIL_FAKE_ANSWER: "" } });
     assert.equal(none.job.code, 1);
     assert.equal(none.job.error, "null wrote no answer", "a stream profile with no text writes no answer file");
-    process.env.COUNCIL_NULL_OUTPUT = "answer-file";
-    try {
-      const blank = await run(s, { env: { COUNCIL_FAKE_ANSWER: "   \n" } });
+    {
+      const af = { COUNCIL_NULL_OUTPUT: "answer-file" };
+      const blank = await run(s, { env: { ...af, COUNCIL_FAKE_ANSWER: "   \n" } });
       assert.equal(blank.job.code, 1);
       assert.equal(blank.job.error, "null returned no answer");
-      const questions = await run(s, { env: { COUNCIL_FAKE_ANSWER: "Outcome: partly done.\nVerification: not run\nOpen questions: should the cache be per user?\nNext: none\n" } });
+      const questions = await run(s, { env: { ...af, COUNCIL_FAKE_ANSWER: "Outcome: partly done.\nVerification: not run\nOpen questions: should the cache be per user?\nNext: none\n" } });
       assert.equal(questions.job.code, 10, "open questions need Claude's attention");
       assert.equal(questions.job.outcome, "attention");
       assert.match(questions.answer, /should the cache be per user/);
-      const answered = await run(s, { env: { COUNCIL_FAKE_ANSWER: "Outcome: done.\nOpen questions: none\nNext: none\n" } });
+      const answered = await run(s, { env: { ...af, COUNCIL_FAKE_ANSWER: "Outcome: done.\nOpen questions: none\nNext: none\n" } });
       assert.equal(answered.job.code, 0);
-    } finally { delete process.env.COUNCIL_NULL_OUTPUT; }
+    }
   } finally { s.done(); }
 });
 
@@ -199,11 +199,9 @@ test("a stop whose ownership query throws records the failure instead of signall
 
 test("the answer-file profile ignores text deltas as the answer; prompt-file input is written before the spawn", async () => {
   const s = setup();
-  process.env.COUNCIL_NULL_OUTPUT = "answer-file";
-  process.env.COUNCIL_NULL_INPUT = "prompt-file";
   try {
     let before = null;
-    const { job, answer } = await run(s, { hooks: { beforeSpawn: (j) => { before = readFileSync(join(j.dir, "prompt.md"), "utf8"); } } });
+    const { job, answer } = await run(s, { env: { COUNCIL_NULL_OUTPUT: "answer-file", COUNCIL_NULL_INPUT: "prompt-file" }, hooks: { beforeSpawn: (j) => { before = readFileSync(join(j.dir, "prompt.md"), "utf8"); } } });
     assert.equal(job.code, 0, job.error);
     assert.equal(before, "<c/>\n\nhello");
     assert.equal(answer, `pong for job ${job.id}`);
@@ -212,7 +210,7 @@ test("the answer-file profile ignores text deltas as the answer; prompt-file inp
     assert.deepEqual(job.childArgs.slice(0, 2), ["--job", job.id], "the ownership operand is recorded");
     assert.equal(job.launcher.kind, "node-script");
     assert.ok(existsSync(join(job.dir, "events.jsonl")));
-  } finally { delete process.env.COUNCIL_NULL_OUTPUT; delete process.env.COUNCIL_NULL_INPUT; s.done(); }
+  } finally { s.done(); }
 });
 
 test("a resumed turn inherits nothing from a rejected attempt and records rounds on the thread", async () => {

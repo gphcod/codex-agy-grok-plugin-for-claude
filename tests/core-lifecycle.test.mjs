@@ -25,10 +25,8 @@ function setup(profile = {}, env = {}) {
   const baseEnv = { ...process.env, COUNCIL_FAKE_SPAWN_LOG: join(root, "spawns.log"), COUNCIL_NULL_ID: "preassigned", COUNCIL_NULL_INPUT: "stdin", COUNCIL_NULL_OUTPUT: "stream", ...env };
   for (const g of GUARD_VARS) delete baseEnv[g];
   for (const [k, v] of Object.entries(profile)) baseEnv[`COUNCIL_NULL_${k.toUpperCase()}`] = v;
-  // the adapter reads its profile from process.env; mirror it there for the duration of a test
-  const saved = {};
-  for (const k of ["COUNCIL_NULL_ID", "COUNCIL_NULL_INPUT", "COUNCIL_NULL_OUTPUT", "COUNCIL_NULL_TRUST"]) { saved[k] = process.env[k]; if (baseEnv[k] !== undefined) process.env[k] = baseEnv[k]; else delete process.env[k]; }
-  const restore = () => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } rmSync(root, { recursive: true, force: true }); };
+  // the adapter reads its profile from the environment the core passes it (ctx.env), never process.env
+  const restore = () => rmSync(root, { recursive: true, force: true });
   const ctx = { home, env: baseEnv, cwd, session: "sess-1" };
   const spawns = () => readFileSync(join(root, "spawns.log"), "utf8").split("\n").filter(Boolean).length;
   return { root, home, cwd, ctx, spawns, restore };

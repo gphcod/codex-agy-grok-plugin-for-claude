@@ -57,7 +57,7 @@ test("hasFlagOperand over argv rows and over raw macOS rows", () => {
 });
 
 test("ownsExecution delegates to the adapter; ownedExecution finds owned rows, descendants and group members", () => {
-  const job = { id: JOB, pid: 500, companionPid: 100, argv: ["node", "fake-child.mjs", "--job", JOB], execution: [] };
+  const job = { id: JOB, pid: 500, companionPid: 100, argv: ["node", "fake-child.mjs", "--job", JOB], execution: [], leader: { pid: 500, stamp: "20" } };
   assert.equal(ownsExecution({ argv: ["node", "fake-child.mjs", "--job", JOB] }, job, "linux", nullAdapter), true);
   assert.equal(ownsExecution({ argv: ["node", "x", "--job", "other"] }, job, "linux", nullAdapter), false);
   assert.equal(ownsExecution({ argv: ["node", "fake-child.mjs", "--job", JOB] }, job, "linux", null), false, "no adapter, no evidence");
@@ -71,7 +71,25 @@ test("ownsExecution delegates to the adapter; ownedExecution finds owned rows, d
   ];
   const found = ownedExecution(job, { state: "ok", rows }, "darwin", [], nullAdapter);
   assert.equal(found.state, "owned");
-  assert.deepEqual(found.rows.map((r) => r.pid).sort(), [500, 501, 502, 504].sort(), "child, its descendant, the reparented group member (A7.5), and a same-group child");
+  assert.deepEqual(found.rows.map((r) => r.pid).sort(), [500, 501, 502].sort(), "child, its descendant and the reparented group member (A7.5); a group member older than the leader is a reused pid");
+  // S2.8 F1: after pid/pgid reuse the recorded leader is someone else's process; its group is never adopted
+  const reused = [
+    { pid: 500, ppid: 1, group: 500, stamp: "90", raw: "/bin/sleep 600", argv: ["/bin/sleep", "600"], name: "sleep" },
+    { pid: 505, ppid: 1, group: 500, stamp: "91", raw: "/bin/sleep 601", argv: ["/bin/sleep", "601"], name: "sleep" },
+  ];
+  assert.deepEqual(ownedExecution(job, { state: "ok", rows: reused }, "darwin", [], nullAdapter), { state: "gone", rows: [] }, "a stale recorded identity adopts nothing");
+  const stillOurs = ownedExecution({ ...job, argv: [], leader: { pid: 500, stamp: "90" } }, { state: "ok", rows: reused }, "darwin", [], nullAdapter);
+  assert.deepEqual(stillOurs.rows.map((r) => r.pid).sort(), [500, 505], "with the live leader's creation time matching the record, its whole group is ours");
+  // S2.8 F1 clarification: macOS lstart stamps are parsed to epoch seconds
+  const lj = { id: JOB, pid: 700, companionPid: 100, argv: [], execution: [], leader: { pid: 700, stamp: "Sat Oct 31 12:00:00 2026" } };
+  const member = { pid: 701, ppid: 1, group: 700, stamp: "Sat Oct 31 12:00:05 2026", raw: "language-server", argv: null, name: "language-server" };
+  assert.deepEqual(ownedExecution(lj, { state: "ok", rows: [member] }, "darwin", [], nullAdapter).rows.map((r) => r.pid), [701], "a member reparented to pid 1 after the leader exited is owned");
+  const newLeader = { pid: 700, ppid: 1, group: 700, stamp: "Sat Oct 31 13:00:00 2026", raw: "/bin/sleep 600", argv: null, name: "sleep" };
+  assert.deepEqual(ownedExecution(lj, { state: "ok", rows: [newLeader, { ...member, stamp: "Sat Oct 31 13:00:01 2026" }] }, "darwin", [], nullAdapter).rows, [], "a live leader with the same pid and a newer creation time: a reused group");
+  assert.deepEqual(ownedExecution(lj, { state: "ok", rows: [{ ...member, stamp: "Sat Oct 31 11:59:59 2026" }] }, "darwin", [], nullAdapter).rows, [], "a member born before the recorded leader start is not ours");
+  assert.deepEqual(ownedExecution({ ...lj, leader: null }, { state: "ok", rows: [member] }, "darwin", [], nullAdapter).rows, [], "no recorded leader, no group adoption");
+  const evidence = ownedExecution(job, { state: "ok", rows: [{ pid: 506, ppid: 1, group: 500, stamp: "1", raw: `helper --job ${JOB}`, argv: ["helper", "--job", JOB], name: "helper" }] }, "darwin", [], nullAdapter);
+  assert.deepEqual(evidence.rows.map((r) => r.pid), [506], "a member with job-specific evidence is ours without its leader");
   const linux = ownedExecution(job, { state: "ok", rows: rows.map((r) => ({ ...r, group: undefined })) }, "linux", [], nullAdapter);
   assert.deepEqual(linux.rows.map((r) => r.pid).sort(), [500, 501], "without group data the reparented member is lost and the older-stamped child is not adopted");
   assert.deepEqual(ownedExecution(job, { state: "ok", rows: [rows[0], rows[4]] }, "linux", [], nullAdapter), { state: "gone", rows: [] });

@@ -118,7 +118,7 @@ test("Linux snapshot from /proc: argv, group, boot id, zombies skipped, exiting 
     const one = processSnapshot({ platform: "linux", proc, pid: 201 });
     assert.deepEqual(one.rows.map((r) => r.pid), [201]);
     assert.deepEqual(processSnapshot({ platform: "linux", proc, pid: 999 }).rows, [], "a vanished pid is an empty scoped table");
-    const owned = ownedExecution({ id: "j-1", pid: 200, companionPid: 100, argv: [], execution: [] }, snap, "linux", [], { ownsProcess: (row) => row.argv?.includes("j-1") });
+    const owned = ownedExecution({ id: "j-1", pid: 200, companionPid: 100, argv: [], execution: [], leader: { pid: 200, stamp: "1200", boot: "boot-123" } }, snap, "linux", [], { ownsProcess: (row) => row.argv?.includes("j-1") });
     assert.deepEqual(owned.rows.map((r) => r.pid).sort(), [200, 201, 203], "the reparented member of the child's process group is found too (A7.5)");
     assert.equal(processSnapshot({ platform: "linux", proc: join(proc, "missing") }).state, "unknown", "no boot id: unknown, never empty");
     assert.equal(nullAdapter.ownsProcess(child, { id: "j-1" }), true);

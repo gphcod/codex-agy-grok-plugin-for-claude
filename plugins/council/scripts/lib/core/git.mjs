@@ -49,7 +49,9 @@ export function defaultBranch(cwd) {
   const remote = head.status === 0 ? head.stdout.trim() : "";
   for (const ref of [remote, "refs/heads/main", "refs/remotes/origin/main", "refs/heads/master", "refs/remotes/origin/master", "refs/heads/trunk", "refs/remotes/origin/trunk"].filter(Boolean)) {
     const oid = oidOf(cwd, ref);
-    if (oid) return { ref: ref.replace(/^refs\/heads\//, ""), oid };
+    // The short name is for labels only; resolution keeps the fully qualified ref and its oid, so a
+    // tag with the branch's name never stands in for it (codex-plugin-cc lib/git.mjs:8).
+    if (oid) return { ref: ref.replace(/^refs\/heads\//, ""), qualified: ref, oid };
   }
   throw new UsageError("could not find the default branch; pass --base <ref>");
 }
@@ -84,10 +86,11 @@ function worktreeBase(cwd) {
 export function reviewTarget(cwd, { base, commit, uncommitted } = {}) {
   if ([base, commit, uncommitted].filter((v) => v !== undefined && v !== false).length > 1) throw new UsageError("choose only one of --base, --commit and --uncommitted");
   const root = repoRoot(cwd);
+  let fallback = null;
   if (base === undefined && commit === undefined && !uncommitted) {
     const status = checked(git(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]), "git status");
     if (status) uncommitted = true;
-    else base = defaultBranch(root).ref;
+    else fallback = defaultBranch(root);
   }
   if (commit !== undefined) {
     checkRef(commit, "--commit");
@@ -100,13 +103,16 @@ export function reviewTarget(cwd, { base, commit, uncommitted } = {}) {
     const label = merge ? `commit ${oid.slice(0, 12)} (merge; first-parent diff against ${parents[0].slice(0, 12)})` : `commit ${oid.slice(0, 12)}${parents.length ? "" : " (root commit)"}`;
     return { kind: "commit", root, ref: commit, oid, parents, merge, label, flags: ["--commit", commit], sentence: `Review the changes introduced by commit ${JSON.stringify(commit)}; run \`git show ${oid}\`.` };
   }
-  if (base !== undefined) {
-    checkRef(base, "--base");
-    const oid = oidOf(root, base);
+  if (base !== undefined || fallback) {
+    // An implicit base is the default branch already resolved: its qualified ref and oid, never the short name again.
+    const ref = fallback ? fallback.qualified : base;
+    if (!fallback) checkRef(base, "--base");
+    const oid = fallback ? fallback.oid : oidOf(root, base);
     if (!oid) throw new UsageError(`invalid --base ref ${JSON.stringify(base)}`);
+    const shown = fallback ? fallback.ref : base;
     const mb = git(root, ["merge-base", oid, "HEAD"]);
-    if (mb.status !== 0 || !OID.test(mb.stdout.trim())) throw new UsageError(`--base ${base} has no common ancestor with HEAD`);
-    return { kind: "base", root, ref: base, oid, base: mb.stdout.trim(), merge: false, parents: [], label: `branch against ${base} (${oid.slice(0, 12)}) plus working tree`, flags: ["--base", base], sentence: `Review the changes on this branch against ${JSON.stringify(base)}; run \`git diff ${oid}...HEAD\`.` };
+    if (mb.status !== 0 || !OID.test(mb.stdout.trim())) throw new UsageError(`--base ${shown} has no common ancestor with HEAD`);
+    return { kind: "base", root, ref: shown, qualified: ref, oid, base: mb.stdout.trim(), merge: false, parents: [], label: `branch against ${shown} (${oid.slice(0, 12)}) plus working tree`, flags: ["--base", ref], sentence: `Review the changes on this branch against ${JSON.stringify(shown)}; run \`git diff ${oid}...HEAD\`.` };
   }
   return { kind: "uncommitted", root, ref: null, oid: null, merge: false, parents: [], label: "working tree (staged, unstaged and untracked)", flags: ["--uncommitted"], sentence: "Review the uncommitted changes in this working tree (staged, unstaged and untracked); run `git status` and `git diff HEAD`." };
 }

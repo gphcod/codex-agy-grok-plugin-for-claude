@@ -3,10 +3,10 @@
 
 /** @typedef {"codex"|"gemini"|"grok"} ProviderId */
 /** @typedef {"native"|"node-script"|"shim-native"|"shim-node"} LauncherKind */
-/** @typedef {{command: string, args: string[], path: string, kind: LauncherKind}} Launcher */
+/** @typedef {{command: string, args: string[], path: string, kind: LauncherKind}} Launcher  an adapter may add its own fields */
 /** @typedef {{pid: number, ppid: number, stamp: string, raw: string|null, argv: string[]|null, name: string, group?: number, boot?: string, inaccessible?: boolean, exiting?: boolean}} ProcessRow */
 /** @typedef {{version: string|null, loggedIn: boolean|null, models: {id: string, efforts: string[]}[]}} Probe */
-/** @typedef {{provider: ProviderId, threadId: string, cwd: string, model: string, effort: string, tier: string, round: number, rounds: number, roundsSet?: boolean, agent?: string|null}} ThreadRecord */
+/** @typedef {{provider: ProviderId, threadId: string, cwd: string, model: string, effort: string, tier: string, round: number, rounds: number, roundsSet?: boolean, web?: boolean, agent?: string|null, readOnly?: boolean, lastJob?: string, lastVerb?: string, updatedAt?: string}} ThreadRecord */
 
 /**
  * @typedef {object} Request  What the core passes to buildTurn (plus jobId, jobDir) and checkRequest.
@@ -27,6 +27,7 @@
  * @property {boolean} adversarial
  * @property {number} deadline  seconds
  * @property {number} rounds
+ * @property {boolean} roundsSet  a budget someone set with --rounds, inherited by later turns
  * @property {number|null} round  null on review
  * @property {string|null} target  review label
  * @property {object|null} reviewTarget  git.mjs reviewTarget()
@@ -42,6 +43,7 @@
  * @property {Record<string,string>} env  additions; the core adds the four guard variables
  * @property {string} [stdin]
  * @property {string} [promptFile]  with promptText, written by the core before the spawn
+ * @property {string} [settingsPath]  a job-specific settings file the adapter wrote (Gemini)
  * @property {string} [promptText]
  * @property {string|null} answerFile  null: the answer is the streamed text
  * @property {boolean} readOnly
@@ -67,9 +69,14 @@
  * @property {string} [error]
  */
 
-/** @typedef {{severity: "BLOCKER"|"MAJOR"|"MINOR", file: string, line: number|null, lineEnd?: number, title: string, text: string, recommendation?: string}} Finding */
+/** @typedef {{severity: "BLOCKER"|"MAJOR"|"MINOR", file: string, line: number|null, lineEnd?: number, title: string, text: string, recommendation?: string, confidence?: number}} Finding */
 /** @typedef {{verdict: "approve"|"changes"|"incomplete", findings: Finding[], coverage: {reviewed: string[], unreviewed: string[]}, incomplete: string|null}} ReviewResult  A5.2 */
-/** @typedef {{native: true, flags: string[], stdin: string|null} | {native: false, diff: string, template: "review"|"adversarial-review", schemaCarrier: string}} ReviewPlan */
+/**
+ * @typedef {{native: true, flags: string[], stdin: string|null} | {native: false, template: "review"|"adversarial-review", schemaCarrier?: string, diff?: string}} ReviewPlan
+ * For the collected route the core collects the diff (gitInfo.collect()) and renders the template;
+ * `diff` and `schemaCarrier` are informational and optional — how the schema reaches the CLI is
+ * the adapter's buildTurn business.
+ */
 
 /**
  * @typedef {object} Adapter  A5, loaded from lib/providers/<id>.mjs by the entry.
@@ -79,15 +86,15 @@
  * @property {(launcher: Launcher) => boolean} trustsCleanExit
  * @property {(row: ProcessRow, job: object, platform: string) => boolean} ownsProcess  via hasFlagOperand
  * @property {number} maxLineBytes
- * @property {(launcher: Launcher) => Probe} probe
+ * @property {(launcher: Launcher, env: object) => Probe} probe
  * @property {object} catalog  this provider's models.json entry
- * @property {(request: Request & {jobId: string, jobDir: string}) => Turn} buildTurn
- * @property {(request: Request) => void} [checkRequest]  throws UsageError (exit 2) before any job
- * @property {(ctx: object) => void} [beforeTurn]
- * @property {(ctx: object, outcome: object) => void} [afterTurn]
+ * @property {(request: Request & {jobId: string, jobDir: string, env: object, launcher: Launcher}) => Turn} buildTurn  reads env and launcher from the request, never process.env
+ * @property {(request: Request, env: object) => void} [checkRequest]  throws UsageError (exit 2) before any job
+ * @property {(ctx: {job: object, request: Request, turn: Turn, home: string, env: object}) => void} [beforeTurn]  once, before the spawn; a throw fails the turn
+ * @property {(ctx: {job: object, request: Request, turn: Turn, home: string, env: object}, outcome: {outcome: string, code: number, error: string|null}) => void} [afterTurn]  once, after finalization with verified cleanup; independent of beforeTurn
  * @property {(line: string, state: object) => ParsedEvent|null} parseEvent
  * @property {(gitInfo: {root: string, target: object, collect: () => object}, request: Request) => ReviewPlan} reviewPlan
- * @property {(input: {answerText: string, structured: object|null, unreviewed: string[]}) => ReviewResult & {renderedText?: string, summary?: string, nextSteps?: string[]}} finalizeReview
+ * @property {(input: {answerText: string, answerFile: string|null, structured: object|null, unreviewed: string[]}) => ReviewResult & {renderedText?: string, summary?: string, nextSteps?: string[]}} finalizeReview  answerText is the whole stored answer
  */
 
 /** Exit codes (A3.4): done, needs attention, still running, failed/cancelled/busy, invalid input. */
