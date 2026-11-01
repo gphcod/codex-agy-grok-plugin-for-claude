@@ -87,7 +87,7 @@ export function inlineSchema() {
 export const NOTES = [
   "every turn ends with a process scan for anything still carrying the job's --prompt-file (no launcher kind is trusted to leave nothing behind)",
   "read-only turns run the explore agent (RESUME_DENY after a task), deny MCP tools and fail closed if a writing tool is advertised; web search is off unless --web",
-  "reviews run at the repository root (grok has no --add-dir) and answer in the inline review schema",
+  "reviews run at the repository root (grok sessions refuse --add-dir) and answer in the inline review schema",
 ];
 
 // --- adapter ---------------------------------------------------------------------------------------------
@@ -151,7 +151,8 @@ const adapter = {
     const plan = recipe(kind, { web: Boolean(request.web), defaultAgent: kind === "read-only" && sessionAgent(request.thread) === "default" });
     const threadId = resumed ?? randomUUID();
     const review = request.verb === "review";
-    // grok refuses --add-dir, so a review runs at the repository root, where the diff's paths resolve.
+    // grok 1.0.70 lists --add-dir but its sessions refuse it ("additionalDirectories is not supported"),
+    // so a review runs at the repository root, where the diff's root-relative paths resolve.
     const cwd = review ? request.reviewTarget?.root ?? request.cwd : request.cwd;
     const promptFile = path.join(request.jobDir, "prompt.md");
     const args = [
@@ -221,14 +222,19 @@ const adapter = {
       case "end": {
         if (readOnly && !g.toolChecked) return { fatal: "Grok ended before the read-only tool list was validated" };
         const returned = ev.sessionId ?? ev.session_id ?? null;
-        if (typeof returned !== "string" || !returned) return { fatal: "session not confirmed: Grok's end event named no session" };
         const expected = turn?.threadId ?? null;
-        if (expected && returned.toLowerCase() !== expected.toLowerCase()) return { fatal: `Grok answered on session ${JSON.stringify(returned)}, expected ${expected}` };
+        // Another session (or a malformed id) is fatal; a missing one keeps the answer but leaves the
+        // session unconfirmed and not resumable (milestone 3 review Q4).
+        if (returned !== null && returned !== "" && (typeof returned !== "string" || (expected && returned.toLowerCase() !== expected.toLowerCase()))) {
+          return { fatal: `Grok answered on session ${JSON.stringify(returned)}, expected ${expected}` };
+        }
         const stop = ev.stopReason ?? ev.stop_reason ?? null;
-        if (!NORMAL_STOPS.has(stop)) return { fatal: STOP_TEXT[stop] ?? `Grok stopped with reason ${JSON.stringify(stop)}` };
         const structured = ev.structuredOutput ?? ev.structured_output;
         return {
-          threadId: returned, completed: true,
+          completed: true,
+          ...(returned ? { threadId: returned } : { unconfirmed: UNCONFIRMED }),
+          // Any stop but end_turn keeps the answer and fails the turn as incomplete (exit 1).
+          ...(NORMAL_STOPS.has(stop) ? {} : { incomplete: `incomplete: ${STOP_TEXT[stop] ?? `Grok stopped with reason ${JSON.stringify(stop)}`}` }),
           ...(structured !== undefined && structured !== null ? { structured } : {}),
           ...(typeof ev.total_cost_usd === "number" ? { costUsd: ev.total_cost_usd } : {}),
           ...(ev.usage && typeof ev.usage === "object" ? { usage: ev.usage } : {}),
@@ -237,7 +243,7 @@ const adapter = {
       case "error":
         return { error: typeof ev.message === "string" ? ev.message.slice(0, 2000) : "Grok reported an error" };
       case "max_turns_reached":
-        return { fatal: "Grok stopped: max turns reached" };
+        return { incomplete: "incomplete: Grok stopped: max turns reached" };
       default:
         return {}; // thought, usage and anything new: activity, nothing to record.
     }
@@ -259,6 +265,8 @@ const adapter = {
 
 /** Stop reasons recorded as a finished turn; anything else is a failure. */
 export const NORMAL_STOPS = new Set(["end_turn"]);
+/** The footer hint for a turn whose end event named no session (core `unconfirmed`). */
+export const UNCONFIRMED = "session not confirmed: start a new ask";
 const STOP_TEXT = { cancelled: "Grok cancelled the turn (a tool needed permission headless Grok cannot ask for)" };
 const EDIT_TOOLS = new Set(["search_replace", "write"]);
 // Grok names MCP tools server__tool; a read-only turn that calls one fails.

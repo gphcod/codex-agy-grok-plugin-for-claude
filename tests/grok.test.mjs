@@ -342,3 +342,68 @@ test("setup --to grok and models --refresh --to grok through the fake", async ()
     assert.match(missing.out, /warning: grok not found; set COUNCIL_GROK_BIN/);
   } finally { h.done(); }
 });
+
+// --- session confirmation and stop reasons (S4.8, milestone 3 review Q4) ---------------------------------------
+
+const HINT = "session not confirmed: start a new ask";
+
+test("fresh ask whose end names no session: answer kept, exit 0, hint; reply on it exits 2 with the hint", async () => {
+  const h = harness();
+  try {
+    const r = await h.call(["ask", "--to", "grok", "--effort", "low"], { text: "q", env: { COUNCIL_FAKE_GROK_END: "no-session" } });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /^pong\n/);
+    assert.match(footer(r.out), new RegExp(`^council grok ok · job ${r.job} · grok-4\\.7/low · \\d+s · round 1/9 · ${HINT}$`));
+    const job = h.job(r.job);
+    assert.equal(job.threadId, null);
+    assert.equal(loadThread(canonical(h.home), "grok", job.requestedThreadId), null);
+    const reply = await h.call(["reply", "--thread", r.job], { text: "again", env: { COUNCIL_FAKE_SCENARIO: "resume" } });
+    assert.equal(reply.code, 2);
+    assert.equal(reply.err, `council: job ${r.job}: ${HINT}\n`);
+    const task = await h.call(["task", "--thread", r.job], { text: "do", env: { COUNCIL_FAKE_SCENARIO: "resume" } });
+    assert.equal(task.code, 2);
+    assert.match(task.err, new RegExp(`${HINT}\\n$`));
+  } finally { h.done(); }
+});
+
+test("resumed reply whose end names no session: exit 0 with the hint; the thread is no longer resumable", async () => {
+  const h = harness();
+  try {
+    const ask = await h.call(["ask", "--to", "grok", "--effort", "low"], { text: "q" });
+    const sid = h.job(ask.job).threadId;
+    const reply = await h.call(["reply", "--thread", ask.job, "--effort", "low"], { text: "q2", env: { COUNCIL_FAKE_SCENARIO: "resume", COUNCIL_FAKE_GROK_END: "no-session" } });
+    assert.equal(reply.code, 0, reply.out);
+    assert.match(reply.out, /^pong again\n/);
+    assert.match(footer(reply.out), new RegExp(` · round 2/9 · ${HINT}$`));
+    const record = loadThread(canonical(h.home), "grok", sid);
+    assert.deepEqual([record.resumable, record.unconfirmed], [false, HINT]);
+    for (const argv of [["reply", "--thread", ask.job], ["reply", "--thread", sid], ["reply", "--last"], ["task", "--thread", sid]]) {
+      const r = await h.call(argv, { text: "more", env: { COUNCIL_FAKE_SCENARIO: "resume" } });
+      assert.equal(r.code, 2, argv.join(" "));
+      assert.match(r.err, new RegExp(`${HINT}\\n$`), argv.join(" "));
+    }
+  } finally { h.done(); }
+});
+
+test("an end event naming another session fails (exit 1) and confirms nothing", async () => {
+  const h = harness();
+  try {
+    const r = await h.call(["ask", "--to", "grok", "--effort", "low"], { text: "q", env: { COUNCIL_FAKE_GROK_END: "other-session" } });
+    assert.equal(r.code, 1);
+    assert.match(footer(r.out), /error: Grok answered on session "00000000-0000-4000-8000-000000000000", expected [0-9a-f-]{36}$/);
+    assert.equal(h.job(r.job).threadId, null);
+  } finally { h.done(); }
+});
+
+test("a max-turns stop keeps the answer and exits 1 with incomplete: <reason>", async () => {
+  const h = harness();
+  try {
+    const r = await h.call(["ask", "--to", "grok", "--effort", "low"], { text: "q", env: { COUNCIL_FAKE_GROK_END: "max-turns" } });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /^pong\n/, "the answer is printed");
+    assert.match(footer(r.out), /^council grok failed · .* · error: incomplete: Grok stopped: max turns reached · next: reply [a-z0-9]{16}$/);
+    const job = h.job(r.job);
+    assert.equal(job.threadId, job.requestedThreadId, "the session was confirmed");
+    assert.equal(loadThread(canonical(h.home), "grok", job.threadId).resumable, undefined);
+  } finally { h.done(); }
+});

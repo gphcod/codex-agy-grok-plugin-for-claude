@@ -147,6 +147,7 @@ export function resolveTarget(ctx, verb, o) {
   if (job) {
     if (job.admitted === false) throw new UsageError(`job ${job.id} was not admitted; use the original thread`);
     if (job.verb === "review") throw new UsageError(`job ${job.id} is a review; reviews start no thread to reply to`);
+    if (job.unconfirmed) throw new UsageError(`job ${job.id}: ${job.unconfirmed}`);
     if (!job.threadId) throw new UsageError(`job ${job.id} has no ${job.provider} thread (it failed before one started)`);
     provider = job.provider;
     threadId = job.threadId;
@@ -155,6 +156,7 @@ export function resolveTarget(ctx, verb, o) {
   const record = loadThread(ctx.home, provider, threadId)
     ?? (job ? { provider, threadId, cwd: job.cwd, model: job.model, effort: job.effort, tier: job.tier, round: job.round, rounds: job.rounds, roundsSet: job.roundsSet } : null);
   if (!record) throw new UsageError(`no ${provider} thread ${threadId}`);
+  if (record.resumable === false) throw new UsageError(`${provider} thread ${threadId}: ${record.unconfirmed ?? "not resumable"}`);
   if (record.cwd && record.cwd !== ctx.cwd) throw new UsageError(`${provider} thread ${threadId} belongs to workspace ${record.cwd}; a thread is never adopted across workspaces`);
   return { provider, thread: { ...record, provider, threadId } };
 }

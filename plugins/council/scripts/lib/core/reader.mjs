@@ -24,7 +24,7 @@ export function createReader({ adapter, cwd = process.cwd(), turn = null, onThre
   const state = {
     threadId: null, completed: false, failed: null, error: null, denied: null, incomplete: null, structured: null,
     edited: new Set(), failedCommands: [], failedCommandCount: 0, costUsd: null, usage: null, lastEvent: null, lastTool: null, events: 0, hasText: false,
-    turn,
+    unconfirmed: null, turn,
   };
   const decoder = new StringDecoder("utf8");
   let buffer = "", bytes = 0, broken = false;
@@ -62,6 +62,8 @@ export function createReader({ adapter, cwd = process.cwd(), turn = null, onThre
     if (ev.toolStep !== undefined) state.lastTool = ev.toolStep;
     if (ev.completed) state.completed = true;
     if (ev.denied) state.denied ??= typeof ev.denied === "string" ? ev.denied : "the provider denied an action";
+    // The turn finished but the provider never confirmed its thread: the answer stands, the thread is not resumable.
+    if (ev.unconfirmed) state.unconfirmed ??= typeof ev.unconfirmed === "string" ? ev.unconfirmed : "thread not confirmed: start a new ask";
     if (ev.incomplete) state.incomplete ??= typeof ev.incomplete === "string" ? ev.incomplete : "the turn ended incomplete";
     if (ev.structured !== undefined) state.structured = ev.structured;
     if (ev.error) state.error = String(ev.error).slice(0, 2000);
