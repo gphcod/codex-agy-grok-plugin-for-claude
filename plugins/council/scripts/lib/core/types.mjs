@@ -5,7 +5,7 @@
 /** @typedef {"native"|"node-script"|"shim-native"|"shim-node"} LauncherKind */
 /** @typedef {{command: string, args: string[], path: string, kind: LauncherKind}} Launcher  an adapter may add its own fields */
 /** @typedef {{pid: number, ppid: number, stamp: string, raw: string|null, argv: string[]|null, name: string, group?: number, boot?: string, inaccessible?: boolean, exiting?: boolean}} ProcessRow */
-/** @typedef {{version: string|null, loggedIn: boolean|null, models: {id: string, efforts: string[]}[]}} Probe */
+/** @typedef {{version: string|null, loggedIn: boolean|null, models: {id: string, efforts: string[]}[]|null, notes?: string[], warnings?: string[]}} Probe  setup prints notes and warnings (S3) */
 /** @typedef {{provider: ProviderId, threadId: string, cwd: string, model: string, effort: string, tier: string, round: number, rounds: number, roundsSet?: boolean, web?: boolean, agent?: string|null, readOnly?: boolean, lastJob?: string, lastVerb?: string, updatedAt?: string}} ThreadRecord */
 
 /**

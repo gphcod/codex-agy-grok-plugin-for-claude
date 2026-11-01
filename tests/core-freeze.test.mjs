@@ -59,6 +59,26 @@ test("test seam: COUNCIL_TEST_ABSENT_PROVIDERS hides real provider modules only 
   await assert.rejects(loadAdapter("codex", hidden), /provider codex not available in this build/);
 });
 
+test("setup prints a probe's notes and warnings; they never change readiness", async () => {
+  const root = mkdtempSync(join(tmpdir(), "council-setup-notes-"));
+  try {
+    const env = { ...process.env, COUNCIL_TEST_NULL_ADAPTER: "1", COUNCIL_HOME: join(root, "home"), COUNCIL_NULL_PROBE_NOTE: "mcp: inherit (default)" };
+    const run = async (argv, extra = {}) => {
+      let out = "";
+      const stdin = new PassThrough(); stdin.end("");
+      const code = await main(argv, { ...env, ...extra }, { stdout: { write: (s) => { out += s; return true; } }, stderr: { write: () => true }, stdin, cwd: root });
+      return { code, out };
+    };
+    const text = await run(["setup", "--to", "null"]);
+    assert.equal(text.code, 0);
+    assert.match(text.out, /^null: ready .*\n  catalog: static\n  tiers: .*\n  note: mcp: inherit \(default\)\n  warning: null probe warning\n$/);
+    const [row] = JSON.parse((await run(["setup", "--to", "null", "--json"])).out);
+    assert.deepEqual([row.ready, row.notes, row.warnings], [true, ["mcp: inherit (default)"], ["null probe warning"]]);
+    const [plain] = JSON.parse((await run(["setup", "--to", "null", "--json"], { COUNCIL_NULL_PROBE_NOTE: "" })).out);
+    assert.deepEqual([plain.notes, plain.warnings], [[], []]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("state layout after one turn: jobs/<16 chars>/{meta.json,beat,done,answer.md,events.jsonl}, claims/, threads/<provider>-<id>.json", async () => {
   const root = mkdtempSync(join(tmpdir(), "council-layout-"));
   try {

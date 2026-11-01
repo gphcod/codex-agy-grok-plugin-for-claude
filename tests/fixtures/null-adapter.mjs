@@ -40,7 +40,9 @@ const adapter = {
   ownsProcess(row, job, platform) { return hasFlagOperand(row, "--job", job.id, job, platform, ["fake-child.mjs"]); },
   maxLineBytes: 64 * 1024,
   probe(launcher, env = {}) {
-    return { version: "null 0.0.0", loggedIn: true, models: [{ id: "null-model", efforts: EFFORTS }, { id: "null-fast", efforts: ["low", "medium"] }] };
+    // COUNCIL_NULL_PROBE_NOTE: the provider-specific setup lines a real probe may add (notes, warnings).
+    const extra = env.COUNCIL_NULL_PROBE_NOTE ? { notes: [env.COUNCIL_NULL_PROBE_NOTE, ""], warnings: ["null probe warning", 7] } : {};
+    return { version: "null 0.0.0", loggedIn: true, models: [{ id: "null-model", efforts: EFFORTS }, { id: "null-fast", efforts: ["low", "medium"] }], ...extra };
   },
   catalog: { models: { "null-model": EFFORTS, "null-fast": ["low", "medium"] }, aliases: { fast: "null-fast" }, sharedEnum: EFFORTS, passThrough: [] },
   tiers: { consult: { model: "null-model", effort: "high" }, exec: { model: "null-fast", effort: "medium" }, deep: { model: "null-model", effort: "xhigh" } },

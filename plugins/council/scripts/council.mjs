@@ -300,13 +300,17 @@ async function runSetup(ctx, io, o, refs) {
     let adapter = null;
     try { adapter = await loadAdapter(provider, ctx.env); }
     catch (error) { if (!(error instanceof UsageError)) throw error; rows.push({ provider, available: false, ready: false, binary, error: error.message }); continue; }
-    const row = { provider, available: true, ready: false, binary, launcher: null, version: null, loggedIn: null, catalog: null, tiers: {}, warnings: [] };
+    const row = { provider, available: true, ready: false, binary, launcher: null, version: null, loggedIn: null, catalog: null, tiers: {}, notes: [], warnings: [] };
     try {
       const launcher = adapter.resolveLauncher(ctx.env, process.platform);
       if (!launcher) throw new Error(`${provider} not found; set ${adapter.binEnv}`);
       row.launcher = { kind: launcher.kind, path: launcher.path };
       const probe = adapter.probe(launcher, ctx.env);
       Object.assign(row, { version: probe.version ?? null, loggedIn: probe.loggedIn ?? null, ready: probe.loggedIn !== false });
+      // A provider's own setup lines (A5.1: Codex states its MCP trade-off) and probe warnings.
+      const lines = (v) => (Array.isArray(v) ? v : []).filter((x) => typeof x === "string" && x.trim());
+      row.notes.push(...lines(probe.notes));
+      row.warnings.push(...lines(probe.warnings));
       const catalog = catalogFor(ctx.home, adapter);
       row.catalog = { source: catalog.source, updatedAt: catalog.updatedAt, file: catalogPath(ctx.home, provider) };
       for (const t of TIERS) {
@@ -323,6 +327,7 @@ async function runSetup(ctx, io, o, refs) {
     io.out(`${r.provider}: ${r.ready ? "ready" : "not ready"}${r.launcher ? ` · ${r.launcher.path} (${r.launcher.kind})` : ""}${r.version ? ` · ${r.version}` : ""}${r.loggedIn === null ? "" : ` · ${r.loggedIn ? "logged in" : "not logged in"}`}\n`);
     if (r.catalog) io.out(`  catalog: ${r.catalog.source}${r.catalog.updatedAt ? ` (${r.catalog.updatedAt})` : ""}\n`);
     if (Object.keys(r.tiers).length) io.out(`  tiers: ${Object.entries(r.tiers).map(([t, v]) => `${t} ${v}`).join(" · ")}\n`);
+    for (const n of r.notes ?? []) io.out(`  note: ${n}\n`);
     for (const w of r.warnings) io.out(`  warning: ${w}\n`);
   }
   return rows.some((r) => r.available && !r.ready) ? 1 : 0;
