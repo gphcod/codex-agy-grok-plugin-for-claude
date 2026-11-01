@@ -35,4 +35,22 @@ Exit 0, 5.6 s wall clock.
 
 - Both review routes produced Codex's `[P1]` form, mapped to MAJOR with the absolute path Codex prints.
 - The focused review took about 20 s, the unfocused one about the same; a `--effort low` ask takes 4 to 6 s.
-- Not run: `task` (it edits a working tree, a **[user]** action), `COUNCIL_CODEX_MCP=off` against the real CLI (the S1.1 count of two discovery calls is asserted against the fake in S3.4), Windows (S7.2).
+- Not run here: `task` (it edits a working tree, a **[user]** action; run on 2026-11-01, see below), `COUNCIL_CODEX_MCP=off` against the real CLI (the S1.1 count of two discovery calls is asserted against the fake in S3.4), Windows (S7.2).
+
+## S7.1 live task (2026-11-01)
+
+Run directly through `council.mjs`, not yet through the installed plugin (that is the S7.1 matrix proper). A scratch driver created a throwaway Git repository holding `calc.js`, whose `sum` started its loop at index 1, and a temporary `COUNCIL_HOME`. It ran three calls in order:
+
+1. `task --to codex --effort low --request-id live-task-codex -- <fix the bug in calc.js, then run node -e "…sum([1,2]) === 3…" and report the exit code>`.
+2. `reply --thread <task job> --effort low -- Now edit calc.js: append the comment line // reviewed …`. A reply is read-only, also after a task.
+3. The task command again with the same request id, which must replay the stored result without a second CLI.
+
+The task tier defaulted to `exec`; `--effort low` overrode its effort.
+
+| Call | Exit | Time | Footer |
+|---|---|---|---|
+| task | 0 | 9.0 s | `council codex ok · job a2d9affed70355eb · gpt-6-luna/low · 9s · round 1/9 · edited 1 · next: reply a2d9affed70355eb` |
+| read-only reply | 0 | 8.8 s | `council codex ok · job 7j0pc5jf9abxzfqg · gpt-6-luna/low · 9s · round 2/9 · next: reply 7j0pc5jf9abxzfqg` |
+| replay | 0 | 33 ms | the task's footer again, same job id |
+
+The fix was correct (the check exits 0) and `calc.js` was the only changed file. The reply left `calc.js` unchanged and exited 0, which is correct. Codex ran only `cat calc.js` and then declined, citing its read-only sandbox. Its answer says "the edit was rejected", but the stream holds no rejected `file_change` or command, so council records no denial.

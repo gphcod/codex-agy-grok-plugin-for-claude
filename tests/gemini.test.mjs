@@ -5,7 +5,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import gemini, { WEB_NOTE, tierWarnings, BINARIES, MAX_FRAME_BYTES, WINDOWS_UNSUPPORTED, checkGeminiRequest, globalSettingsPath, modelArgs, printTimeout, probeAgy, readGlobalPolicy, sessionSettings, settingsPathOf, firstJsonObject, describeToolStep, describeStepError, isDenialStep } from "../plugins/council/scripts/lib/providers/gemini.mjs";
+import gemini, { WEB_NOTE, tierWarnings, BINARIES, MAX_FRAME_BYTES, WINDOWS_UNSUPPORTED, checkGeminiRequest, globalSettingsPath, modelArgs, printTimeout, probeAgy, readGlobalPolicy, sessionSettings, settingsPathOf, firstJsonObject, describeToolStep, describeStepError, isDenialStep, stepCounters } from "../plugins/council/scripts/lib/providers/gemini.mjs";
 import { DEADLINE_S } from "../plugins/council/scripts/lib/core/lifecycle.mjs";
 import { createReader } from "../plugins/council/scripts/lib/core/reader.mjs";
 import { finalizeReviewTurn } from "../plugins/council/scripts/lib/core/review.mjs";
@@ -353,6 +353,36 @@ test("structured output: structured_output, else the first JSON object of the an
   assert.deepEqual(firstJsonObject('{ "a": { {"b":1}'), { b: 1 });
   assert.equal(firstJsonObject(null), null);
   assert.equal(firstJsonObject('{"s":"\\"}"}').s, '"}', "escaped quotes inside strings");
+});
+
+test("captured task (2026-11-01): a completed edit_file counts as edited; the passing run_command is no failure", () => {
+  const { state, answer } = read(captured("task-edit.jsonl"));
+  assert.equal(state.failed, null);
+  assert.equal(state.completed, true);
+  assert.equal(state.denied, null);
+  assert.equal(state.incomplete, null);
+  assert.deepEqual([...state.edited], ["<scratch>/repo/calc.js"], "one ACTIVE and one DONE step for one file count once");
+  assert.equal(state.failedCommandCount, 0);
+  assert.match(answer, /^Fixed the bug in \[calc\.js\]/);
+});
+
+test("tool-step counters: write tools by any path key, failed or non-zero run_command, read-only writes reported", () => {
+  const step = (tool_name, state, parameters, extra = {}) => ({ event: "step_update", step_update: { conversation_id: CID, step_index: 4, state, step_type: "tool", tool_name, tool_info: { name: tool_name, parameters, ...extra } } });
+  const writes = read([init, step("write_to_file", "DONE", { TargetFile: "/r/a.js" }), step("replace_file_content", "DONE", { AbsolutePath: "/r/b.js" }), step("edit_file", "ACTIVE", { Path: "/r/c.js" }), step("view_file", "DONE", { AbsolutePath: "/r/d.js" }), ok()]);
+  assert.deepEqual([...writes.state.edited].sort(), ["/r/a.js", "/r/b.js"], "ACTIVE steps and read tools are not edits");
+  assert.deepEqual(stepCounters(step("edit_file", "DONE", {}).step_update), { write: "edit_file" }, "a write with no path key is not counted");
+  const cmds = read([init,
+    step("run_command", "DONE", { CommandLine: "npm test" }, { output: "Command exited with code 1.\n\nfail" }),
+    step("run_command", "DONE", { CommandLine: "node ok.js" }, { output: "Command exited with code 0." }),
+    step("run_command", "ERROR", { CommandLine: "make" }, { error: { type: "TOOL_ERROR", message: "spawn failed" } }), ok()]);
+  assert.equal(cmds.state.failedCommandCount, 2);
+  assert.deepEqual(cmds.state.failedCommands, [{ cmd: "npm test", exit: 1 }, { cmd: "make", exit: null }]);
+  let answer = "";
+  const reader = createReader({ adapter: gemini, turn: { readOnly: true }, onText: (t) => { answer += t; } });
+  reader.feed([init, step("edit_file", "DONE", { Path: "/r/c.js" }), ok()].map((l) => JSON.stringify(l) + "\n").join(""));
+  reader.end();
+  assert.equal(reader.state.edited.size, 0, "a read-only turn counts no edit");
+  assert.equal(reader.state.incomplete, "agy completed edit_file on a read-only turn");
 });
 
 test("tool steps are described with their main argument", () => {

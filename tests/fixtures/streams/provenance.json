@@ -23,6 +23,7 @@
       "effort-flash-plus-xhigh.jsonl": { "probe": "S1.2 effort matrix: --model gemini-3.8-flash --effort xhigh (exit 1)" },
       "effort-flash-plus-max.jsonl": { "probe": "S1.2 effort matrix: --model gemini-3.8-flash --effort max (exit 1)" },
       "denied-write.jsonl": { "probe": "S1.2 denial signature: read-only turn asked to create a file", "fakeScenario": "denied" },
+      "task-edit.jsonl": { "probe": "S7.1 live task, 2026-11-01: task --to gemini --effort low (gemini-3.8-flash, --mode accept-edits) fixing an off-by-one, one edit_file step, then run_command exit 0" },
       "web-1.jsonl": { "probe": "S1.2 web tool name: read-only turn asked to search the web (tool search_web)" },
       "web-2.jsonl": { "probe": "S1.2 web repeat with search_web(*) in the deny list (not blocked)" },
       "json-schema.jsonl": { "probe": "S1.2 --json-schema <shared schema> on a tiny review prompt", "fakeScenario": "review-findings" },

@@ -191,3 +191,12 @@ Reviewed by Codex gpt-6.1-sol and Gemini 4 Argon; rulings by the coordinator. Th
 ## 2026-11-01 core: macOS process stamps are time-zone independent
 
 - The Codex-side twin's M4 review showed that `ps -o lstart=` prints local time, so a cancel run under another `TZ` than the owner compared stamps that differ for the same process and could read a live owner as gone. The darwin query now runs with `TZ=UTC` and `startTime` parses stamps as UTC. Test: `tests/core-snapshot-tz.test.mjs` (fails without the fix). Applied by the judge after milestone 4.
+
+## 2026-11-01 Gemini edits: the adapter counts edits and failed commands
+
+- The first live `task --to gemini` fixed its bug but printed `edited 0`. PLAN.md's Gemini event list (A5.1, S5.3) named no `edited` or `failedCommand` event, so the adapter never emitted one. Codex and Grok do, and the Codex-side twin's Gemini adapter already does.
+- `parseAgyEvent` now counts a `tool` step in state `DONE` whose tool is a write tool as an edit of its path. The write tools are `write_file`, `edit_file`, `write_to_file`, `replace_file_content`, `multi_replace_file_content` and `notebook_edit`. The path comes from the first of `TargetFile`, `AbsolutePath`, `Path`, `FilePath`, `file_path` or `path`. These are the same lists as the twin's.
+- A `run_command` step in state `ERROR`, or `DONE` with `Command exited with code N` where N is not 0, counts as a failed command `{cmd, exit}`.
+- A deny-rule step stays a denial and counts as neither.
+- A write tool completing on a read-only turn should be impossible under the A2 deny list. If it happens, it is reported as `incomplete` (exit 10) and is not counted as an edit.
+- The live stream is kept as `tests/fixtures/streams/agy/task-edit.jsonl`. Tests are in `tests/gemini.test.mjs`. The run is recorded in `docs/qualification/gemini-macos.md`.

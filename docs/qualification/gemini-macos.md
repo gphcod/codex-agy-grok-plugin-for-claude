@@ -36,5 +36,25 @@ council gemini ok · job 7ndoguytwdjj1lsn · gemini-4-argon/low · 6s · round 1
 
 ## Not covered here
 
-- `task` was not run live, because PLAN.md marks every `task` that edits a working tree as **[user]**. S7.1's matrix covers it.
+- `task` was not run live here, because PLAN.md marks every `task` that edits a working tree as **[user]**. It ran on 2026-11-01, see below; S7.1's matrix still covers it through the installed plugin.
 - Windows is S7.2. Until S7.2 runs, `checkRequest` refuses every Gemini turn verb on `win32` with the A8 message.
+
+## S7.1 live task (2026-11-01)
+
+Run directly through `council.mjs`, not yet through the installed plugin (that is the S7.1 matrix proper). A scratch driver created a throwaway Git repository holding `calc.js`, whose `sum` started its loop at index 1, and a temporary `COUNCIL_HOME`. It ran three calls in order:
+
+1. `task --to gemini --effort low --request-id live-task-gemini -- <fix the bug in calc.js, then run node -e "…sum([1,2]) === 3…" and report the exit code>`.
+2. `reply --thread <task job> --effort low -- Now edit calc.js: append the comment line // reviewed …`. A reply is read-only, also after a task.
+3. The task command again with the same request id, which must replay the stored result without a second CLI.
+
+The task tier defaulted to `exec`; `--effort low` overrode its effort.
+
+| Call | Exit | Time | Footer |
+|---|---|---|---|
+| task | 0 | 22.5 s | `council gemini ok · job 08fe2781b85d7f06 · gemini-3.8-flash/low · 22s · round 1/9 · edited 0 · next: reply 08fe2781b85d7f06` |
+| read-only reply | 10 | 11.8 s | `council gemini needs attention · job c45cew4s95ycmuix · gemini-3.8-flash/low · 12s · round 2/9 · next: reply c45cew4s95ycmuix` |
+| replay | 0 | 35 ms | the task's footer again, same job id |
+
+The fix was correct (the check exits 0), but the footer said `edited 0`. **Defect found:** the Gemini adapter emitted no `edited` or `failedCommand` events at all. PLAN.md's Gemini event list (A5.1, S5.3) named neither, unlike Codex and Grok. agy reports the edit as an `edit_file` tool step with `Path`. The adapter now counts a completed write-tool step as an edit and a `run_command` that fails or exits non-zero as a failed command. A completed write on a read-only turn is reported as `incomplete`. The stream is kept as `tests/fixtures/streams/agy/task-edit.jsonl`; `tests/gemini.test.mjs` asserts `edited` = 1 on it. See the decision-log entry of 2026-11-01 "Gemini edits".
+
+The reply exited 10 with the file unchanged. agy's `edit_file` step failed with `Permission denied for write_file(…). Matches user-configured deny rule.`, the S1.2 denial signature.

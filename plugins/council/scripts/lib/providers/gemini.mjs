@@ -115,6 +115,29 @@ export function describeStepError(step) {
   return `failed: ${describeToolStep(step)} — ${clip(reason, 200)}`;
 }
 
+/** agy's file-writing tools; a completed one names its target in one of PATH_KEYS (live task capture, 2026-11-01). */
+export const WRITE_TOOLS = /^(write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content|notebook_edit)$/;
+const PATH_KEYS = ["TargetFile", "AbsolutePath", "Path", "FilePath", "file_path", "path"];
+
+/** A finished tool step's counters: the edited path of a write tool, or a run_command that failed or exited non-zero. */
+export function stepCounters(step) {
+  if (step?.state !== "DONE" && step?.state !== "ERROR") return {};
+  const name = step.tool_name ?? step.tool_info?.name ?? "";
+  const params = isObject(step.tool_info?.parameters) ? step.tool_info.parameters : {};
+  if (name === "run_command") {
+    const exit = /Command exited with code (-?\d+)/.exec(String(step.tool_info?.output ?? ""))?.[1];
+    if (step.state === "ERROR" || (exit !== undefined && Number(exit) !== 0)) {
+      return { failedCommand: { cmd: clip(nonempty(params.CommandLine) ? params.CommandLine : "run_command", 120), exit: exit === undefined ? null : Number(exit) } };
+    }
+    return {};
+  }
+  if (step.state === "DONE" && WRITE_TOOLS.test(name)) {
+    const target = PATH_KEYS.map((k) => params[k]).find(nonempty);
+    return { write: name, ...(target ? { edited: target } : {}) };
+  }
+  return {};
+}
+
 export function isDenialStep(step) {
   return step?.step_type === "tool" && step.state === "ERROR" && step.tool_info?.error?.type === "TOOL_ERROR" && DENY_RULE.test(String(step.tool_info.error.message ?? ""));
 }
@@ -165,6 +188,13 @@ export function parseAgyEvent(line, state) {
     if (step.step_type === "tool" || step.tool_name || step.tool_info) {
       out.toolStep = step.state === "ERROR" ? describeStepError(step) : describeToolStep(step);
       if (isDenialStep(step)) { own.denials.push(out.toolStep); out.denied = `agy denied ${out.toolStep.replace(/^failed: /, "")}`; }
+      else {
+        const { write, edited, failedCommand } = stepCounters(step);
+        // The deny list should make this impossible; a completed write on a read-only turn is reported, never counted.
+        if (write && state.turn?.readOnly === true) out.incomplete = `agy completed ${write} on a read-only turn`;
+        else if (edited) out.edited = edited;
+        if (failedCommand) out.failedCommand = failedCommand;
+      }
     }
     return Object.keys(out).length ? out : null;
   }
