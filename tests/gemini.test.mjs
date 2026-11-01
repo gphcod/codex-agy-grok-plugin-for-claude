@@ -321,6 +321,19 @@ test("terminal validation: missing, duplicate, malformed, ERROR status, empty re
 test("answer: the response wins over deltas; deltas stand in for an empty response; partial cap", () => {
   const both = read([init, delta("thinking aloud "), delta("pong"), ok({ response: "pong\n" })]);
   assert.equal(both.answer, "pong\n");
+  const deltasOnly = read([init, delta("po"), delta("ng"), ok({ response: "" })]);
+  assert.equal(deltasOnly.state.failed, null, "S5.8: an empty response with streamed deltas is not empty");
+  assert.equal(deltasOnly.state.completed, true);
+  assert.equal(deltasOnly.answer, "pong");
+  const timeout = captured("print-timeout-5s.jsonl");
+  const recorded = timeout.map((l) => JSON.parse(l)).find((e) => e.event === "result").result;
+  assert.ok(recorded.response.trim());
+  const partial = read(timeout);
+  assert.equal(partial.answer, recorded.response, "S5.8: the partial answer survives a print timeout");
+  assert.match(partial.state.incomplete, /print timeout/);
+  const timeoutDeltas = read([init, delta("1, 2, "), ok({ response: "", finished_reason: "print_timeout" })]);
+  assert.equal(timeoutDeltas.answer, "1, 2, ", "deltas stand in for an empty response on a print timeout too");
+  assert.equal(read([init, ok({ response: "", finished_reason: "print_timeout" })]).answer, "", "nothing to keep");
   const partialCap = { gemini: { result: false, partial: "", partialBytes: 32 * 1024 * 1024, denials: [] } };
   assert.match(gemini.parseEvent(JSON.stringify(delta("x")), partialCap).fatal, /exceeds the 32 MiB limit/);
   assert.equal(gemini.parseEvent("   ", {}), null);
@@ -336,6 +349,8 @@ test("structured output: structured_output, else the first JSON object of the an
   assert.equal(read([init, ok()]).state.structured, null);
   assert.equal(firstJsonObject("{not json} [1] {\"a\":1}").a, 1);
   assert.equal(firstJsonObject("{ unbalanced"), null);
+  assert.deepEqual(firstJsonObject('In calc.js, if (x) { the loop runs once more. {"verdict":"approve","findings":[]}'), { verdict: "approve", findings: [] }, "S5.8: an unmatched brace in prose does not end the scan");
+  assert.deepEqual(firstJsonObject('{ "a": { {"b":1}'), { b: 1 });
   assert.equal(firstJsonObject(null), null);
   assert.equal(firstJsonObject('{"s":"\\"}"}').s, '"}', "escaped quotes inside strings");
 });
@@ -485,6 +500,12 @@ test("failures exit 1: print_timeout, duplicate, missing, ERROR status, empty re
       assert.equal(r.code, 1, `${variant}: ${r.out}${r.err}`);
       assert.match(r.json.error ?? "", re, variant);
     }
+    const timeout = await s.call(["ask", "--to", "gemini"], { text: "x", extra: { COUNCIL_FAKE_AGY_RESULT: "print-timeout" } });
+    assert.equal(timeout.code, 1);
+    assert.equal(timeout.json.answer, "pong", "S5.8: the partial answer is kept on a print timeout");
+    const deltasOnly = await s.call(["ask", "--to", "gemini"], { text: "x", extra: { COUNCIL_FAKE_AGY_RESULT: "deltas-only" } });
+    assert.equal(deltasOnly.code, 0, deltasOnly.out + deltasOnly.err);
+    assert.equal(deltasOnly.json.answer, "pong\n", "S5.8: deltas answer an empty response");
     const effort = await s.call(["ask", "--to", "gemini"], { text: "x", scenario: "effort-error" });
     assert.equal(effort.code, 1);
     assert.match(effort.json.error, /invalid model selection/);

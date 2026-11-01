@@ -131,7 +131,7 @@ export function firstJsonObject(text) {
       else if (c === "{") depth++;
       else if (c === "}" && --depth === 0) end = i;
     }
-    if (end < 0) return null;
+    if (end < 0) continue; // unbalanced from here (`if (x) {` in prose): try the next opening brace
     try { const value = JSON.parse(src.slice(open, end + 1)); if (isObject(value)) return value; } catch { /* try the next brace */ }
   }
   return null;
@@ -141,9 +141,9 @@ export function firstJsonObject(text) {
  * One stream-json line → the A5 event. The answer is the terminal result's response (the streamed
  * agent_response deltas when it is empty), emitted once at the result; deltas are collected up to
  * MAX_PARTIAL_BYTES. Terminal validation: a duplicate result, a malformed one, status other than
- * SUCCESS → fatal (exit 1); print_timeout → incomplete (exit 1); a denial (the S1.2 tool-step
+ * SUCCESS → fatal (exit 1); print_timeout → incomplete (exit 1, the partial answer still emitted); a denial (the S1.2 tool-step
  * signature, or non-empty denied_actions; the key may be absent or empty) → denied (exit 10), checked
- * before the empty-response rule; an empty response without a denial → fatal. A missing result
+ * before the empty-answer rule; an empty answer (response and deltas) without a denial → fatal. A missing result
  * leaves the turn uncompleted, which the core fails (exit 1).
  */
 export function parseAgyEvent(line, state) {
@@ -176,12 +176,13 @@ export function parseAgyEvent(line, state) {
   if (r.denied_actions !== undefined && !Array.isArray(r.denied_actions)) return { fatal: "agy returned malformed denied_actions; expected an array" };
   if (isObject(r.usage)) out.usage = r.usage;
   if (r.status !== "SUCCESS") return { ...out, fatal: `agy finished with status ${r.status}${r.error ? `: ${clip(r.error, 500)}` : ""}` };
-  if (r.finished_reason === "print_timeout") return { ...out, completed: true, incomplete: "agy hit its print timeout before the turn finished; the response is partial. Retry with a larger --deadline or a narrower request" };
+  const answer = r.response.trim() ? r.response : own.partial;
+  // The partial answer is kept for the reader; the turn still fails (exit 1, A3.3).
+  if (r.finished_reason === "print_timeout") return { ...out, ...(answer.trim() ? { textDelta: answer } : {}), completed: true, incomplete: "agy hit its print timeout before the turn finished; the response is partial. Retry with a larger --deadline or a narrower request" };
   const actions = r.denied_actions ?? [];
   const denied = actions.length ? `agy denied ${actions.length} requested action(s): ${clip(actions.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join("; "), 400)}`
     : own.denials.length ? `agy denied ${own.denials.length} tool call(s) by a deny rule: ${clip(own.denials.map((d) => d.replace(/^failed: /, "")).join("; "), 400)}` : null;
-  const answer = r.response.trim() ? r.response : own.partial;
-  if (!denied && !r.response.trim()) return { ...out, fatal: "agy returned an empty response; no usable result was produced" };
+  if (!denied && !answer.trim()) return { ...out, fatal: "agy returned an empty response; no usable result was produced" };
   const structured = isObject(r.structured_output) ? r.structured_output : firstJsonObject(answer);
   if (structured) out.structured = structured;
   if (denied) out.denied = denied;
