@@ -21,6 +21,12 @@ test("with no model named the skill rules out a task, even for a fix, and says h
   assert.doesNotMatch(text, /only when the user authorizes it/, "the wording Claude read as permission");
 });
 
+test("request ids are fresh per call; a refused reuse takes a new id (S7.1 C3)", () => {
+  const text = readFileSync(skillPath, "utf8");
+  assert.match(text, /a fresh `--request-id <8 random letters\/digits>` never used earlier in this conversation/);
+  assert.match(text, /`already used with different input`: new id, rerun\./);
+});
+
 test("every flag, verb and tier the skill states exists in the code as built", async () => {
   const text = readFileSync(skillPath, "utf8");
   const { SPEC, VERBS, PROVIDERS } = await import("../plugins/council/scripts/lib/core/args.mjs");

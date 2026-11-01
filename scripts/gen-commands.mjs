@@ -42,7 +42,7 @@ const BACKGROUND = "Make one Bash tool call with `run_in_background: true`.";
 const CONTROL = "Make one Bash tool call in the foreground. It starts no provider CLI.";
 /** Placeholder Claude replaces with a fresh request id; left as is, the entry refuses it (exit 2). */
 export const RID = "@RID@";
-const REQUEST_ID = `Replace \`${RID}\` with 8 random letters and digits; a \`--request-id <id>\` in the arguments takes precedence. If the result is lost, rerun the identical command with the same id: it replays the first result and never starts a second CLI. New work needs a new id.`;
+const REQUEST_ID = `Replace \`${RID}\` with 8 random letters and digits, a fresh id never used earlier in this conversation; a \`--request-id <id>\` in the arguments takes precedence. If the result is lost, rerun the identical command with the same id: it replays the first result and never starts a second CLI. If it says the id was already used with different input, pick a new id and rerun.`;
 const withId = (rule) => `${rule}\n${REQUEST_ID}`;
 const TURN_FLAGS = ` --request-id ${RID}`;
 

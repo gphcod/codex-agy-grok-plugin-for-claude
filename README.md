@@ -36,7 +36,7 @@ The slash commands use the second form. `$ARGUMENTS` goes inside the heredoc and
 /council:review --to gemini --uncommitted --adversarial focus on the retry loop
 ```
 
-The turn commands (`ask`, `reply`, `review`, `task` and the three provider shortcuts) also carry `--request-id @RID@`. Claude replaces `@RID@` with 8 random letters and digits, and keeps that id when it retries the same command, so a lost result replays instead of starting a second CLI. A `--request-id` in your arguments takes precedence. If the placeholder is left unreplaced, the call exits 2.
+The turn commands (`ask`, `reply`, `review`, `task` and the three provider shortcuts) also carry `--request-id @RID@`. Claude replaces `@RID@` with 8 random letters and digits, a fresh id for each new call, and keeps that id when it retries the same command, so a lost result replays instead of starting a second CLI. An id reused with different text exits 2 (`already used with different input`); Claude then picks a new id and reruns. A `--request-id` in your arguments takes precedence. If the placeholder is left unreplaced, the call exits 2.
 
 Text can also come on stdin with no `--`. With no input, use `</dev/null`. Stdin that stays open for 10 s without a byte or its end is refused. Claude Code's Bash tool leaves stdin open when a command holds a heredoc.
 

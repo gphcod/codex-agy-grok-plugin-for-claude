@@ -6,7 +6,7 @@ allowed-tools: Bash(node:*)
 ---
 
 Make one Bash tool call with `run_in_background: true`. Exit 10 means findings, an incomplete review or a denied action need attention.
-Replace `@RID@` with 8 random letters and digits; a `--request-id <id>` in the arguments takes precedence. If the result is lost, rerun the identical command with the same id: it replays the first result and never starts a second CLI. New work needs a new id.
+Replace `@RID@` with 8 random letters and digits, a fresh id never used earlier in this conversation; a `--request-id <id>` in the arguments takes precedence. If the result is lost, rerun the identical command with the same id: it replays the first result and never starts a second CLI. If it says the id was already used with different input, pick a new id and rerun.
 If a line of the arguments is exactly `COUNCIL_EOF`, use another delimiter that is not in the text, in both places. Apart from that and the request id where the command has one, keep the command exactly as shown.
 
 ```bash

@@ -8,7 +8,7 @@ Measured 2026-11-01 on macOS (Darwin 27.0.0), Node 22.19.0, branch `s6` at the S
 | gemini | 91 B | 116 B | **207 B** | 207 B |
 | grok | 89 B | 108 B | **197 B** | 197 B |
 
-The skill is 2,998 B, and its description is 181 B (limit 3,000 B, enforced by `tests/skill-size.test.mjs`). The eleven command files are 919–1,693 B each after S6.8 (867–1,074 B at S6.5), and are read only when the user runs one.
+The skill is 2,999 B after the S7.1 fixes (2,998 B at S6.5, 3,000 B at the S7.1 matrix), and its description is 181 B (limit 3,000 B, enforced by `tests/skill-size.test.mjs`). The eleven command files are 919–1,802 B each after the S7.1 fixes (919–1,693 B after S6.8, 867–1,074 B at S6.5), and are read only when the user runs one. The table below is unchanged by those fixes: a plain `ask` carries no `attention:` token, and `npm run measure` still prints these figures.
 
 The lines measured (job and thread ids vary per run; their lengths do not):
 

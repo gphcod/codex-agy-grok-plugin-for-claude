@@ -147,7 +147,8 @@ test("each command says how to run its Bash call: background for review, task, d
   for (const name of ["models", "setup"]) assert.match(text(name), /^Make one Bash tool call in the foreground\. It (starts no provider CLI unless|runs each provider's version)/m);
   for (const name of ["ask", "codex", "gemini", "grok", "reply", "review", "task"]) {
     assert.match(text(name), / --request-id @RID@ --session /, `${name} carries a request id`);
-    assert.match(text(name), /Replace `@RID@` with 8 random letters and digits/, name);
+    assert.match(text(name), /Replace `@RID@` with 8 random letters and digits, a fresh id never used earlier in this conversation/, name);
+    assert.match(text(name), /If it says the id was already used with different input, pick a new id and rerun\./, name);
   }
   for (const name of ["wait", "cancel", "models", "setup"]) assert.doesNotMatch(text(name), /@RID@/, name);
 });
