@@ -41,3 +41,26 @@ Every review flagged the planted bugs: the uncommitted `n > lo` (calc.js:10), th
 - Slash-command sessions ran in the default permission mode; the commands' `allowed-tools: Bash(node:*)` covered their calls. Natural-language sessions were given `--allowedTools "Bash(node:*)"`, because in `-p` mode nothing can answer a permission prompt.
 - The three old plugins (codex 2.3.2, grok-build 1.1.5, gemini 2.1.0) were installed and visible throughout.
 - Cost: 45 host sessions, $10.88 as reported by the streams' `total_cost_usd` (plus the earlier setup session, $0.18). 37 council provider turns, 1 grok-build review, one `models --refresh` (three listings).
+
+## Fixes after the matrix
+
+Branch `s7-fixes-cc`. The shared rulings are recorded in `docs/decisions.md` under "2026-11-01 S7.1 fixes". Evidence files are under the tester's scratch directory `…/scratchpad/install/fix-cc/`.
+
+| Issue | Fix | Commit | Evidence |
+|---|---|---|---|
+| X1: a turn exiting 10 printed a bare `needs attention` | Footer token `attention: <reason>` and `--json` field `attention` | 15ce244 | Fakes only: `tests/core-attention.test.mjs`, all three providers' denials, open questions, malformed review, plain findings, replay through `wait`. No live denial was re-run. |
+| X2: `edited 0` after a shell edit (`d26572844e2c98ce`) | Git snapshot before and after every task, unioned with the edit events | dbe78f5 | Fakes: `tests/core-edited.test.mjs`. Live, one paid run: job `hjcit7rpicgm4mpk`, Codex edited `calc.js` with `sed -i`, no `file_change` event, footer below. |
+| X3: the footer's 200 B clip dropped a message's action | Messages that can exceed it say the action first (`MESSAGES`) | 1f5e8c6 | `tests/core-messages.test.mjs`, at the longest ids the code accepts. |
+| C1: a task started with no model named (`0d2254b09c482cc9`) | Skill: "Never task, even for a fix or edit", then points to `/council:task` or naming a model | ae912fa | Live: same prompt, `c1.jsonl`, session `4253112b-b268-44f4-b599-50d40a515a18`, $0.25. One `ask --to grok --tier consult`, job `abyvpa6rhbcfbjdi`, exit 0; no task. `calc.js` unchanged, and the host told the user how to get the edit. |
+| C1b: that task had `session: null` | Fallback to `CLAUDE_CODE_SESSION_ID`; provider children never receive it | 09c49a6 | Fakes: `tests/core-session.test.mjs`. Live: job `hjcit7rpicgm4mpk` ran without `--session` with the variable set by hand, and recorded it. Bare `wait` listed the job with the variable and printed `no council jobs in this workspace/session` without it. Not re-run from a host's Bash call: the C1 session passed `--session` itself. |
+| C3: request ids repeated across sessions | Skill and generated commands: a fresh id per call; on `already used with different input`, a new id and a rerun | 5626908 | Wording tests only (`tests/skill-size.test.mjs`, `tests/commands-e2e.test.mjs`). Whether hosts now pick better ids was not measured. |
+| C4: README's `review` row did not describe `--base` | Row says it reviews from the merge base through the working tree, including untracked files | c948856 | Doc only; matches `collectReview` in `lib/core/git.mjs`. |
+
+Live footers:
+
+```text
+council codex ok · job hjcit7rpicgm4mpk · gpt-6-luna/low · 9s · round 1/9 · edited 1 · next: reply hjcit7rpicgm4mpk
+council grok ok · job abyvpa6rhbcfbjdi · grok-4.7/high · 19s · round 1/9 · next: reply abyvpa6rhbcfbjdi
+```
+
+The skill is 2,999 B (3,000 B at the matrix). The other rows of this matrix were not re-run after the fixes.
