@@ -155,3 +155,7 @@ Reviewed by Codex gpt-6.1-sol and Gemini 4 Argon; rulings by the coordinator. No
 - **Partial answer on a print timeout (MAJOR, Codex).** A `print_timeout` result still makes the turn `incomplete` (exit 1, A3.3), but the partial answer (response, else deltas) is emitted first, so it is stored and printed as gemini-plugin-cc did. Replayed from `tests/fixtures/streams/agy/print-timeout-5s.jsonl`.
 - **Review-JSON fallback (MINOR, Codex).** An opening brace with no balanced close (`if (x) {` in prose) no longer ends the scan; later opening braces are tried, as in gemini-plugin-cc `extractFirstJsonObject`.
 - **Parity (MINOR, Codex).** `--json` is marked intentionally different with the donor-to-council field mapping; the print-timeout and answer rows follow the two fixes. Rulings recorded: the contract-free review prompt and settings without `agentMode`/`request-review` are accepted.
+
+## 2026-10-31 core (M3 review): probes carry the guard variables
+
+- The Codex-side twin's review found that provider probe children ran without the A5.1 guard variables; the same held here. `setup` and `models --refresh` now pass `childEnv(ctx.env)` (the lifecycle's own overlay) to `adapter.probe`, so `--version`, listing and auth probes carry all four variables. Test: `tests/core-freeze.test.mjs` (fails without the fix). Applied by the judge.

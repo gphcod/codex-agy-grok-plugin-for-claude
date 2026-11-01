@@ -14,7 +14,7 @@ import { readControlArgs, readText, splitReply, stdinIdleMs } from "./lib/core/s
 import { canonical } from "./lib/core/fs.mjs";
 import { PLUGIN_ROOT, catalogPath, loadCatalog, refreshCatalog } from "./lib/core/catalog.mjs";
 import { TIERS, loadTiers, resolveTier } from "./lib/core/tiers.mjs";
-import { assertNotNested, companionState, executionController } from "./lib/core/execution.mjs";
+import { assertNotNested, childEnv, companionState, executionController } from "./lib/core/execution.mjs";
 import {
   REQUEST_ID, bindScope, candidates, claimRequest, claimScope, homeDir, loadJob, loadScope, loadThread, loadTombstone, markRequestPrepared, releaseRequest, releaseScope,
 } from "./lib/core/jobs.mjs";
@@ -277,7 +277,7 @@ async function runModels(ctx, io, o, refs) {
       try {
         const launcher = adapter.resolveLauncher(ctx.env, process.platform);
         if (!launcher) throw new Error(`${provider} not found; set ${adapter.binEnv}`);
-        refreshCatalog(ctx.home, provider, adapter.probe(launcher, ctx.env));
+        refreshCatalog(ctx.home, provider, adapter.probe(launcher, childEnv(ctx.env))); // A5.1: every provider child carries the guards
       } catch (error) { refreshError = error.message; }
     }
     const catalog = catalogFor(ctx.home, adapter);
@@ -309,7 +309,7 @@ async function runSetup(ctx, io, o, refs) {
       const launcher = adapter.resolveLauncher(ctx.env, process.platform);
       if (!launcher) throw new Error(`${provider} not found; set ${adapter.binEnv}`);
       row.launcher = { kind: launcher.kind, path: launcher.path };
-      const probe = adapter.probe(launcher, ctx.env);
+      const probe = adapter.probe(launcher, childEnv(ctx.env)); // A5.1: every provider child carries the guards
       Object.assign(row, { version: probe.version ?? null, loggedIn: probe.loggedIn ?? null, ready: probe.loggedIn !== false });
       // A provider's own setup lines (A5.1: Codex states its MCP trade-off) and probe warnings.
       const lines = (v) => (Array.isArray(v) ? v : []).filter((x) => typeof x === "string" && x.trim());

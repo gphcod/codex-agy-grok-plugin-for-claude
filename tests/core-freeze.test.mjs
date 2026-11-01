@@ -117,3 +117,16 @@ test("contract.md and both templates exist and contain no unresolved placeholder
     assert.deepEqual(placeholders(interpolate(t, Object.fromEntries(PLACEHOLDERS.map((k) => [k, "v"])))), []);
   }
 });
+
+test("setup and models --refresh probe with all four guard variables set (A5.1: every provider child)", async () => {
+  const root = mkdtempSync(join(tmpdir(), "council-probe-guards-"));
+  try {
+    const env = { ...process.env, COUNCIL_TEST_NULL_ADAPTER: "1", COUNCIL_HOME: join(root, "home"), COUNCIL_NULL_PROBE_GUARDS: "1" };
+    for (const g of ["COUNCIL_DEPTH", "CODEX_COMPANION_DEPTH", "GROK_BUILD_DEPTH", "CLAUDE_PLUGIN_CODEX_DEPTH"]) delete env[g];
+    let out = "";
+    const stdin = new PassThrough(); stdin.end("");
+    const code = await main(["setup", "--to", "null", "--json"], env, { stdout: { write: (s) => { out += s; return true; } }, stderr: { write: () => true }, stdin, cwd: root });
+    assert.equal(code, 0);
+    assert.deepEqual(JSON.parse(out)[0].notes, ["guards COUNCIL_DEPTH,CODEX_COMPANION_DEPTH,GROK_BUILD_DEPTH,CLAUDE_PLUGIN_CODEX_DEPTH"]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
