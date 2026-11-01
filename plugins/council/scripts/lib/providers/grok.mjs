@@ -233,8 +233,12 @@ const adapter = {
         return {
           completed: true,
           ...(returned ? { threadId: returned } : { unconfirmed: UNCONFIRMED }),
-          // Any stop but end_turn keeps the answer and fails the turn as incomplete (exit 1).
-          ...(NORMAL_STOPS.has(stop) ? {} : { incomplete: `incomplete: ${STOP_TEXT[stop] ?? `Grok stopped with reason ${JSON.stringify(stop)}`}` }),
+          // Grok's own `cancelled` stop is its headless permission refusal: a denial (exit 10), the turn
+          // completed. With no text, the refusal is the answer, so the empty-answer rule cannot fail it
+          // (S4.9, as the Codex-host twin). Council's own cancel path is unchanged.
+          ...(stop === "cancelled" ? { denied: PERMISSION_STOP, ...(state.hasText ? {} : { textDelta: PERMISSION_STOP }) }
+            // Any other stop but end_turn keeps the answer and fails the turn as incomplete (exit 1).
+            : NORMAL_STOPS.has(stop) ? {} : { incomplete: `incomplete: Grok stopped with reason ${JSON.stringify(stop)}` }),
           ...(structured !== undefined && structured !== null ? { structured } : {}),
           ...(typeof ev.total_cost_usd === "number" ? { costUsd: ev.total_cost_usd } : {}),
           ...(ev.usage && typeof ev.usage === "object" ? { usage: ev.usage } : {}),
@@ -263,11 +267,12 @@ const adapter = {
 
 // --- event helpers (grok-build reader.mjs) ------------------------------------------------------------------
 
-/** Stop reasons recorded as a finished turn; anything else is a failure. */
+/** Stop reasons recorded as a finished turn; `cancelled` is a denial, anything else a failure. */
 export const NORMAL_STOPS = new Set(["end_turn"]);
 /** The footer hint for a turn whose end event named no session (core `unconfirmed`). */
 export const UNCONFIRMED = "session not confirmed: start a new ask";
-const STOP_TEXT = { cancelled: "Grok cancelled the turn (a tool needed permission headless Grok cannot ask for)" };
+/** Grok's own `cancelled` stop: a tool needed a permission headless Grok cannot ask for (grok-build lifecycle.mjs:22). */
+export const PERMISSION_STOP = "Grok cancelled the turn (a tool needed permission headless Grok cannot ask for)";
 const EDIT_TOOLS = new Set(["search_replace", "write"]);
 // Grok names MCP tools server__tool; a read-only turn that calls one fails.
 const MCP_TOOL = /__/;

@@ -133,12 +133,20 @@ test("session confirmation on the end event (review Q4)", () => {
   assert.deepEqual([cut.state.completed, cut.threads.length], [false, 0]);
 });
 
-test("stop reasons other than end_turn and max_turns_reached keep the answer and are incomplete; error events are kept", () => {
+test("Grok's own cancelled stop is a denial (S4.9): completed, confirmed, denied; the refusal is the answer when no text came", () => {
+  const refusal = "Grok cancelled the turn (a tool needed permission headless Grok cannot ask for)";
   const cancelled = read([catalogue(), { type: "text", data: "half" }, end({ stopReason: "cancelled" })]);
-  assert.equal(cancelled.state.failed, null);
-  assert.equal(cancelled.text, "half");
+  assert.deepEqual([cancelled.state.failed, cancelled.state.incomplete, cancelled.state.completed], [null, null, true]);
+  assert.equal(cancelled.text, "half", "text already sent stays the answer");
   assert.deepEqual(cancelled.threads, [SID], "the session is still confirmed");
-  assert.equal(cancelled.state.incomplete, "incomplete: Grok cancelled the turn (a tool needed permission headless Grok cannot ask for)");
+  assert.equal(cancelled.state.denied, refusal);
+  const silent = read([catalogue(), end({ stopReason: "cancelled", structuredOutput: { verdict: "approve" } })]);
+  assert.deepEqual([silent.state.failed, silent.state.incomplete, silent.state.denied], [null, null, refusal]);
+  assert.equal(silent.text, refusal, "no text: the refusal sentence is the answer, so the empty-answer rule cannot fail it");
+  assert.deepEqual(silent.state.structured, { verdict: "approve" });
+});
+
+test("stop reasons other than end_turn, cancelled and max_turns_reached keep the answer and are incomplete; error events are kept", () => {
   assert.equal(read([catalogue(), end({ stopReason: "max_tokens" })]).state.incomplete, 'incomplete: Grok stopped with reason "max_tokens"');
   assert.match(read([catalogue(), end({ stopReason: undefined })]).state.incomplete, /Grok stopped with reason null/);
   const turns = read([catalogue(), { type: "text", data: "partial" }, { type: "max_turns_reached" }, end({ structuredOutput: { verdict: "approve" } })]);

@@ -395,6 +395,21 @@ test("an end event naming another session fails (exit 1) and confirms nothing", 
   } finally { h.done(); }
 });
 
+test("Grok's own cancelled stop is a denial: answer kept, exit 10, thread confirmed and resumable (S4.9)", async () => {
+  const h = harness();
+  try {
+    const r = await h.call(["ask", "--to", "grok", "--effort", "low"], { text: "push it", env: { COUNCIL_FAKE_GROK_END: "cancelled" } });
+    assert.equal(r.code, 10, r.out + r.err);
+    assert.match(r.out, /^pong\n/);
+    assert.match(footer(r.out), new RegExp(`^council grok needs attention · job ${r.job} · grok-4\\.7/low · \\d+s · round 1/9 · next: reply ${r.job}$`));
+    const job = h.job(r.job);
+    assert.equal(job.denied, "Grok cancelled the turn (a tool needed permission headless Grok cannot ask for)");
+    assert.equal(job.threadId, job.requestedThreadId, "the session was confirmed");
+    const reply = await h.call(["reply", "--thread", r.job, "--effort", "low"], { text: "why?", env: { COUNCIL_FAKE_SCENARIO: "resume" } });
+    assert.equal(reply.code, 0, reply.out + reply.err);
+  } finally { h.done(); }
+});
+
 test("a max-turns stop keeps the answer and exits 1 with incomplete: <reason>", async () => {
   const h = harness();
   try {
