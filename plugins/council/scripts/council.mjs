@@ -45,8 +45,15 @@ export const USAGE = `usage: council <${VERBS.join("|")}> [--options] [-- text] 
 export function providerNames(env) {
   return env.COUNCIL_TEST_NULL_ADAPTER === "1" ? [...PROVIDERS, ...Object.keys(TEST_PROVIDERS)] : [...PROVIDERS];
 }
+/**
+ * The module file of a provider, or null when it is not in this build. Test seam: under
+ * COUNCIL_TEST_NULL_ADAPTER=1, COUNCIL_TEST_ABSENT_PROVIDERS (comma-separated) hides real provider
+ * modules, so core tests of the "not available in this build" paths never launch a real CLI once the
+ * adapters exist.
+ */
 export function adapterFile(provider, env) {
   if (Object.hasOwn(TEST_PROVIDERS, provider)) return env.COUNCIL_TEST_NULL_ADAPTER === "1" ? path.join(FIXTURES, TEST_PROVIDERS[provider]) : null;
+  if (env.COUNCIL_TEST_NULL_ADAPTER === "1" && String(env.COUNCIL_TEST_ABSENT_PROVIDERS ?? "").split(",").includes(provider)) return null;
   return path.join(PLUGIN_ROOT, "scripts", "lib", "providers", `${provider}.mjs`);
 }
 function checkProvider(provider, env) {

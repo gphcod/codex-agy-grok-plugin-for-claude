@@ -11,13 +11,15 @@ import { main } from "../plugins/council/scripts/council.mjs";
 import { GUARD_VARS } from "../plugins/council/scripts/lib/core/execution.mjs";
 import { canonical } from "../plugins/council/scripts/lib/core/fs.mjs";
 import { homeDir, loadJob, saveThread } from "../plugins/council/scripts/lib/core/jobs.mjs";
+/** Real provider modules hidden from these core tests (council.mjs adapterFile seam), so none launches a real CLI. */
+const ABSENT = "codex,gemini,grok";
 import { runManagedTurn } from "../plugins/council/scripts/lib/core/lifecycle.mjs";
 
 function harness() {
   const root = mkdtempSync(join(tmpdir(), "council-threads-"));
   const cwd = join(root, "work");
   mkdirSync(cwd);
-  const env = { ...process.env, COUNCIL_TEST_NULL_ADAPTER: "1", COUNCIL_HOME: join(root, "home"), COUNCIL_STDIN_DEADLINE_MS: "300" };
+  const env = { ...process.env, COUNCIL_TEST_NULL_ADAPTER: "1", COUNCIL_TEST_ABSENT_PROVIDERS: ABSENT, COUNCIL_HOME: join(root, "home"), COUNCIL_STDIN_DEADLINE_MS: "300" };
   for (const g of GUARD_VARS) delete env[g];
   delete env.COUNCIL_FAKE_SCENARIO;
   const call = async (argv, extra = {}) => {

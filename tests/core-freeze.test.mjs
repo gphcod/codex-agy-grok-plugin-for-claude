@@ -11,7 +11,7 @@ import { PassThrough } from "node:stream";
 import { EXIT } from "../plugins/council/scripts/lib/core/types.mjs";
 import { PLUGIN_ROOT } from "../plugins/council/scripts/lib/core/catalog.mjs";
 import { PLACEHOLDERS, TEMPLATES, interpolate, loadTemplate, placeholders } from "../plugins/council/scripts/lib/core/review.mjs";
-import { adapterFile, main } from "../plugins/council/scripts/council.mjs";
+import { adapterFile, loadAdapter, main } from "../plugins/council/scripts/council.mjs";
 import { GUARD_VARS } from "../plugins/council/scripts/lib/core/execution.mjs";
 import nullAdapter from "./fixtures/null-adapter.mjs";
 
@@ -47,6 +47,16 @@ test("the provider registry: lib/providers/<id>.mjs by existsSync; none of the t
   }
   assert.equal(adapterFile("null", {}), null, "the null adapter only in test mode");
   assert.ok(existsSync(adapterFile("null", { COUNCIL_TEST_NULL_ADAPTER: "1" })));
+});
+
+test("test seam: COUNCIL_TEST_ABSENT_PROVIDERS hides real provider modules only in test mode", async () => {
+  const hidden = { COUNCIL_TEST_NULL_ADAPTER: "1", COUNCIL_TEST_ABSENT_PROVIDERS: "codex,grok" };
+  assert.equal(adapterFile("codex", hidden), null);
+  assert.equal(adapterFile("grok", hidden), null);
+  assert.equal(adapterFile("gemini", hidden), join(PLUGIN_ROOT, "scripts", "lib", "providers", "gemini.mjs"));
+  assert.equal(adapterFile("codex", { COUNCIL_TEST_ABSENT_PROVIDERS: "codex" }), join(PLUGIN_ROOT, "scripts", "lib", "providers", "codex.mjs"), "ignored outside test mode");
+  assert.ok(existsSync(adapterFile("null", hidden)), "the test providers stay");
+  await assert.rejects(loadAdapter("codex", hidden), /provider codex not available in this build/);
 });
 
 test("state layout after one turn: jobs/<16 chars>/{meta.json,beat,done,answer.md,events.jsonl}, claims/, threads/<provider>-<id>.json", async () => {
