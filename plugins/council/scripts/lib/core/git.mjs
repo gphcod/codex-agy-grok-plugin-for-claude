@@ -80,10 +80,13 @@ function worktreeBase(cwd) {
 
 // --- task edits (S7.1 fix X2) -------------------------------------------------------------------------
 
-/** Over this many dirty paths the snapshot is skipped and `edited` stays event-only. */
-export const SNAPSHOT_CAP = 5000;
-/** A larger file is compared by size and mtime, not read. */
-export const SNAPSHOT_HASH_CAP = 64 * 1024 * 1024;
+/**
+ * Bounds of one snapshot, the same as the Codex-host twin's lib/core/snapshot.mjs: dirty paths listed,
+ * bytes hashed in total and per git call's output, ms per git call, ms for the whole snapshot. It runs
+ * synchronously and the heartbeat goes stale after 30 s, so the whole snapshot stays well under that.
+ */
+export const SNAPSHOT = Object.freeze({ maxFiles: 5000, maxBytes: 4 * 1024 * 1024, timeoutMs: 2500, totalMs: 10000 });
+const READ_FLAGS = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0);
 
 /** The paths of `git status --porcelain=v1 -z`: `XY path`, followed by the old path after a rename or copy. */
 export function statusPaths(output) {
@@ -95,61 +98,104 @@ export function statusPaths(output) {
   }
   return [...new Set(paths.map((p) => p.replace(/\/$/, "")))];
 }
-/** What a path holds now, as a string compared between snapshots. Never reads through a link. */
-function pathState(file) {
-  let st;
-  try { st = fs.lstatSync(file); } catch { return "gone"; }
-  if (st.isSymbolicLink()) { try { return `link:${fs.readlinkSync(file)}`; } catch { return "link"; } }
-  if (st.isDirectory()) return "dir"; // An embedded repository or submodule; what is inside it is not hashed.
-  if (!st.isFile()) return "other";
-  const exec = st.mode & 0o111 ? "x" : "-";
-  if (st.size > SNAPSHOT_HASH_CAP) return `big:${exec}:${st.size}:${st.mtimeMs}`;
-  let fd;
-  try {
-    fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
-    const hash = createHash("sha1"), buffer = Buffer.allocUnsafe(64 * 1024);
-    for (let n; (n = fs.readSync(fd, buffer, 0, buffer.length, null));) hash.update(buffer.subarray(0, n));
-    return `file:${exec}:${hash.digest("hex")}`;
-  } catch { return `unreadable:${st.size}:${st.mtimeMs}`; }
-  finally { if (fd !== undefined) try { fs.closeSync(fd); } catch { /* the state stands */ } }
-}
 /**
- * {root, head, states}: HEAD (null on an unborn branch) and a content state per dirty path, relative
- * to the repository root. Null outside a repository, on a git failure or over the cap: the caller
- * keeps the provider's own edit events. Never throws.
+ * A regular file's bytes, or null when it is not one, does not fit in `remaining` or changes size while
+ * it is read. O_NONBLOCK: a file swapped for a FIFO after its lstat never blocks the open.
  */
-export function worktreeSnapshot(cwd, { cap = SNAPSHOT_CAP } = {}) {
+export function readBounded(file, remaining, io = fs) {
+  const fd = io.openSync(file, READ_FLAGS);
   try {
-    const top = git(cwd, ["rev-parse", "--show-toplevel"]);
-    if (top.error || top.status !== 0) return null;
-    const root = top.stdout.replace(/\r?\n$/, "");
-    const head = git(root, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
-    if (head.error || (head.status !== 0 && head.status !== 1)) return null;
-    const status = git(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
-    if (status.error || status.status !== 0) return null;
-    const paths = statusPaths(status.stdout);
-    if (paths.length > cap) return null;
-    return { root, head: head.status === 0 ? head.stdout.trim() : null, states: new Map(paths.map((p) => [p, pathState(path.join(root, p))])) };
+    const stat = io.fstatSync(fd);
+    if (!stat.isFile()) return null;
+    const buffer = Buffer.alloc(Math.min(stat.size + 1, remaining + 1));
+    let got = 0;
+    for (let n; got < buffer.length && (n = io.readSync(fd, buffer, got, buffer.length - got, got)); got += n);
+    return got > remaining || got !== stat.size || io.fstatSync(fd).size !== stat.size ? null : buffer.subarray(0, got);
+  } finally { io.closeSync(fd); }
+}
+/** What a path holds now. A file past the byte budget, or unreadable, keeps `hash: null` and compares by size and mtime. */
+function pathEntry(file, budget) {
+  let st;
+  try { st = fs.lstatSync(file); }
+  catch (error) { return error.code === "ENOENT" || error.code === "ENOTDIR" ? { kind: "gone" } : { kind: "unreadable" }; }
+  if (st.isSymbolicLink()) { try { return { kind: "link", target: fs.readlinkSync(file) }; } catch { return { kind: "link", target: null }; } }
+  if (st.isDirectory()) return { kind: "dir" }; // An embedded repository or submodule; what is inside it is not hashed.
+  if (!st.isFile()) return { kind: "other" };
+  const entry = { kind: "file", exec: Boolean(st.mode & 0o111), size: st.size, mtimeMs: st.mtimeMs, hash: null };
+  if (st.size > budget.left) return entry;
+  let data = null;
+  try { data = readBounded(file, budget.left); } catch { /* by size and mtime */ }
+  if (!data) return entry;
+  budget.left -= data.length;
+  return { ...entry, hash: createHash("sha1").update(data).digest("hex") };
+}
+/** Same content. Which side ran out of budget depends on the other dirty files, so one missing hash compares by size and mtime. */
+export function sameEntry(a, b) {
+  if (!a || !b || a.kind !== b.kind) return false;
+  if (a.kind === "link") return a.target === b.target;
+  if (a.kind !== "file") return true;
+  if (a.exec !== b.exec) return false;
+  return a.hash !== null && b.hash !== null ? a.hash === b.hash : a.size === b.size && a.mtimeMs === b.mtimeMs;
+}
+/** One bounded git call of a snapshot, as bytes; takes no optional lock while the provider may be working. */
+function boundedGit(cwd, args, { timeoutMs, maxBytes, run, input }) {
+  return run("git", ["--no-optional-locks", ...args], { cwd, input, env: { ...process.env, LC_ALL: "C", GIT_OPTIONAL_LOCKS: "0" }, encoding: "buffer", shell: false, windowsHide: true, timeout: timeoutMs, maxBuffer: maxBytes });
+}
+const bounds = (options) => ({ ...SNAPSHOT, run: spawnSync, now: Date.now, ...options });
+/**
+ * {root, head, states}: HEAD (null on an unborn branch) and an entry per dirty path, relative to the
+ * repository root. Null when the tree cannot be listed whole (outside a repository, a git failure or
+ * timeout, output past the byte bound, over maxFiles or past the wall clock): the caller keeps the
+ * provider's own edit events. Past the byte budget only the comparison weakens. Never throws.
+ */
+export function worktreeSnapshot(cwd, options) {
+  const o = bounds(options);
+  const start = o.now();
+  const left = () => o.totalMs - (o.now() - start);
+  const call = (at, args) => {
+    if (left() <= 0) return null;
+    const r = boundedGit(at, args, { ...o, timeoutMs: Math.min(o.timeoutMs, left()) });
+    return r.error ? null : r;
+  };
+  try {
+    const top = call(cwd, ["rev-parse", "--show-toplevel"]);
+    if (!top || top.status !== 0) return null;
+    const root = top.stdout.toString("utf8").replace(/\r?\n$/, "");
+    const head = call(root, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
+    if (!head || (head.status !== 0 && head.status !== 1)) return null;
+    const status = call(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
+    if (!status || status.status !== 0) return null;
+    const paths = statusPaths(status.stdout.toString("utf8"));
+    if (paths.length > o.maxFiles) return null;
+    const budget = { left: o.maxBytes }, states = new Map();
+    for (const p of paths) {
+      if (left() <= 0) return null;
+      states.set(p, pathEntry(path.join(root, p), budget));
+    }
+    return { root, head: head.status === 0 ? head.stdout.toString("utf8").trim() : null, states };
   } catch { return null; }
 }
 /**
  * The paths that changed since `before`, as absolute paths: state differs, plus what differs between
- * the two HEADs if HEAD moved. Empty when the second snapshot cannot be taken. Never throws.
+ * the two HEADs if HEAD moved. Empty when either side cannot be told, so the count stays event-only.
+ * Never throws.
  */
 export function worktreeChanges(cwd, before, options) {
-  const after = worktreeSnapshot(cwd, options);
-  if (!before || !after || after.root !== before.root) return [];
-  const changed = new Set();
-  for (const [p, state] of before.states) if (after.states.get(p) !== state) changed.add(p);
-  for (const p of after.states.keys()) if (!before.states.has(p)) changed.add(p);
-  if (before.head !== after.head) {
-    try {
-      const empty = () => checked(git(after.root, ["hash-object", "-t", "tree", "--stdin"], { input: "" }), "git hash-object").trim();
-      const moved = git(after.root, ["diff", "--name-only", "--no-renames", "-z", before.head ?? empty(), after.head ?? empty()]);
-      if (!moved.error && moved.status === 0) for (const p of moved.stdout.split("\0").filter(Boolean)) changed.add(p);
-    } catch { /* the states alone */ }
-  }
-  return [...changed].map((p) => path.join(after.root, p));
+  try {
+    const after = worktreeSnapshot(cwd, options);
+    if (!before || !after || after.root !== before.root) return [];
+    const changed = new Set();
+    for (const [p, entry] of before.states) if (!sameEntry(entry, after.states.get(p))) changed.add(p);
+    for (const p of after.states.keys()) if (!before.states.has(p)) changed.add(p);
+    if (before.head !== after.head) {
+      const o = bounds(options);
+      const empty = () => boundedGit(after.root, ["hash-object", "-t", "tree", "--stdin"], { ...o, input: "" }).stdout.toString("utf8").trim();
+      const moved = boundedGit(after.root, ["diff", "--name-only", "--no-renames", "-z", before.head ?? empty(), after.head ?? empty()], o);
+      if (moved.error || moved.status !== 0) return [];
+      for (const p of moved.stdout.toString("utf8").split("\0").filter(Boolean)) changed.add(p);
+    }
+    return [...changed].map((p) => path.join(after.root, p));
+  } catch { return []; }
 }
 /**
  * The union of a turn's edit events and its snapshot changes, each path once, relative to the job

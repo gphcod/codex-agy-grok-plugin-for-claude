@@ -2,10 +2,11 @@
 // of the working tree taken before the spawn and after the turn. Real Git; the three fakes.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import fs, { appendFileSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { unionEdited, statusPaths, worktreeChanges, worktreeSnapshot } from "../plugins/council/scripts/lib/core/git.mjs";
+import { SNAPSHOT, readBounded, sameEntry, statusPaths, unionEdited, worktreeChanges, worktreeSnapshot } from "../plugins/council/scripts/lib/core/git.mjs";
 import { canonical } from "../plugins/council/scripts/lib/core/fs.mjs";
 import { PROVIDERS, footer, harness } from "./fixtures/three-providers.mjs";
 import { git, isolateGit } from "./fixtures/build-repos.mjs";
@@ -144,10 +145,10 @@ test("snapshot: null outside a repository and over the cap; changes are then emp
     assert.deepEqual(worktreeChanges(plain, null), []);
     writeFileSync(join(dir, "x.txt"), "x\n");
     writeFileSync(join(dir, "y.txt"), "y\n");
-    assert.equal(worktreeSnapshot(dir, { cap: 1 }), null);
-    assert.equal(worktreeSnapshot(dir, { cap: 2 }).states.size, 2);
+    assert.equal(worktreeSnapshot(dir, { maxFiles: 1 }), null);
+    assert.equal(worktreeSnapshot(dir, { maxFiles: 2 }).states.size, 2);
     const before = worktreeSnapshot(dir);
-    assert.deepEqual(worktreeChanges(dir, before, { cap: 1 }), [], "the second snapshot over the cap: event-only");
+    assert.deepEqual(worktreeChanges(dir, before, { maxFiles: 1 }), [], "the second snapshot over the cap: event-only");
   } finally { rmSync(dir, { recursive: true, force: true }); rmSync(plain, { recursive: true, force: true }); }
 });
 
@@ -171,4 +172,118 @@ test("unionEdited: relative to the job cwd in a subdirectory, absolute outside i
 test("statusPaths: -z records, renames carry the old path, copies do not, a directory loses its slash", () => {
   assert.deepEqual(statusPaths(" M a.txt\0?? new file.txt\0R  to.txt\0from.txt\0C  copy.txt\0orig.txt\0?? sub/\0"), ["a.txt", "new file.txt", "to.txt", "from.txt", "copy.txt", "sub"]);
   assert.deepEqual(statusPaths(""), []);
+});
+
+test("bounds: the same as the twin's, and the whole snapshot stays well under the 30 s heartbeat", () => {
+  assert.deepEqual({ ...SNAPSHOT }, { maxFiles: 5000, maxBytes: 4 * 1024 * 1024, timeoutMs: 2500, totalMs: 10000 });
+});
+
+test("byte budget: an oversized file compares by size and mtime; exhausting it does not read as a change", () => {
+  const dir = repo();
+  try {
+    const big = join(dir, "big.bin");
+    writeFileSync(big, "x".repeat(500));
+    utimesSync(big, 1700000000, 1700000000); // Whole seconds, so setting it again gives the same mtime.
+    const before = worktreeSnapshot(dir, { maxBytes: 200 });
+    assert.equal(before.states.get("big.bin").hash, null, "never hashed");
+    assert.equal(before.states.get("big.bin").size, 500);
+    assert.deepEqual(worktreeChanges(dir, before, { maxBytes: 200 }), [], "unchanged");
+
+    writeFileSync(big, "y".repeat(500));
+    utimesSync(big, 1700000000, 1700000000);
+    assert.deepEqual(worktreeChanges(dir, before, { maxBytes: 200 }), [], "known limit: same size and mtime reads as unchanged");
+    writeFileSync(big, "y".repeat(501));
+    assert.deepEqual(rel(dir, worktreeChanges(dir, before, { maxBytes: 200 })), ["big.bin"], "a new size counts");
+    rmSync(big);
+
+    // Which file gets hashed depends on the others: hashed on one side and measured on the other is no change.
+    writeFileSync(join(dir, "a.txt"), "a".repeat(60));
+    writeFileSync(join(dir, "b.txt"), "b".repeat(60));
+    const roomy = worktreeSnapshot(dir, { maxBytes: 1000 });
+    assert.ok(roomy.states.get("b.txt").hash);
+    const tight = worktreeSnapshot(dir, { maxBytes: 100 });
+    assert.deepEqual([tight.states.get("a.txt").hash === null, tight.states.get("b.txt").hash === null], [false, true], "the budget ran out at the second file");
+    assert.deepEqual(worktreeChanges(dir, roomy, { maxBytes: 100 }), []);
+    writeFileSync(join(dir, "b.txt"), "b".repeat(61));
+    assert.deepEqual(rel(dir, worktreeChanges(dir, roomy, { maxBytes: 100 })), ["b.txt"]);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("readBounded: a file that grows while it is read, or does not fit, is not hashed", () => {
+  const dir = canonical(mkdtempSync(join(tmpdir(), "council-read-")));
+  try {
+    const file = join(dir, "f");
+    writeFileSync(file, "12345");
+    assert.equal(readBounded(file, 100).toString(), "12345");
+    assert.equal(readBounded(file, 5).toString(), "12345", "exactly the budget");
+    assert.equal(readBounded(file, 4), null);
+    const growing = { ...fs, readSync: (...args) => { appendFileSync(file, "more"); return fs.readSync(...args); } };
+    assert.equal(readBounded(file, 100, growing), null);
+    const before = statSync(file).size;
+    const late = { ...fs, fstatSync: ((calls) => (fd) => { const st = fs.fstatSync(fd); calls += 1; return calls === 2 ? { ...st, size: st.size + 1, isFile: () => true } : st; })(0) };
+    assert.equal(readBounded(file, 100, late), null, "the size changed after the read");
+    assert.equal(statSync(file).size, before);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("a FIFO never blocks: read directly, listed as a tracked file's replacement, or swapped in after the lstat", { skip: process.platform === "win32" }, () => {
+  const dir = repo();
+  try {
+    const before = worktreeSnapshot(dir);
+    rmSync(join(dir, "a.txt"));
+    assert.equal(spawnSync("mkfifo", [join(dir, "a.txt")]).status, 0);
+    assert.equal(readBounded(join(dir, "a.txt"), 100), null, "O_NONBLOCK opens it, fstat refuses it");
+    const after = worktreeSnapshot(dir);
+    assert.equal(after.states.get("a.txt").kind, "other");
+    assert.deepEqual(rel(dir, worktreeChanges(dir, before)), ["a.txt"]);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("time bound through an injected clock: past the wall clock at any step is not listed whole", () => {
+  const dir = repo();
+  try {
+    writeFileSync(join(dir, "x.txt"), "x\n");
+    writeFileSync(join(dir, "y.txt"), "y\n");
+    // Each read of the clock advances it; the snapshot reads it once per step.
+    const ticking = (step) => { let t = 0; return () => (t += step); };
+    assert.ok(worktreeSnapshot(dir, { now: ticking(1) }), "well inside the bound");
+    assert.equal(worktreeSnapshot(dir, { now: ticking(20000) }), null, "past it before the first git call");
+    let reads = 0;
+    const lateInLoop = () => { reads += 1; return reads > 8 ? 20000 : 0; };
+    assert.equal(worktreeSnapshot(dir, { now: lateInLoop }), null, "past it while hashing");
+    assert.ok(reads > 8, "reached the per-path check");
+    const before = worktreeSnapshot(dir);
+    assert.deepEqual(worktreeChanges(dir, before, { now: ticking(20000) }), [], "the second snapshot past it: event-only");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("a git call that fails, times out or overflows its byte bound is not listed whole", () => {
+  const dir = repo();
+  try {
+    const failing = (word, result) => (cmd, args, opts) => (args.includes(word) ? result : spawnSync(cmd, args, opts));
+    assert.equal(worktreeSnapshot(dir, { run: failing("status", { error: Object.assign(new Error("t"), { code: "ETIMEDOUT" }), stdout: Buffer.alloc(0) }) }), null);
+    assert.equal(worktreeSnapshot(dir, { run: failing("status", { status: 128, stdout: Buffer.alloc(0) }) }), null);
+    assert.equal(worktreeSnapshot(dir, { run: failing("HEAD^{commit}", { status: 128, stdout: Buffer.alloc(0) }) }), null);
+    writeFileSync(join(dir, "long-name-for-the-listing.txt"), "x\n");
+    assert.equal(worktreeSnapshot(dir, { maxBytes: 8 }), null, "real git: the listing itself is over the bound");
+    const seen = [];
+    worktreeSnapshot(dir, { run: (cmd, args, opts) => { seen.push([args[0], opts.timeout, opts.maxBuffer, opts.env.GIT_OPTIONAL_LOCKS]); return spawnSync(cmd, args, opts); } });
+    assert.ok(seen.every(([first, timeout, maxBuffer, locks]) => first === "--no-optional-locks" && timeout <= 2500 && maxBuffer === SNAPSHOT.maxBytes && locks === "0"), JSON.stringify(seen));
+    const before = worktreeSnapshot(dir);
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "moved"]);
+    assert.deepEqual(worktreeChanges(dir, before, { run: failing("diff", { status: 128, stdout: Buffer.alloc(0) }) }), [], "HEAD moved and its diff failed: event-only");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("sameEntry: kinds, link targets, one missing hash, absent entries", () => {
+  const file = (over) => ({ kind: "file", exec: false, size: 1, mtimeMs: 1, hash: "h", ...over });
+  assert.equal(sameEntry(file(), file({ mtimeMs: 2 })), true, "two hashes ignore a touch");
+  assert.equal(sameEntry(file(), file({ hash: "other" })), false);
+  assert.equal(sameEntry(file(), file({ hash: null })), true);
+  assert.equal(sameEntry(file(), file({ hash: null, mtimeMs: 2 })), false);
+  assert.equal(sameEntry(file(), { kind: "gone" }), false);
+  assert.equal(sameEntry({ kind: "gone" }, { kind: "gone" }), true);
+  assert.equal(sameEntry({ kind: "link", target: "a" }, { kind: "link", target: "b" }), false);
+  assert.equal(sameEntry(file(), undefined), false);
 });

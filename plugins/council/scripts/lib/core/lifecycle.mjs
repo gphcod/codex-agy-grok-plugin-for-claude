@@ -154,7 +154,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
       reason = "cancelled";
     } else {
       // X2: a task's edits are also counted from the working tree, so one made through a shell shows.
-      if (request.verb === "task") { edits = worktreeSnapshot(request.cwd); beat(); }
+      if (request.verb === "task") { beat(); edits = worktreeSnapshot(request.cwd); beat(); }
       cleanupConfirmed = false;
       job.spawnAttempted = true;
       save(job); // Persist the exact operands before any executable can start.
@@ -428,12 +428,14 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     outcome = "failed";
     error = MESSAGES.cleanupPending(provider, [reason, queryError].filter(Boolean).join("; "));
   }
+  let edited = [...(seen?.edited ?? [])];
+  if (edits) { beat(); edited = unionEdited(request.cwd, edited, worktreeChanges(request.cwd, edits)); }
   Object.assign(job, {
     status: ["ok", "attention"].includes(outcome) ? "done" : outcome, outcome, code: outcome === "ok" ? 0 : outcome === "attention" ? 10 : refused && outcome === "failed" && cleanupConfirmed ? 2 : 1,
     error, cleanupPending: !cleanupConfirmed, endedAt: new Date().toISOString(),
     // X1: the reason a turn needs attention, shown in the footer as `attention: <reason>`.
     attention: outcome === "attention" ? attentionReason({ isReview, review: job.review, denied: seen?.denied, deniedAction: seen?.deniedAction, deniedCount: seen?.deniedCount, questions: parsed?.questions }) : null,
-    edited: edits ? unionEdited(request.cwd, seen?.edited ?? [], worktreeChanges(request.cwd, edits)) : [...(seen?.edited ?? [])], failedCommands: seen?.failedCommands ?? [], failedCommandCount: seen?.failedCommandCount ?? 0,
+    edited, failedCommands: seen?.failedCommands ?? [], failedCommandCount: seen?.failedCommandCount ?? 0,
     unconfirmed: isReview ? null : seen?.unconfirmed ?? null, denied: seen?.denied ?? null, costUsd: seen?.costUsd ?? null, usage: seen?.usage ?? null, answerClipped: parsed?.answerClipped ?? false,
   });
   delete job.stderrTail;
