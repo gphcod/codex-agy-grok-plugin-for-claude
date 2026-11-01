@@ -2,7 +2,7 @@
 // the provider-neutral request binding (one exclusive reservation per session + cwd + request id).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import fs, { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -206,4 +206,14 @@ test("S2.10: a reservation whose write fails leaves no file, exits 1, and an ide
     assert.equal(fs.readdirSync(dir).filter((n) => n.endsWith(".tmp")).length, 0);
     assert.equal(existsSync(scopeFile(canonical(s.home), null, canonical(s.cwd), "nolink")), false);
   } finally { s.done(); }
+});
+
+test("S2.10: a failed removal of the temporary file after linking keeps the published claim", () => {
+  const home = mkdtempSync(join(tmpdir(), "council-scope-rm-"));
+  try {
+    const io = { ...fs, rmSync: (target, ...rest) => { if (String(target).endsWith(".tmp")) throw Object.assign(new Error("EPERM"), { code: "EPERM" }); return fs.rmSync(target, ...rest); } };
+    const claim = claimScope(home, { session: null, cwd: home, requestId: "rmfail" }, { fingerprint: "f" }, io);
+    assert.equal(claim.fresh, true);
+    assert.equal(loadScope(claim.file).fingerprint, "f");
+  } finally { rmSync(home, { recursive: true, force: true }); }
 });

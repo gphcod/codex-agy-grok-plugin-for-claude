@@ -172,7 +172,11 @@ export function claimScope(home, { session, cwd, requestId }, record, io = fs) {
       return { fresh: false, file, record: loadScope(file) };
     }
     return { fresh: true, file };
-  } finally { io.rmSync(temp, { force: true }); }
+  } finally {
+    // Best effort: once the binding is linked, a failed removal of the temporary name must not turn
+    // a successful claim into a thrown error that abandons the published binding.
+    try { io.rmSync(temp, { force: true }); } catch {}
+  }
 }
 /** The binding, or null while its creator is still writing it (or when it was released). */
 export function loadScope(file) {
