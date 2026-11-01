@@ -407,3 +407,20 @@ test("a max-turns stop keeps the answer and exits 1 with incomplete: <reason>", 
     assert.equal(loadThread(canonical(h.home), "grok", job.threadId).resumable, undefined);
   } finally { h.done(); }
 });
+
+test("a review stopped by max turns keeps its structured review: exit 1, rendered incomplete, no coverage", async () => {
+  const h = harness();
+  try {
+    const dir = repo(h);
+    const r = await h.call(["review", "--to", "grok", "--uncommitted", "--effort", "low", "--json"], { at: dir, env: { COUNCIL_FAKE_SCENARIO: "review-findings", COUNCIL_FAKE_EXPECT_PROMPT_CONTAINS: "calc.js", COUNCIL_FAKE_GROK_END: "max-turns" } });
+    assert.equal(r.code, 1, r.out);
+    const o = JSON.parse(r.out);
+    assert.equal(o.error, "incomplete: Grok stopped: max turns reached");
+    assert.match(o.answer, /^Verdict: incomplete \(incomplete: Grok stopped: max turns reached\)\. The loop bound changed/);
+    assert.match(o.answer, /\nF1 BLOCKER calc\.js:3: /);
+    assert.equal(o.verdict, "incomplete");
+    assert.deepEqual(o.coverage.reviewed, []);
+    assert.ok(o.coverage.unreviewed.includes("calc.js"));
+    assert.equal(o.findings.length, 1);
+  } finally { h.done(); }
+});
