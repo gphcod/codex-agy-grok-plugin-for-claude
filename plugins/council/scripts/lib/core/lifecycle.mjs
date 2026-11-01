@@ -115,6 +115,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     if (old) throw new BusyError(`thread ${id} requires cleanup of job ${old.id}; run cancel ${old.id}`, old.id);
   };
   let reader = null;
+  let beforeTurnRan = false;
   let cleanupConfirmed = true; // No spawn yet.
   let streamFailure = null;
   let stop = (why) => { reason ??= why; };
@@ -142,6 +143,11 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     if (turn.promptFile) io.writeFileSync(turn.promptFile, turn.promptText ?? request.text ?? "");
     save(job);
     await hooks.beforeSpawn?.(job);
+    if (!cancelled() && adapter.beforeTurn) {
+      // A5: once, after admission and before the spawn; a throw fails the turn with nothing started.
+      adapter.beforeTurn({ job, request, turn, home: ctx.home });
+      beforeTurnRan = true;
+    }
     if (cancelled()) {
       reason = "cancelled";
     } else {
@@ -383,6 +389,11 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     // Retain the claim if durable finalization or release could not be completed.
     job.code = 1; job.outcome = "failed"; job.cleanupPending = true;
     job.error = `finalization failed: ${failure.message}`;
+  }
+  // A5: afterTurn runs once, after finalization, and only once cleanup is verified (also on failure or cancel).
+  if (beforeTurnRan && adapter.afterTurn && cleanupConfirmed) {
+    try { adapter.afterTurn({ job, request, turn, home: ctx.home }, { outcome: job.outcome, code: job.code, error: job.error }); }
+    catch (failure) { job.afterTurnError = failure.message; try { save(job); } catch { /* the result stands */ } }
   }
   announce();
   return { job: jobView(ctx.home, job), answer };
