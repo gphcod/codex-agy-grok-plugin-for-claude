@@ -204,14 +204,16 @@ export function worktreeChanges(cwd, before, options) {
  * cwd when inside it and absolute otherwise. An event's path is compared through its real directory,
  * so a symlinked spelling of the same file counts once.
  */
-export function unionEdited(cwd, events, changed) {
+export function unionEdited(cwd, events, changed, platform = process.platform) {
+  // On POSIX a backslash is an ordinary file name character: `a\\b` and `a/b` are two files.
+  const slashes = (p) => (platform === "win32" ? p.replace(/\\/g, "/") : p);
   let base = cwd;
   try { base = fs.realpathSync(cwd); } catch { /* as spelled */ }
   const shown = (p) => {
     let abs = path.resolve(base, p);
     try { abs = path.join(fs.realpathSync(path.dirname(abs)), path.basename(abs)); } catch { /* a directory the turn removed: as spelled */ }
     const rel = path.relative(base, abs);
-    return (rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? rel : abs).replace(/\\/g, "/");
+    return slashes(rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? rel : abs);
   };
   return [...new Set([...events, ...changed].map(shown))];
 }

@@ -40,7 +40,8 @@ export function createReader({ adapter, cwd = process.cwd(), turn = null, onThre
   };
   const relative = (p) => {
     const rel = path.relative(cwd, path.resolve(cwd, p));
-    return (rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? rel : p).replace(/\\/g, "/");
+    const shown = rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? rel : p;
+    return process.platform === "win32" ? shown.replace(/\\/g, "/") : shown; // On POSIX a backslash is a file name character.
   };
 
   function line(text) {

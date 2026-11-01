@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SNAPSHOT, readBounded, sameEntry, statusPaths, unionEdited, worktreeChanges, worktreeSnapshot } from "../plugins/council/scripts/lib/core/git.mjs";
 import { canonical } from "../plugins/council/scripts/lib/core/fs.mjs";
+import { createReader } from "../plugins/council/scripts/lib/core/reader.mjs";
 import { PROVIDERS, footer, harness } from "./fixtures/three-providers.mjs";
 import { git, isolateGit } from "./fixtures/build-repos.mjs";
 
@@ -333,5 +334,23 @@ test("real Git: a raw-byte file name is event-only for a task and does not fail 
     assert.equal(task.code, 0, task.err + task.out);
     assert.deepEqual(h.job(task.job).edited, ["event.js"]);
   } finally { h.done(); }
+});
+
+test("on POSIX a\\b and a/b are two files; on Windows one", { skip: process.platform === "win32" }, () => {
+  const dir = repo();
+  try {
+    mkdirSync(join(dir, "a"));
+    const before = worktreeSnapshot(dir);
+    writeFileSync(join(dir, "a\\b"), "literal backslash\n");
+    writeFileSync(join(dir, "a", "b"), "in a directory\n");
+    const changed = worktreeChanges(dir, before);
+    assert.deepEqual(rel(dir, changed), ["a/b", "a\\b"]);
+    assert.deepEqual(unionEdited(dir, [], changed).sort(), ["a/b", "a\\b"]);
+    assert.deepEqual(unionEdited(dir, ["a\\b"], [join(dir, "a", "b")]).sort(), ["a/b", "a\\b"], "an event's path too");
+    const r = createReader({ adapter: { parseEvent: (line) => JSON.parse(line) }, cwd: dir });
+    r.feed(`${JSON.stringify({ edited: ["a\\b", "a/b"] })}\n`);
+    assert.deepEqual([...r.state.edited].sort(), ["a/b", "a\\b"], "the reader keeps them apart");
+    assert.deepEqual(unionEdited(dir, ["sub\\x.js"], [], "win32"), ["sub/x.js"], "win32 normalizes");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
