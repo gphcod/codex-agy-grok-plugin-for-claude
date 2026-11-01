@@ -121,5 +121,10 @@ test("a provider's text cannot fake a footer token or carry an escape sequence (
     ["· leading", "- leading"], ["trailing ·", "trailing -"], ["·", "-"], ["a·b stays", "a·b stays"], ["a ·b stays", "a ·b stays"], ["\x9b31m", "31m"],
     ["/work/my repo/a.js", "/work/my repo/a.js"],
   ]) assert.equal(oneLine(input), output, JSON.stringify(input));
+  // Clipping at 200 B would leave a trailing ` ·`, which the footer's next ` · ` would turn into a fake token.
+  const clippedAtDot = oneLine(`${"x".repeat(197)} ·z`);
+  assert.equal(clippedAtDot, `${"x".repeat(197)} -`);
+  const hinted = renderFooter(job({ outcome: "failed", code: 1, error: `${"x".repeat(197)} ·z` }), false);
+  assert.doesNotMatch(hinted, / · · /);
 });
 

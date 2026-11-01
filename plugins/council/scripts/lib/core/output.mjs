@@ -21,7 +21,9 @@ export function utf8Prefix(text, cap) {
  * One line of at most `max` bytes, safe inside a footer: provider text in `error:` or `attention:` can
  * carry no control character or escape sequence introducer, and no ` · ` that would fake a footer token.
  */
-export const oneLine = (text, max = 200) => utf8Prefix(String(text).replace(/[\x00-\x08\x0e-\x1f\x7f-\x9f]/g, "").replace(/\s+/g, " ").trim().replace(/(^| )·(?= |$)/g, "$1-"), max);
+const freeDot = (text) => text.replace(/(^| )·(?= |$)/g, "$1-");
+// Clipping can leave a new trailing ` ·`, so the check runs again on the clipped value.
+export const oneLine = (text, max = 200) => freeDot(utf8Prefix(freeDot(String(text).replace(/[\x00-\x08\x0e-\x1f\x7f-\x9f]/g, "").replace(/\s+/g, " ").trim()), max));
 /** X1: the footer's `attention: <reason>`, one line, at most this many bytes, cause first. */
 export const ATTENTION_MAX = 200;
 export const QUESTIONS_REASON = "open questions in the answer";
