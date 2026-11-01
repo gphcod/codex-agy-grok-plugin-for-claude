@@ -49,6 +49,8 @@ export function recoveryHint(job) {
       job.identifiedStopped ? `a new ask; job ${job.id}` : `cancel ${job.id} to stop what it can identify, then a new ask`}`;
   }
   if (pendingCleanup(job)) return `cleanup pending; next: cancel ${job.id}; do not resume`;
+  // The provider finished without confirming its thread (grok `end` without a session id): not resumable.
+  if (job.unconfirmed && job.verb !== "review") return oneLine(job.unconfirmed);
   if (job.threadId && job.admitted !== false && job.verb !== "review") return `next: reply ${job.id}`;
   return null;
 }

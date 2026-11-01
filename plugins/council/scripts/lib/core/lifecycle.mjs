@@ -400,7 +400,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     status: ["ok", "attention"].includes(outcome) ? "done" : outcome, outcome, code: outcome === "ok" ? 0 : outcome === "attention" ? 10 : 1,
     error, cleanupPending: !cleanupConfirmed, endedAt: new Date().toISOString(),
     edited: [...(seen?.edited ?? [])], failedCommands: seen?.failedCommands ?? [], failedCommandCount: seen?.failedCommandCount ?? 0,
-    denied: seen?.denied ?? null, costUsd: seen?.costUsd ?? null, usage: seen?.usage ?? null, answerClipped: parsed?.answerClipped ?? false,
+    unconfirmed: isReview ? null : seen?.unconfirmed ?? null, denied: seen?.denied ?? null, costUsd: seen?.costUsd ?? null, usage: seen?.usage ?? null, answerClipped: parsed?.answerClipped ?? false,
   });
   delete job.stderrTail;
   try {
@@ -410,7 +410,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     // while the claim is still held and before completion is published, so a failed write never
     // leaves a published result whose thread metadata is stale.
     if (job.threadId && !isReview && job.admitted) {
-      (hooks.saveThread ?? saveThread)(ctx.home, { provider, threadId: job.threadId, cwd: job.cwd, model: job.model, effort: job.effort, tier: job.tier, round: job.round, rounds: job.rounds, roundsSet: job.roundsSet, web: job.web, agent: turn?.agent ?? null, lastJob: job.id, lastVerb: job.verb, readOnly: job.readOnly });
+      (hooks.saveThread ?? saveThread)(ctx.home, { provider, threadId: job.threadId, cwd: job.cwd, model: job.model, effort: job.effort, tier: job.tier, round: job.round, rounds: job.rounds, roundsSet: job.roundsSet, web: job.web, agent: turn?.agent ?? null, lastJob: job.id, lastVerb: job.verb, readOnly: job.readOnly, ...(job.unconfirmed ? { resumable: false, unconfirmed: job.unconfirmed } : {}) });
     }
     save(job); finishMarker(job); // No other process writes these result artifacts.
     if (cleanupConfirmed) releaseClaims(ctx.home, job);
