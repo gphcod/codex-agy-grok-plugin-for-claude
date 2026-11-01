@@ -191,7 +191,9 @@ export function processSnapshot({ pid = null, platform = process.platform, run =
     if (platform === "darwin") {
       // pgid= added (PLAN.md A7.5): a group member reparented to pid 1 is still found through its group.
       const r = run("ps", ["-ww", ...(pid === null ? ["-ax"] : ["-p", String(pid)]), "-o", "pid=,ppid=,pgid=,uid=,stat=,lstart=,args="], {
-        encoding: "utf8", env: { ...process.env, LC_ALL: "en_US.UTF-8" }, shell: false, timeout,
+        // TZ=UTC: lstart stamps are identity evidence compared across processes, so they must not depend
+        // on the caller's time zone (a cancel run under another TZ would read a live owner as gone).
+        encoding: "utf8", env: { ...process.env, LC_ALL: "en_US.UTF-8", TZ: "UTC" }, shell: false, timeout,
         maxBuffer: 16 * 1024 * 1024,
       });
       if (r.error || (r.status !== 0 && !(pid !== null && r.status === 1 && !r.stdout.trim()))) return queryFailed(r, timeout);
@@ -311,7 +313,7 @@ export const BARE_BINARIES = ["codex", "codex.exe", "agy", "agy.exe", "grok", "g
 export function startTime(stamp) {
   if (typeof stamp !== "string" || !stamp) return null;
   if (/^\d+$/.test(stamp)) return BigInt(stamp);
-  const ms = Date.parse(stamp);
+  const ms = Date.parse(`${stamp} UTC`); // queried with TZ=UTC
   return Number.isNaN(ms) ? null : BigInt(Math.floor(ms / 1000));
 }
 // Windows never reparents, so a process whose parent died can name a pid reused by an owned
