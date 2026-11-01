@@ -161,7 +161,7 @@ test("review output: malformed and prose-only answers are incomplete (10); --jso
       assert.equal(r.code, 10, scenario);
       const j = JSON.parse(r.out);
       assert.deepEqual([j.verdict, j.findings, j.exit, j.status], ["incomplete", [], 10, "attention"], scenario);
-      assert.match(j.answer, /^Verdict: incomplete \(no \[P0\]\/\[P1\] finding/);
+      assert.match(j.answer, /^Verdict: incomplete \(codex reported no findings; its output cannot prove a clean review\)\./);
       assert.match(j.answer, /Codex review output:\n\n/);
       assert.equal(j.round, null, "a review has no round");
     }
@@ -227,8 +227,10 @@ test("failed commands, a turn error, a deadline stop: exit codes and --json fiel
   const h = harness();
   try {
     const denied = JSON.parse((await h.turn(["ask", "--to", "codex", "--json"], "write a file", { COUNCIL_FAKE_SCENARIO: "denied" })).out);
-    assert.equal(denied.exit, 0);
+    assert.deepEqual([denied.exit, denied.status], [10, "attention"], "a sandbox refusal is a denied action (A3.4)");
     assert.deepEqual(denied.failedCommands, [{ cmd: "printf hello > probe-denied.txt", exit: 1 }]);
+    const plain = await h.turn(["ask", "--to", "codex"], "write a file", { COUNCIL_FAKE_SCENARIO: "denied" });
+    assert.match(plain.out, /^council codex needs attention · /m);
     const effort = await h.turn(["ask", "--to", "codex"], "x", { COUNCIL_FAKE_SCENARIO: "effort-error" });
     assert.equal(effort.code, 1);
     assert.match(effort.out, /^council codex failed · .* · error: unsupported reasoning effort high for gpt-6\.1-sol/m);

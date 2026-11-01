@@ -66,7 +66,7 @@ Every command, flag, environment variable, output field and documented caveat of
 | `next: reply <job>` | same, never on a review | same | |
 | exit codes 0/10/20/1/2 | 0/10/20/1/2 | same | |
 | open questions in the answer → needs attention (10) | same | same | core `readAnswer` |
-| review `[P0]`/`[P1]` → needs attention (10), otherwise 0 | `[P0]` BLOCKER, `[P1]` MAJOR → `changes` (10); anything else → `incomplete` (10) | intentionally different | A5.1/A5.2: Codex's text cannot prove an approval (it renders unparseable model output as plain explanation), so a clean Codex review exits 10 `incomplete` instead of 0; findings are listed as F1/F2 with severity and file:line, Codex's text is kept after an incomplete verdict (decisions S3.3) |
+| review `[P0]`/`[P1]` → needs attention (10), otherwise 0 | `[P0]` BLOCKER, `[P1]` MAJOR, `[P2]`/`[P3]` MINOR → `changes` (10); a malformed finding line, empty or fallback text → `incomplete` (10); a review with no finding → `incomplete` (10) with `codex reported no findings; its output cannot prove a clean review` | intentionally different | A5.1/A5.2: Codex turns reviewer output it cannot parse into an explanation with no findings, identical to a genuine clean review (rust-v0.163.0 core/src/tasks/review.rs:175-194, protocol/src/review_format.rs:57-74), so a clean Codex review exits 10 instead of 0; findings are listed as F1/F2 with severity and file:line, and Codex's text is kept after an incomplete verdict (decisions S3.3, S3.7) |
 | `--json` review fields | `verdict`, `findings`, `coverage` | intentionally different | A5.2 normalized result |
 
 ## Behaviour and caveats
@@ -88,6 +88,7 @@ Every command, flag, environment variable, output field and documented caveat of
 | reply after rescue is read-only | reply is always read-only | same | `codex-turns` chain test: reply after a task resumes with `sandbox_mode=read-only` |
 | `codex exec` refuses an untrusted, non-Git directory | same message passes through (exit 1) | same | council adds no `--skip-git-repo-check` (decisions S1) |
 | an `error` event without `turn.completed` fails the turn with its message | same | same | `parseEvent` keeps `error` unlatched (decisions S3.3) |
+| a sandbox refusal is a failed command (footer `failed cmds N`), exit 0 | a failed command whose output carries codex-rs's sandbox-denial keywords (`operation not permitted`, `permission denied`, `read-only file system`, `seccomp`, `sandbox`, `landlock`, `failed to write file`) is a denied action: needs attention (10); other failing commands stay `failedCommands` | intentionally different | A3.4: a denied action exits 10; `codex.test.mjs` parseEvent, `codex-turns` denied scenario (decisions S3.7) |
 | `ultra` passed to Codex unchecked | refused (2) on models whose catalog list lacks it | intentionally different | A3.3, `codex-turns` ultra test |
 | slash commands: seven files | eleven generated `/council:*` files | renamed | `/council:codex` equals `/council:ask --to codex` |
 | Stop review gate, hooks (removed in 2.0.0) | none | same | not in 1.0 (A1) |
