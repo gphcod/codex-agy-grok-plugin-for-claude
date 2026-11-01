@@ -154,6 +154,48 @@ const adapter = {
     else notes.push(`mcp: inherit (default): ask, reply and review keep your MCP servers, plugins and apps; ${MCP_ENV}=off would drop them there: ${MCP_TRADE_OFF}`);
     return { version: version.stdout.trim(), loggedIn: login.status === 0, models, warnings, notes };
   },
+
+  /** A3.3: flags Codex has no tested mapping for exit 2 before any job record. */
+  checkRequest(request, env = {}) {
+    if (request.adversarial) throw new UsageError("review --to codex has no --adversarial: Codex's native review has no adversarial mode; give focus text instead");
+    if (request.web) throw new UsageError("--web has no tested mapping for codex");
+    const policy = env[MCP_ENV];
+    if (policy && policy !== "inherit" && policy !== "off") throw new UsageError(`${MCP_ENV} must be inherit or off`);
+  },
+
+  /**
+   * A5.1: fresh `exec -C <cwd> -s <mode>`; `exec resume <thread> -c sandbox_mode=<mode>` (resume and
+   * review accept neither -C nor -s; the core spawns with cwd set); `exec review` with the target flags
+   * and no stdin, or with focus: the target sentence plus focus on stdin, a trailing `-` and no flags.
+   */
+  buildTurn(request) {
+    const env = request.env ?? {};
+    const answerFile = path.join(request.jobDir, "answer.md");
+    const tools = toolPolicy({ verb: request.verb, launcher: request.launcher, cwd: request.cwd, env });
+    const effortArgs = [...(request.effort ? ["-c", `model_reasoning_effort=${request.effort}`] : []), ...tools];
+    const base = { env: {}, answerFile, threadId: null };
+    if (request.verb === "review") {
+      const native = request.reviewNative ?? { flags: request.reviewTarget?.flags ?? [], stdin: null };
+      const focused = typeof native.stdin === "string" && native.stdin.length > 0;
+      const args = ["exec", "review", ...(focused ? [] : native.flags), "--json", "-o", answerFile, "-c", "sandbox_mode=read-only",
+        "-m", request.model, "-c", `review_model=${request.model}`, ...effortArgs, ...(focused ? ["-"] : [])];
+      return { ...base, args, ...(focused ? { stdin: native.stdin } : {}), readOnly: true, contractCarrier: "none" };
+    }
+    const sandbox = request.readOnly === false ? SANDBOX.task : SANDBOX[request.verb] ?? "read-only";
+    const tail = ["-m", request.model, ...effortArgs, "-c", `developer_instructions=${JSON.stringify(request.contract)}`, "-"];
+    const thread = request.thread?.threadId ?? null;
+    const args = thread
+      ? ["exec", "resume", thread, "--json", "-o", answerFile, "-c", `sandbox_mode=${sandbox}`, ...tail]
+      : ["exec", "--json", "-o", answerFile, "-C", request.cwd, "-s", sandbox, ...tail];
+    return { ...base, args, stdin: request.text, readOnly: sandbox === "read-only", contractCarrier: "developer_instructions" };
+  },
+
+  /** Native route always: the target flags, or the target sentence plus focus on stdin. */
+  reviewPlan(gitInfo, request) {
+    const target = gitInfo.target;
+    const focus = typeof request.text === "string" && request.text.trim() ? request.text : null;
+    return { native: true, flags: target.flags, stdin: focus ? `${target.sentence}\n\n${focus}` : null };
+  },
 };
 
 function isFileSync(p) {

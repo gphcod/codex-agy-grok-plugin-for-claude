@@ -7,7 +7,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import adapter, { LINE_CAP, MCP_TRADE_OFF, SANDBOX, waitsForCodex } from "../plugins/council/scripts/lib/providers/codex.mjs";
+import adapter, { LINE_CAP, MCP_TRADE_OFF, SANDBOX, toolPolicy, waitsForCodex } from "../plugins/council/scripts/lib/providers/codex.mjs";
 import { UsageError } from "../plugins/council/scripts/lib/core/args.mjs";
 import { loadStaticCatalog } from "../plugins/council/scripts/lib/core/catalog.mjs";
 import { finalizeReviewTurn } from "../plugins/council/scripts/lib/core/review.mjs";
@@ -143,4 +143,118 @@ process.exit(5);`), {});
     assert.deepEqual([partial.version, partial.loggedIn, partial.models], ["codex-cli 9.9.9", false, null]);
     assert.deepEqual(partial.warnings, ["codex login status: Not logged in", "could not read the model catalogue (codex debug models)"]);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// --- S3.2 buildTurn -------------------------------------------------------------------------------------
+
+test("buildTurn ask: fresh exec with -C and -s read-only, contract as a JSON string literal, prompt on stdin", () => {
+  const dir = tmp();
+  try {
+    const before = { ...process.env };
+    const t = adapter.buildTurn(request(dir));
+    const answer = join(dir, "answer.md");
+    assert.deepEqual(t.args, ["exec", "--json", "-o", answer, "-C", dir, "-s", "read-only", "-m", "gpt-6.1-sol", "-c", "model_reasoning_effort=high",
+      "-c", `developer_instructions=${JSON.stringify(CONTRACT)}`, "-"]);
+    assert.deepEqual([t.stdin, t.answerFile, t.readOnly, t.contractCarrier, t.threadId], ["Reply with pong", answer, true, "developer_instructions", null]);
+    assert.deepEqual(t.env, {});
+    assert.deepEqual({ ...process.env }, before, "the adapter never touches process.env");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("buildTurn: reply resumes read-only; task is workspace-write fresh or resumed; reply after a task is read-only again", () => {
+  const dir = tmp();
+  try {
+    const answer = join(dir, "answer.md");
+    const thread = { threadId: "01a1936d-c678-73b2-b282-4b3c3d2ed281" };
+    const tail = (model = "gpt-6.1-sol", effort = "high") => ["-m", model, "-c", `model_reasoning_effort=${effort}`, "-c", `developer_instructions=${JSON.stringify(CONTRACT)}`, "-"];
+    const reply = adapter.buildTurn(request(dir, { verb: "reply", thread }));
+    assert.deepEqual(reply.args, ["exec", "resume", thread.threadId, "--json", "-o", answer, "-c", "sandbox_mode=read-only", ...tail()]);
+    assert.equal(reply.readOnly, true);
+    const task = adapter.buildTurn(request(dir, { verb: "task", readOnly: false, model: "gpt-6-luna", effort: "max" }));
+    assert.deepEqual(task.args, ["exec", "--json", "-o", answer, "-C", dir, "-s", "workspace-write", ...tail("gpt-6-luna", "max")]);
+    assert.equal(task.readOnly, false);
+    const taskThread = adapter.buildTurn(request(dir, { verb: "task", readOnly: false, thread, model: "gpt-6-luna", effort: "max" }));
+    assert.deepEqual(taskThread.args, ["exec", "resume", thread.threadId, "--json", "-o", answer, "-c", "sandbox_mode=workspace-write", ...tail("gpt-6-luna", "max")]);
+    const after = adapter.buildTurn(request(dir, { verb: "reply", thread: { ...thread, readOnly: false, lastVerb: "task" } }));
+    assert.ok(after.args.includes("sandbox_mode=read-only") && !after.args.includes("sandbox_mode=workspace-write"));
+    for (const t of [reply, taskThread, after]) assert.ok(!t.args.includes("-C") && !t.args.includes("-s"), "resume accepts neither -C nor -s");
+    const ultra = adapter.buildTurn(request(dir, { effort: "ultra" }));
+    assert.ok(ultra.args.includes("model_reasoning_effort=ultra"), "ultra passes through");
+    const noEffort = adapter.buildTurn(request(dir, { effort: null, model: "some-new-model" }));
+    assert.ok(!noEffort.args.some((a) => a.startsWith("model_reasoning_effort=")), "no effort token when none resolved");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("buildTurn review: unfocused passes the target flags and no stdin; focused passes the sentence plus focus on stdin with `-` and no flags", () => {
+  const dir = tmp();
+  try {
+    const answer = join(dir, "answer.md");
+    const target = { flags: ["--base", "refs/heads/main"], sentence: "Review the changes on this branch against \"main\"; run `git diff abc...HEAD`." };
+    const plain = adapter.reviewPlan({ target }, { text: "" });
+    assert.deepEqual(plain, { native: true, flags: ["--base", "refs/heads/main"], stdin: null });
+    assert.deepEqual(adapter.reviewPlan({ target }, { text: "  \n" }).stdin, null, "whitespace is no focus");
+    const focusedPlan = adapter.reviewPlan({ target }, { text: "loop bounds only" });
+    assert.equal(focusedPlan.stdin, `${target.sentence}\n\nloop bounds only`);
+    const common = ["--json", "-o", answer, "-c", "sandbox_mode=read-only", "-m", "gpt-6.1-sol", "-c", "review_model=gpt-6.1-sol", "-c", "model_reasoning_effort=high"];
+    const unfocused = adapter.buildTurn(request(dir, { verb: "review", reviewNative: { flags: plain.flags, stdin: plain.stdin }, reviewTarget: target }));
+    assert.deepEqual(unfocused.args, ["exec", "review", "--base", "refs/heads/main", ...common]);
+    assert.equal("stdin" in unfocused, false, "no stdin: the CLI rejects flags plus a prompt");
+    assert.deepEqual([unfocused.readOnly, unfocused.contractCarrier], [true, "none"]);
+    const focused = adapter.buildTurn(request(dir, { verb: "review", reviewNative: { flags: focusedPlan.flags, stdin: focusedPlan.stdin }, reviewTarget: target }));
+    assert.deepEqual(focused.args, ["exec", "review", ...common, "-"]);
+    assert.equal(focused.stdin, focusedPlan.stdin);
+    for (const flags of [["--uncommitted"], ["--commit", "abc123"]]) {
+      assert.deepEqual(adapter.buildTurn(request(dir, { verb: "review", reviewNative: { flags, stdin: null } })).args.slice(0, 2 + flags.length), ["exec", "review", ...flags]);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("buildTurn with COUNCIL_CODEX_MCP=off: ask, reply and review drop plugins, apps and servers; task keeps them", () => {
+  const dir = tmp();
+  try {
+    const log = join(dir, "codex.log");
+    writeFileSync(log, "");
+    const env = { COUNCIL_CODEX_MCP: "off", COUNCIL_FAKE_CODEX_LOG: log };
+    const calls = () => readFileSync(log, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    const servers = 'mcp_servers={"node_repl"={enabled=false},"openaiDeveloperDocs"={enabled=false},"tradier"={enabled=false},"tradier_sandbox"={enabled=false}}';
+    const ask = adapter.buildTurn(request(dir, { env }));
+    assert.deepEqual(ask.args.slice(11, 18), ["model_reasoning_effort=high", "--disable", "plugins", "--disable", "apps", "-c", servers]);
+    assert.equal(calls().length, 2, "two discovery calls with servers configured (S1.1)");
+    assert.deepEqual(calls().map((c) => c.argv.slice(0, 3)), [["mcp", "list", "--json"], ["mcp", "list", "--json"]]);
+    assert.ok(calls().every((c) => c.guards.length === 4), "discovery calls carry the guard variables");
+    writeFileSync(log, "");
+    adapter.buildTurn(request(dir, { verb: "task", readOnly: false, env }));
+    assert.equal(calls().length, 0, "task keeps the user's tools: no discovery");
+    adapter.buildTurn(request(dir, { verb: "review", env, reviewNative: { flags: ["--uncommitted"], stdin: null } }));
+    adapter.buildTurn(request(dir, { verb: "reply", thread: { threadId: "t-1" }, env }));
+    assert.equal(calls().length, 4);
+    writeFileSync(log, "");
+    const bare = adapter.buildTurn(request(dir, { env: { ...env, COUNCIL_FAKE_MCP_SERVERS: "none" } }));
+    assert.deepEqual(bare.args.slice(12, 16), ["--disable", "plugins", "--disable", "apps"]);
+    assert.ok(!bare.args.some((a) => a.startsWith("mcp_servers=")));
+    assert.equal(calls().length, 1, "one discovery call without enabled servers");
+    writeFileSync(log, "");
+    assert.ok(!adapter.buildTurn(request(dir, { env: { COUNCIL_FAKE_CODEX_LOG: log } })).args.includes("--disable"));
+    assert.equal(calls().length, 0, "inherit (default) makes no discovery call");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("toolPolicy failures: listing fails, unreadable, a server stays enabled, bad policy", () => {
+  const launcher = { command: "codex", args: [] };
+  const ok = (stdout) => ({ status: 0, stdout, stderr: "" });
+  const off = { COUNCIL_CODEX_MCP: "off" };
+  assert.throws(() => toolPolicy({ verb: "ask", launcher, env: off, run: () => ({ status: 1, stdout: "", stderr: "unknown subcommand\n" }) }), /needs `codex mcp list --json`, which failed: unknown subcommand/);
+  assert.throws(() => toolPolicy({ verb: "ask", launcher, env: off, run: () => ok("[{\"name\":1}]") }), /cannot read `codex mcp list --json` from this Codex version/);
+  assert.throws(() => toolPolicy({ verb: "ask", launcher, env: off, run: () => ok("nope") }), /cannot read/);
+  assert.throws(() => toolPolicy({ verb: "ask", launcher, env: off, run: () => ok('[{"name":"stubborn","enabled":true}]') }), /could not disable MCP server stubborn; nothing was started/);
+  assert.throws(() => toolPolicy({ verb: "ask", launcher, env: { COUNCIL_CODEX_MCP: "maybe" } }), UsageError);
+  assert.deepEqual(toolPolicy({ verb: "ask", launcher, env: off, run: () => ok('[{"name":"x","enabled":false}]') }), ["--disable", "plugins", "--disable", "apps"]);
+  assert.deepEqual(toolPolicy({ verb: "ask", launcher, env: {} }), []);
+});
+
+test("checkRequest: --adversarial and --web exit 2, a bad COUNCIL_CODEX_MCP exits 2, everything else passes", () => {
+  assert.throws(() => adapter.checkRequest({ verb: "review", adversarial: true }, {}), (e) => e instanceof UsageError && /no --adversarial/.test(e.message));
+  assert.throws(() => adapter.checkRequest({ verb: "ask", web: true }, {}), (e) => e instanceof UsageError && /--web has no tested mapping for codex/.test(e.message));
+  assert.throws(() => adapter.checkRequest({ verb: "ask" }, { COUNCIL_CODEX_MCP: "none" }), /COUNCIL_CODEX_MCP must be inherit or off/);
+  for (const env of [{}, { COUNCIL_CODEX_MCP: "off" }, { COUNCIL_CODEX_MCP: "inherit" }]) assert.doesNotThrow(() => adapter.checkRequest({ verb: "ask", web: false, adversarial: false }, env));
 });
