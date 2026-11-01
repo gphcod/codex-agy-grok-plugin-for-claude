@@ -12,6 +12,9 @@ import { UsageError } from "../plugins/council/scripts/lib/core/args.mjs";
 import { PLUGIN_ROOT } from "../plugins/council/scripts/lib/core/catalog.mjs";
 import { fixturesDir, GUARD_VARS } from "./fixtures/fake-common.mjs";
 import { main } from "../plugins/council/scripts/council.mjs";
+import { git, isolateGit } from "./fixtures/build-repos.mjs";
+
+isolateGit();
 
 const FAKE_AGY = join(fixturesDir, "fake-agy.mjs");
 const CONTRACT = readFileSync(join(PLUGIN_ROOT, "contract.md"), "utf8").replace(/\r\n?/g, "\n").trim();
@@ -359,4 +362,49 @@ test("finalizeReview: the shared validator maps schema output into A5.2; malform
   assert.deepEqual([none.result.verdict, none.result.incomplete, none.result.coverage.unreviewed], ["incomplete", "missing structured review output", ["big.bin"]]);
   const clean = finalizeReviewTurn({ adapter: gemini, structured: { verdict: "approve", summary: "fine", findings: [], next_steps: [] }, unreviewed: [] });
   assert.deepEqual([clean.result.verdict, clean.exit], ["approve", 0]);
+});
+
+// --- S5.4 review templates through the entry --------------------------------------------------------------
+
+function repo(s) {
+  git(s.cwd, ["init", "-q"]);
+  writeFileSync(join(s.cwd, "a.mjs"), "export const a = 1;\n");
+  git(s.cwd, ["add", "-A"]);
+  git(s.cwd, ["commit", "-q", "-m", "base"]);
+  writeFileSync(join(s.cwd, "a.mjs"), "export const a = 2; // REVIEW-ME\n");
+}
+const logLines = (file) => (existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);
+
+test("review --uncommitted: collected diff in the plain template, --json-schema, findings exit 10", async () => {
+  const s = sandbox({ global: GLOBAL });
+  try {
+    repo(s);
+    const log = join(s.root, "agy.log");
+    const r = await s.call(["review", "--to", "gemini", "--uncommitted"], { scenario: "review-findings", prompt: "REVIEW-ME", extra: { COUNCIL_FAKE_EXPECT_CONTRACT: null, COUNCIL_FAKE_AGY_LOG: log } });
+    assert.equal(r.code, 10, r.out + r.err);
+    assert.equal(r.json.verdict, "changes");
+    assert.ok(r.json.findings.length > 0);
+    const [spawn] = logLines(log);
+    assert.match(spawn.content, /^<role>\nYou are /, "the review prompt alone, no contract");
+    assert.doesNotMatch(spawn.content, /adversarial software review/);
+    assert.match(spawn.content, /Use the repository context below as primary evidence\./, "collection guidance");
+    assert.match(spawn.content, /Target: working tree/i);
+    assert.ok(spawn.argv.includes("--json-schema"));
+    assert.ok(!spawn.argv.includes("--mode"), "a review is read-only");
+    assert.ok(spawn.settings.permissions.deny.includes("command(*)"));
+  } finally { s.done(); }
+});
+
+test("review --adversarial renders the adversarial template; malformed output → incomplete, exit 10", async () => {
+  const s = sandbox();
+  try {
+    repo(s);
+    const log = join(s.root, "agy.log");
+    const r = await s.call(["review", "--to", "gemini", "--uncommitted", "--adversarial"], { text: "focus on the constant", scenario: "review-malformed", prompt: "adversarial software review", extra: { COUNCIL_FAKE_EXPECT_CONTRACT: null, COUNCIL_FAKE_AGY_LOG: log } });
+    assert.equal(r.code, 10, r.out + r.err);
+    assert.equal(r.json.verdict, "incomplete");
+    const [spawn] = logLines(log);
+    assert.match(spawn.content, /User focus: focus on the constant/);
+    assert.match(spawn.content, /REVIEW-ME/);
+  } finally { s.done(); }
 });
