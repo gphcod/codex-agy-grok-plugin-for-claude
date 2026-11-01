@@ -117,3 +117,12 @@ Nothing here changes Part A; these entries record how S5 fills in A5.1 for Gemin
 - **win32 (A8).** `checkRequest`, `buildTurn` and `probe` all throw the A8 message as a `UsageError` while `WINDOWS_QUALIFIED` is false, so turn verbs exit 2 and `setup` reports Gemini as not ready with that message. S7.2 flips the constant if the Windows session qualifies agy.
 - **Fake seams (synthetic, labelled in `tests/fixtures/fake-agy.mjs`).** These were added without editing the shared `fake-common.mjs` scenario list. `COUNCIL_FAKE_AGY_LOG` writes a per-turn log of argv, settings, content and pid. `COUNCIL_FAKE_AGY_RESULT` selects a terminal-result variant: `print-timeout`, `duplicate`, `missing`, `error`, `empty`, `denied-actions`, `denied-actions-empty` or `denied-empty-response`. `COUNCIL_FAKE_AGY_CHILD=group|orphan` adds a language-server-like child to agy's process group; S1.2 observed no such child.
 - **Core tests.** `tests/core-entry.test.mjs` takes main's `d09247d` version unchanged; this branch's own copy of that hunk was dropped when it rebased onto main. No test starts the real `agy`. This was checked by running `npm test` with a trap `agy` placed first on PATH: 0 invocations.
+
+## 2026-10-31 S5.8: milestone 3 review fixes (gemini)
+
+Reviewed by Codex gpt-6.1-sol and Gemini 4 Argon; rulings by the coordinator. No Part A change.
+
+- **Empty answer, not empty response (BLOCKER, Argon).** The empty-answer rule now tests the computed answer (the response, else the deltas), so a turn whose text came only through `agent_response` deltas with `response: ""` succeeds with the delta text instead of failing as "empty response".
+- **Partial answer on a print timeout (MAJOR, Codex).** A `print_timeout` result still makes the turn `incomplete` (exit 1, A3.3), but the partial answer (response, else deltas) is emitted first, so it is stored and printed as gemini-plugin-cc did. Replayed from `tests/fixtures/streams/agy/print-timeout-5s.jsonl`.
+- **Review-JSON fallback (MINOR, Codex).** An opening brace with no balanced close (`if (x) {` in prose) no longer ends the scan; later opening braces are tried, as in gemini-plugin-cc `extractFirstJsonObject`.
+- **Parity (MINOR, Codex).** `--json` is marked intentionally different with the donor-to-council field mapping; the print-timeout and answer rows follow the two fixes. Rulings recorded: the contract-free review prompt and settings without `agentMode`/`request-review` are accepted.

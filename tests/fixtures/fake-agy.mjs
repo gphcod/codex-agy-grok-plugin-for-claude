@@ -8,7 +8,8 @@
 //   COUNCIL_FAKE_AGY_RESULT=<kind>   terminal-result variants on the ok scenario: print-timeout,
 //                                    duplicate, missing, error, empty, denied-actions,
 //                                    denied-actions-empty (signature plus an empty array),
-//                                    denied-empty-response (signature, empty response)
+//                                    denied-empty-response (signature, empty response),
+//                                    deltas-only (deltas streamed, empty response)
 //   COUNCIL_FAKE_AGY_CHILD=group|orphan  start a language-server-like child in agy's process group
 //                                    and write its pid to COUNCIL_FAKE_AGY_CHILD_PIDFILE; `orphan`
 //                                    waits COUNCIL_FAKE_AGY_HOLD_MS, answers and exits, leaving the
@@ -158,7 +159,7 @@ if (sc === "hold-pipes") holdPipes();
 if (variant === "missing") process.exit(0);
 if (variant === "print-timeout") { process.stderr.write("[agy] print timeout after 5s with turn in progress; returning partial output\n"); result({ response: text, finished_reason: "print_timeout", usage: zeroUsage() }); process.exit(0); }
 if (variant === "error") { result({ status: "ERROR", response: "", error: "backend unavailable", finished_reason: "error" }); process.stderr.write("error: backend unavailable\n"); process.exit(1); }
-if (variant === "empty" || variant === "denied-empty-response") { result({ response: "" }); process.exit(0); }
+if (variant === "empty" || variant === "denied-empty-response" || variant === "deltas-only") { result({ response: "" }); process.exit(0); }
 if (variant === "denied-actions") { result({ response: text + "\n", denied_actions: [{ tool: "write_file", path: `${process.cwd()}/x` }] }); process.exit(0); }
 if (variant === "denied-actions-empty") { result({ response: text + "\n", denied_actions: [] }); process.exit(0); }
 result({ response: text + "\n" });

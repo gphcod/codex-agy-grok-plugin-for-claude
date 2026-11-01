@@ -36,7 +36,7 @@ Status values: **same**; **renamed** (the same capability under another name); *
 | `--conversation <id>` | `reply --thread <id>` / `task --thread <id>` | renamed | A conversation id is accepted where a job id is |
 | `--job <handle>` | `--thread <job>` | renamed | |
 | `--request-id <id>` | `--request-id <id>` | same | The A7.4 tombstone and fingerprint; a replay starts no CLI |
-| `--json` | `--json` | same | The object follows A3.4 |
+| `--json` | `--json` | intentionally different | The object follows A3.4, shared by the three providers. Field mapping: `exitStatus` → `exit`, `ok` → `status` (`ok`/`attention`/`failed`/`cancelled`), `jobId`/`handle` → `job`, `conversationId` → `thread`, `rawOutput` → `answer` (24 KiB preview; `answerFile` for the whole text), `error` → `error`, `answerFile` → `answerFile`, `usage` → the job record (`meta.json`), not the JSON object; `deniedActions` → no field: a denial shows as `status: attention`, `exit: 10` and in the answer text; reviews: `review`/`target` → `verb`/the start line's target, findings normalized per A5.2 in `findings`, `coverage`, `verdict`. New: `model`, `effort`, `requestedEffort`, `tier`, `round`, `rounds`, `costUsd` (null for agy) |
 | `--wait` / `--background` | Claude's `run_in_background` plus `wait` | intentionally different | gemini-plugin-cc accepted and ignored them; council's skill and commands choose the background mode (A3.1) |
 | `--base <ref>` | `--base <ref>` | same | Collects `<oid>...HEAD` plus the working tree and untracked files |
 | `--scope auto\|working-tree\|branch` | implicit default / `--uncommitted` / `--base <ref>` | renamed | `--uncommitted` never falls back to a default branch |
@@ -62,9 +62,9 @@ Status values: **same**; **renamed** (the same capability under another name); *
 |---|---|---|---|
 | exit 0 ok, 10 review findings, 20 action denied, 1 failure, 2 usage | 0 ok, 10 needs attention (findings, denied action, incomplete or malformed review), 20 still running, 1 failed/cancelled/busy, 2 invalid input | intentionally different | A denied action exits **10**, not 20; 20 now means still running |
 | `denied_actions` non-empty → denied | the same, plus the S1.2 tool-step signature with the key absent or empty | intentionally different | agy 1.4.12 leaves `denied_actions` out after a denied tool step (S1.2), so the donor's check never fired. A denied turn whose response is empty answers with the denial line |
-| duplicate or missing `result`, `status !== "SUCCESS"`, empty response → failure | the same → exit 1 | same | Checked in that order, with denial before the empty-response rule (decisions S5) |
-| `print_timeout` → failure | `incomplete` → exit 1 on every verb, reviews included | same | A3.3 |
-| answer = `result.response`, else the partial deltas | the same | same | Deltas capped at 32 MiB (`MAX_PARTIAL_BYTES`), frames at 32 MiB (`MAX_FRAME_BYTES`) |
+| duplicate or missing `result`, `status !== "SUCCESS"`, empty response → failure | the same → exit 1, where "empty" means no response and no deltas | same | Checked in that order, with denial before the empty-answer rule (decisions S5) |
+| `print_timeout` → failure, with the partial response shown | `incomplete` → exit 1 on every verb, reviews included; the partial answer is kept and printed | same | A3.3; S5.8 keeps the partial answer (it was dropped before) |
+| answer = `result.response`, else the partial deltas | the same, also on a print timeout; an answer that came only through deltas is not "empty" | same | Deltas capped at 32 MiB (`MAX_PARTIAL_BYTES`), frames at 32 MiB (`MAX_FRAME_BYTES`) |
 | review: `structured_output`, else a brace scan of the response | the same | same | Reimplemented |
 | review output unparsable or invalid → exit 1 | `incomplete` → exit 10 | intentionally different | A5.2: malformed output needs attention and is never an approval |
 | review rendering (`render.mjs`) | core `renderReview`: verdict line, `F1 BLOCKER file:line` findings, next steps, unreviewed list | intentionally different | One rendering for the gemini and grok reviews; severities are critical/high → BLOCKER, medium → MAJOR, low → MINOR |
