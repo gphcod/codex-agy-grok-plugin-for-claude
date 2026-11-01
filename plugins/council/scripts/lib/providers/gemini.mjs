@@ -7,9 +7,11 @@
 // Changes from gemini-plugin-cc: a job-specific --settings file on every turn (merged global lists,
 // A2 deny union on read-only turns), --mode accept-edits only on tasks, --sandbox always, denial
 // exits 10 instead of 20 (S5.7 parity record).
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { UsageError } from "../core/args.mjs";
-import { loadStaticCatalog, parseModelListing } from "../core/catalog.mjs";
+import { PLUGIN_ROOT, loadStaticCatalog, parseModelListing, splitSuffix } from "../core/catalog.mjs";
 import { hasFlagOperand } from "../core/execution.mjs";
 import { resolveLauncher as resolveBinary, runSync } from "../core/launcher.mjs";
 
@@ -20,6 +22,74 @@ export const BINARIES = ["agy", "agy.exe"];
 /** S7.2 sets this when the Windows session qualifies the agy path (A8). */
 export const WINDOWS_QUALIFIED = false;
 export const WINDOWS_UNSUPPORTED = "Gemini (agy) is not supported on Windows in council 1.0: the agy path is not qualified there (PLAN.md A8); use --to codex or --to grok";
+
+/** A2 read-only deny list: the union of gemini-plugin-cc's and gemini-plugin-for-codex's rules. */
+export const READ_ONLY_DENY = ["write_file(*)", "edit_file(*)", "command(*)", "unsandboxed(*)", "mcp(*)", "execute_url(*)"];
+/** The only global allow rules a read-only turn keeps (gemini-plugin-for-codex sessionSettings). */
+const READ_ONLY_ALLOW = /^(read_file|read_url)\(.*\)$/;
+const LISTS = ["allow", "ask", "deny"];
+export const GLOBAL_SETTINGS_MAX = 2 * 1024 * 1024;
+export const SCHEMA_PATH = path.join(PLUGIN_ROOT, "schemas", "review-output.schema.json");
+
+/** The user's global agy settings file, under the HOME of the call's environment (never process.env). */
+export function globalSettingsPath(env = {}) {
+  return path.join(env.HOME || env.USERPROFILE || os.homedir(), ".gemini", "antigravity-cli", "settings.json");
+}
+
+function permissionLists(data, where) {
+  const value = data?.permissions;
+  if (value !== undefined && (!value || typeof value !== "object" || Array.isArray(value))) throw new Error(`${where}: permissions must be an object; no turn submitted`);
+  return Object.fromEntries(LISTS.map((key) => {
+    const items = value?.[key] ?? [];
+    if (!Array.isArray(items) || items.some((item) => typeof item !== "string")) throw new Error(`${where}: permissions.${key} must be a string array; no turn submitted`);
+    return [key, items];
+  }));
+}
+
+/**
+ * The global permission policy (gemini-plugin-for-codex configuredPolicy): the three lists and the
+ * toolPermission mode only, never credentials or other keys. An absent file is an empty policy.
+ */
+export function readGlobalPolicy(env = {}) {
+  const file = globalSettingsPath(env);
+  let text;
+  try {
+    if (fs.statSync(file).size > GLOBAL_SETTINGS_MAX) throw new Error(`${file} exceeds 2 MiB; no turn submitted`);
+    text = fs.readFileSync(file, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return { permissions: permissionLists({}, file), toolPermission: null };
+    throw error;
+  }
+  let data;
+  try { data = JSON.parse(text); } catch { throw new Error(`${file} is not valid JSON; no turn submitted`); }
+  if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error(`${file} must contain a JSON object; no turn submitted`);
+  return { permissions: permissionLists(data, file), toolPermission: typeof data.toolPermission === "string" ? data.toolPermission : null };
+}
+
+/**
+ * The job's session settings (A5.1). A session list replaces the global one (S1.2), so the global
+ * lists are carried over; a read-only turn keeps only read_file/read_url allow rules and adds the A2
+ * deny rules; a task keeps the global lists as they are. `strict` tool permission is preserved.
+ */
+export function sessionSettings(policy, readOnly) {
+  const permissions = Object.fromEntries(LISTS.map((key) => [key, [...new Set(policy.permissions[key])]]));
+  if (readOnly) {
+    permissions.allow = permissions.allow.filter((rule) => READ_ONLY_ALLOW.test(rule));
+    permissions.deny = [...new Set([...permissions.deny, ...READ_ONLY_DENY])];
+  }
+  return { permissions, ...(policy.toolPermission === "strict" ? { toolPermission: "strict" } : {}) };
+}
+
+/** `--print-timeout` operand: plain decimal seconds, never grouped or in exponent form. */
+export function printTimeout(seconds) {
+  return `${Number(seconds).toLocaleString("en-US", { useGrouping: false, maximumFractionDigits: 20 })}s`;
+}
+
+/** A suffixed id passes alone (it fixes the effort); a family carries the clamped --effort (A5.1). */
+export function modelArgs(model, effort, catalog) {
+  if (splitSuffix(model, catalog)) return ["--model", model];
+  return ["--model", model, ...(effort ? ["--effort", effort] : [])];
+}
 
 /** The settings file of a job: recorded in the turn, else derived from the job directory. */
 export function settingsPathOf(job) {
@@ -59,7 +129,7 @@ const adapter = {
   id: "gemini",
   binEnv: "COUNCIL_AGY_BIN",
   resolveLauncher(env = {}, platform = process.platform) {
-    return resolveBinary({ bin: "agy", binEnv: this.binEnv, env, platform });
+    return resolveBinary({ bin: "agy", binEnv: adapter.binEnv, env, platform });
   },
   /** No agy launcher kind is qualified for a trusted clean exit; S7.2 may qualify one (A5.1). */
   trustsCleanExit() { return false; },
@@ -71,7 +141,32 @@ const adapter = {
   probe(launcher, env = {}) { return probeAgy(launcher, env); },
   catalog: loadStaticCatalog().gemini,
   checkRequest(request, env = {}) { checkGeminiRequest(request, env); },
-  buildTurn() { throw new Error("gemini buildTurn is not implemented yet"); },
+  /**
+   * A5.1: one NDJSON user message on stdin with the contract prepended (reviews send the rendered
+   * review prompt alone); a job-specific --settings file on every turn; --sandbox always;
+   * --mode accept-edits only on tasks; --conversation on reply and task --thread.
+   */
+  buildTurn(request) {
+    assertPlatform(process.platform);
+    const env = request.env ?? {};
+    const readOnly = request.readOnly !== false;
+    const review = request.verb === "review";
+    const settingsPath = path.join(request.jobDir, "settings.json");
+    fs.writeFileSync(settingsPath, `${JSON.stringify(sessionSettings(readGlobalPolicy(env), readOnly), null, 2)}\n`, { mode: 0o600 });
+    const args = [
+      "--input-format", "stream-json", "--output-format", "stream-json", "--disable-slash-commands",
+      "--print-timeout", printTimeout(request.deadline), "--sandbox", "--settings", settingsPath,
+      ...modelArgs(request.model, request.effort, adapter.catalog),
+    ];
+    if (!readOnly) args.push("--mode", "accept-edits");
+    if (request.thread?.threadId) args.push("--conversation", request.thread.threadId);
+    if (review) args.push("--json-schema", SCHEMA_PATH);
+    const content = review ? request.reviewPrompt : `${request.contract}\n\n${request.text}`;
+    return {
+      args, env: {}, stdin: `${JSON.stringify({ event: "user", message: { content } })}\n`, settingsPath,
+      answerFile: null, readOnly, contractCarrier: review ? "none" : "stdin-prefix", threadId: null,
+    };
+  },
   parseEvent() { return null; },
   reviewPlan(gitInfo, request) {
     return { native: false, template: request.adversarial ? "adversarial-review" : "review", schemaCarrier: "--json-schema" };

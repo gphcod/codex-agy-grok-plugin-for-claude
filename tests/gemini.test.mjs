@@ -5,7 +5,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import gemini, { BINARIES, MAX_FRAME_BYTES, WINDOWS_UNSUPPORTED, checkGeminiRequest, probeAgy, settingsPathOf } from "../plugins/council/scripts/lib/providers/gemini.mjs";
+import gemini, { BINARIES, MAX_FRAME_BYTES, WINDOWS_UNSUPPORTED, checkGeminiRequest, globalSettingsPath, modelArgs, printTimeout, probeAgy, readGlobalPolicy, sessionSettings, settingsPathOf } from "../plugins/council/scripts/lib/providers/gemini.mjs";
 import { UsageError } from "../plugins/council/scripts/lib/core/args.mjs";
 import { PLUGIN_ROOT } from "../plugins/council/scripts/lib/core/catalog.mjs";
 import { fixturesDir, GUARD_VARS } from "./fixtures/fake-common.mjs";
@@ -135,3 +135,96 @@ test("reviewPlan: collected diff, plain or adversarial template, schema via --js
   assert.deepEqual(gemini.reviewPlan({}, { adversarial: false }), { native: false, template: "review", schemaCarrier: "--json-schema" });
   assert.equal(gemini.reviewPlan({}, { adversarial: true }).template, "adversarial-review");
 });
+
+// --- S5.2 buildTurn ------------------------------------------------------------------------------------
+
+const GLOBAL = { permissions: { allow: ["command(which)", "command(git status)", "read_file(/etc/hosts)", "read_url(https://x.test/*)", "write_file(/tmp/*)"], ask: ["command(npm *)"], deny: ["read_file(/secret/*)"] }, toolPermission: "strict", apiKey: "never-copied" };
+
+function turnFixture(dir, { global = GLOBAL, ...over } = {}) {
+  const userHome = join(dir, "home");
+  mkdirSync(join(userHome, ".gemini", "antigravity-cli"), { recursive: true });
+  if (global !== null) writeFileSync(join(userHome, ".gemini", "antigravity-cli", "settings.json"), typeof global === "string" ? global : JSON.stringify(global));
+  const jobDir = join(dir, "job");
+  mkdirSync(jobDir, { recursive: true });
+  const request = { verb: "ask", provider: "gemini", cwd: dir, model: "gemini-4-argon", effort: "low", readOnly: true, text: "hello", contract: "<c/>", deadline: 1800, thread: null, reviewPrompt: null, jobId: "j", jobDir, env: { HOME: userHome }, ...over };
+  return { request, jobDir, userHome, settings: () => JSON.parse(readFileSync(join(jobDir, "settings.json"), "utf8")) };
+}
+
+test("buildTurn ask: argv, stdin message with the contract, read-only merged settings", () => withTmp((dir) => {
+  const f = turnFixture(dir);
+  const turn = gemini.buildTurn(f.request);
+  const settingsPath = join(f.jobDir, "settings.json");
+  assert.deepEqual(turn.args, ["--input-format", "stream-json", "--output-format", "stream-json", "--disable-slash-commands", "--print-timeout", "1800s", "--sandbox", "--settings", settingsPath, "--model", "gemini-4-argon", "--effort", "low"]);
+  assert.equal(turn.stdin, JSON.stringify({ event: "user", message: { content: "<c/>\n\nhello" } }) + "\n");
+  assert.equal(turn.settingsPath, settingsPath);
+  assert.deepEqual([turn.answerFile, turn.readOnly, turn.contractCarrier, turn.threadId], [null, true, "stdin-prefix", null]);
+  assert.deepEqual(f.settings(), {
+    permissions: {
+      allow: ["read_file(/etc/hosts)", "read_url(https://x.test/*)"],
+      ask: ["command(npm *)"],
+      deny: ["read_file(/secret/*)", "write_file(*)", "edit_file(*)", "command(*)", "unsandboxed(*)", "mcp(*)", "execute_url(*)"],
+    },
+    toolPermission: "strict",
+  }, "global deny retained, write/command allow rules filtered out, credentials never copied");
+}));
+
+test("buildTurn task: global lists intact, --mode accept-edits; --conversation on task --thread and reply", () => withTmp((dir) => {
+  const f = turnFixture(dir, { verb: "task", readOnly: false });
+  const turn = gemini.buildTurn(f.request);
+  assert.deepEqual(turn.args.slice(-2), ["--mode", "accept-edits"]);
+  assert.equal(turn.readOnly, false);
+  assert.deepEqual(f.settings(), { permissions: GLOBAL.permissions, toolPermission: "strict" });
+  const thread = { threadId: "0aefb9db-c350-4a61-bc6e-b242fc5946bb" };
+  const resumed = gemini.buildTurn({ ...f.request, verb: "task", readOnly: false, thread });
+  assert.deepEqual(resumed.args.slice(-4), ["--mode", "accept-edits", "--conversation", thread.threadId]);
+  const reply = gemini.buildTurn({ ...f.request, verb: "reply", readOnly: true, thread });
+  assert.ok(!reply.args.includes("--mode"), "reply is read-only, also after a task");
+  assert.deepEqual(reply.args.slice(-2), ["--conversation", thread.threadId]);
+  assert.ok(f.settings().permissions.deny.includes("command(*)"));
+}));
+
+test("buildTurn review: rendered prompt alone, --json-schema with the repository schema", () => withTmp((dir) => {
+  const f = turnFixture(dir, { verb: "review", reviewPrompt: "REVIEW PROMPT", text: "" });
+  const turn = gemini.buildTurn(f.request);
+  const i = turn.args.indexOf("--json-schema");
+  assert.equal(turn.args[i + 1], join(PLUGIN_ROOT, "schemas", "review-output.schema.json"));
+  assert.equal(JSON.parse(turn.stdin).message.content, "REVIEW PROMPT");
+  assert.equal(turn.contractCarrier, "none");
+  assert.ok(!turn.args.includes("--mode"));
+}));
+
+test("model arguments: a suffixed id alone, a family with its clamped effort, an unknown id unchanged", () => {
+  const cat = gemini.catalog;
+  assert.deepEqual(modelArgs("gemini-4-argon-high", "high", cat), ["--model", "gemini-4-argon-high"]);
+  assert.deepEqual(modelArgs("gemini-3.8-flash", "medium", cat), ["--model", "gemini-3.8-flash", "--effort", "medium"]);
+  assert.deepEqual(modelArgs("gemini-9-future", "high", cat), ["--model", "gemini-9-future", "--effort", "high"]);
+  assert.deepEqual(modelArgs("gemini-4-argon-xhigh", "xhigh", cat), ["--model", "gemini-4-argon-xhigh"], "an unlisted suffix is still a suffix");
+  assert.deepEqual(modelArgs("gemini-9-future", null, cat), ["--model", "gemini-9-future"]);
+  assert.equal(printTimeout(540), "540s");
+  assert.equal(printTimeout(2.5), "2.5s");
+  assert.equal(printTimeout(1e21), "1000000000000000000000s");
+});
+
+test("global settings: absent file, HOME from the call's env, invalid content refused", () => withTmp((dir) => {
+  assert.equal(globalSettingsPath({ HOME: "/u" }), join("/u", ".gemini", "antigravity-cli", "settings.json"));
+  assert.equal(globalSettingsPath({ USERPROFILE: "C:/u" }), join("C:/u", ".gemini", "antigravity-cli", "settings.json"));
+  const absent = turnFixture(join(dir, "a"), { global: null });
+  gemini.buildTurn(absent.request);
+  assert.deepEqual(absent.settings(), { permissions: { allow: [], ask: [], deny: READ_ONLY_DENY } });
+  const loose = sessionSettings({ permissions: { allow: ["x"], ask: [], deny: ["d", "d"] }, toolPermission: "default" }, false);
+  assert.deepEqual(loose, { permissions: { allow: ["x"], ask: [], deny: ["d"] } }, "only strict is carried over");
+  for (const [name, global, re] of [
+    ["json", "{nope", /is not valid JSON; no turn submitted/],
+    ["array", "[]", /must contain a JSON object/],
+    ["perm", JSON.stringify({ permissions: [] }), /permissions must be an object/],
+    ["list", JSON.stringify({ permissions: { deny: "write_file(*)" } }), /permissions\.deny must be a string array/],
+    ["item", JSON.stringify({ permissions: { allow: [1] } }), /permissions\.allow must be a string array/],
+  ]) {
+    const f = turnFixture(join(dir, name), { global });
+    assert.throws(() => gemini.buildTurn(f.request), re, name);
+    assert.ok(!existsSync(join(f.jobDir, "settings.json")), `${name}: no settings file written`);
+  }
+  const big = turnFixture(join(dir, "big"), { global: JSON.stringify({ pad: "x".repeat(2 * 1024 * 1024) }) });
+  assert.throws(() => gemini.buildTurn(big.request), /exceeds 2 MiB/);
+  assert.deepEqual(readGlobalPolicy({ HOME: join(dir, "nowhere") }), { permissions: { allow: [], ask: [], deny: [] }, toolPermission: null });
+}));
