@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import { PLUGIN_ROOT, loadStaticCatalog, parseModelListing } from "../core/catalog.mjs";
 import { hasFlagOperand } from "../core/execution.mjs";
 import { resolveLauncher as resolveBinary, runSync } from "../core/launcher.mjs";
+import { normalizeStructuredReview, renderReview } from "../core/review.mjs";
 
 const isFile = (p) => { try { return fs.statSync(p).isFile(); } catch { return false; } };
 
@@ -224,6 +225,16 @@ const adapter = {
     }
   },
 
+  /** Collected-diff review (A5.1): the core renders the template over the diff; the schema rides inline. */
+  reviewPlan(gitInfo, request) {
+    return { native: false, template: request.adversarial ? "adversarial-review" : "review", schemaCarrier: "inline --json-schema" };
+  },
+
+  /** grok-build review.mjs: validate the structured output (reviewProblem), then map into A5.2. */
+  finalizeReview({ structured, unreviewed }) {
+    const { result, summary, nextSteps } = normalizeStructuredReview(structured, { unreviewed });
+    return { ...result, summary, nextSteps, renderedText: renderReview(result, { summary, nextSteps }) };
+  },
 };
 
 // --- event helpers (grok-build reader.mjs) ------------------------------------------------------------------
