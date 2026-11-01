@@ -287,3 +287,19 @@ test("sameEntry: kinds, link targets, one missing hash, absent entries", () => {
   assert.equal(sameEntry({ kind: "link", target: "a" }, { kind: "link", target: "b" }), false);
   assert.equal(sameEntry(file(), undefined), false);
 });
+
+test("real Git: chmod +x counts, on an already dirty file and on a clean one", { skip: process.platform === "win32" }, () => {
+  const dir = repo();
+  try {
+    writeFileSync(join(dir, "a.txt"), "dirty\n");
+    const before = worktreeSnapshot(dir);
+    assert.equal(before.states.get("a.txt").exec, false);
+    fs.chmodSync(join(dir, "a.txt"), 0o755);
+    assert.deepEqual(rel(dir, worktreeChanges(dir, before)), ["a.txt"], "same content, new mode");
+    assert.equal(worktreeSnapshot(dir).states.get("a.txt").exec, true);
+    const clean = worktreeSnapshot(dir);
+    fs.chmodSync(join(dir, "b.txt"), 0o755);
+    assert.deepEqual(rel(dir, worktreeChanges(dir, clean)), ["b.txt"]);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
