@@ -13,6 +13,7 @@ import path from "node:path";
 import { UsageError } from "../core/args.mjs";
 import { PLUGIN_ROOT, loadStaticCatalog, parseModelListing, splitSuffix } from "../core/catalog.mjs";
 import { hasFlagOperand } from "../core/execution.mjs";
+import { normalizeStructuredReview, renderReview } from "../core/review.mjs";
 import { resolveLauncher as resolveBinary, runSync } from "../core/launcher.mjs";
 
 /** One stream-json frame, and the streamed answer, are capped at 32 MiB (gemini-plugin-cc lib/agy.mjs). */
@@ -91,6 +92,103 @@ export function modelArgs(model, effort, catalog) {
   return ["--model", model, ...(effort ? ["--effort", effort] : [])];
 }
 
+// --- stream events (gemini-plugin-cc lib/agy.mjs behaviour) ----------------------------------------------
+
+const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+const nonempty = (v) => typeof v === "string" && v !== "";
+const clip = (text, limit) => { const t = String(text).replace(/\s+/g, " ").trim(); return t.length > limit ? `${t.slice(0, limit - 1)}…` : t; };
+/** S1.2 denial signature: a failed tool step whose TOOL_ERROR names a user-configured deny rule. */
+export const DENY_RULE = /Permission denied for [\s\S]*Matches user-configured deny rule/;
+
+/** Tool name plus its main argument (a path, command, query or URL), for the job's progress. */
+export function describeToolStep(step) {
+  const name = step.tool_name ?? step.tool_info?.name ?? "tool";
+  const params = isObject(step.tool_info?.parameters) ? Object.entries(step.tool_info.parameters).filter(([, v]) => typeof v === "string" && v.trim()) : [];
+  const main = params.find(([k]) => /path|file|command|query|url|pattern|dir/i.test(k)) ?? params[0];
+  return main ? `${name} ${clip(main[1], 160)}` : name;
+}
+
+/** A failed step's reason lives in tool_info.error.message, not in a top-level field. */
+export function describeStepError(step) {
+  const reason = step.tool_info?.error?.message ?? step.error?.message ?? step.error ?? "no reason given";
+  return `failed: ${describeToolStep(step)} — ${clip(reason, 200)}`;
+}
+
+export function isDenialStep(step) {
+  return step?.step_type === "tool" && step.state === "ERROR" && step.tool_info?.error?.type === "TOOL_ERROR" && DENY_RULE.test(String(step.tool_info.error.message ?? ""));
+}
+
+/** The first balanced {...} in the text that parses as JSON (the fallback when structured_output is absent). */
+export function firstJsonObject(text) {
+  const src = String(text ?? "");
+  for (let open = src.indexOf("{"); open >= 0; open = src.indexOf("{", open + 1)) {
+    let depth = 0, quoted = false, escaped = false, end = -1;
+    for (let i = open; i < src.length && end < 0; i++) {
+      const c = src[i];
+      if (quoted) { if (escaped) escaped = false; else if (c === "\\") escaped = true; else if (c === '"') quoted = false; continue; }
+      if (c === '"') quoted = true;
+      else if (c === "{") depth++;
+      else if (c === "}" && --depth === 0) end = i;
+    }
+    if (end < 0) return null;
+    try { const value = JSON.parse(src.slice(open, end + 1)); if (isObject(value)) return value; } catch { /* try the next brace */ }
+  }
+  return null;
+}
+
+/**
+ * One stream-json line → the A5 event. The answer is the terminal result's response (the streamed
+ * agent_response deltas when it is empty), emitted once at the result; deltas are collected up to
+ * MAX_PARTIAL_BYTES. Terminal validation: a duplicate result, a malformed one, status other than
+ * SUCCESS → fatal (exit 1); print_timeout → incomplete (exit 1); a denial (the S1.2 tool-step
+ * signature, or non-empty denied_actions; the key may be absent or empty) → denied (exit 10), checked
+ * before the empty-response rule; an empty response without a denial → fatal. A missing result
+ * leaves the turn uncompleted, which the core fails (exit 1).
+ */
+export function parseAgyEvent(line, state) {
+  if (!line.trim()) return null;
+  let ev;
+  try { ev = JSON.parse(line); } catch { return { fatal: "agy emitted malformed stream-json output; expected one JSON event per line" }; }
+  if (!isObject(ev) || typeof ev.event !== "string") return { fatal: "agy emitted a stream event without an event name" };
+  const own = (state.gemini ??= { result: false, partial: "", partialBytes: 0, denials: [] });
+  const out = {};
+  const id = [ev.conversation_id, ev.step_update?.conversation_id, ev.result?.conversation_id].find(nonempty);
+  if (id) out.threadId = id;
+  if (ev.event === "step_update" && isObject(ev.step_update)) {
+    const step = ev.step_update;
+    if (step.step_type === "agent_response" && nonempty(step.text_delta)) {
+      own.partialBytes += Buffer.byteLength(step.text_delta, "utf8");
+      if (own.partialBytes > MAX_PARTIAL_BYTES) return { fatal: "agy partial response exceeds the 32 MiB limit; stopped instead of truncating" };
+      own.partial += step.text_delta;
+    }
+    if (step.step_type === "tool" || step.tool_name || step.tool_info) {
+      out.toolStep = step.state === "ERROR" ? describeStepError(step) : describeToolStep(step);
+      if (isDenialStep(step)) { own.denials.push(out.toolStep); out.denied = `agy denied ${out.toolStep.replace(/^failed: /, "")}`; }
+    }
+    return Object.keys(out).length ? out : null;
+  }
+  if (ev.event !== "result") return Object.keys(out).length ? out : null;
+  if (own.result) return { fatal: "agy emitted duplicate terminal results for one turn" };
+  own.result = true;
+  const r = ev.result;
+  if (!isObject(r) || typeof r.status !== "string" || typeof r.response !== "string") return { fatal: "agy returned a malformed result: expected status and response strings" };
+  if (r.denied_actions !== undefined && !Array.isArray(r.denied_actions)) return { fatal: "agy returned malformed denied_actions; expected an array" };
+  if (isObject(r.usage)) out.usage = r.usage;
+  if (r.status !== "SUCCESS") return { ...out, fatal: `agy finished with status ${r.status}${r.error ? `: ${clip(r.error, 500)}` : ""}` };
+  if (r.finished_reason === "print_timeout") return { ...out, completed: true, incomplete: "agy hit its print timeout before the turn finished; the response is partial. Retry with a larger --deadline or a narrower request" };
+  const actions = r.denied_actions ?? [];
+  const denied = actions.length ? `agy denied ${actions.length} requested action(s): ${clip(actions.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join("; "), 400)}`
+    : own.denials.length ? `agy denied ${own.denials.length} tool call(s) by a deny rule: ${clip(own.denials.map((d) => d.replace(/^failed: /, "")).join("; "), 400)}` : null;
+  const answer = r.response.trim() ? r.response : own.partial;
+  if (!denied && !r.response.trim()) return { ...out, fatal: "agy returned an empty response; no usable result was produced" };
+  const structured = isObject(r.structured_output) ? r.structured_output : firstJsonObject(answer);
+  if (structured) out.structured = structured;
+  if (denied) out.denied = denied;
+  out.textDelta = answer.trim() ? answer : `${denied}\n`;
+  out.completed = true;
+  return out;
+}
+
 /** The settings file of a job: recorded in the turn, else derived from the job directory. */
 export function settingsPathOf(job) {
   return job?.turn?.settingsPath ?? (job?.dir ? path.join(job.dir, "settings.json") : null);
@@ -167,11 +265,15 @@ const adapter = {
       answerFile: null, readOnly, contractCarrier: review ? "none" : "stdin-prefix", threadId: null,
     };
   },
-  parseEvent() { return null; },
+  parseEvent(line, state) { return parseAgyEvent(line, state); },
   reviewPlan(gitInfo, request) {
     return { native: false, template: request.adversarial ? "adversarial-review" : "review", schemaCarrier: "--json-schema" };
   },
-  finalizeReview() { throw new Error("gemini finalizeReview is not implemented yet"); },
+  /** Schema output (structured_output, or the first JSON object of the answer) through the shared validator into A5.2. */
+  finalizeReview({ structured, unreviewed = [] }) {
+    const { result, summary, nextSteps } = normalizeStructuredReview(structured, { unreviewed });
+    return { ...result, summary, nextSteps, renderedText: renderReview(result, { summary, nextSteps }) };
+  },
 };
 
 export default adapter;

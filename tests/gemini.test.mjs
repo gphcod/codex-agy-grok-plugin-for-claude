@@ -5,7 +5,9 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import gemini, { BINARIES, MAX_FRAME_BYTES, WINDOWS_UNSUPPORTED, checkGeminiRequest, globalSettingsPath, modelArgs, printTimeout, probeAgy, readGlobalPolicy, sessionSettings, settingsPathOf } from "../plugins/council/scripts/lib/providers/gemini.mjs";
+import gemini, { BINARIES, MAX_FRAME_BYTES, WINDOWS_UNSUPPORTED, checkGeminiRequest, globalSettingsPath, modelArgs, printTimeout, probeAgy, readGlobalPolicy, sessionSettings, settingsPathOf, firstJsonObject, describeToolStep, describeStepError, isDenialStep } from "../plugins/council/scripts/lib/providers/gemini.mjs";
+import { createReader } from "../plugins/council/scripts/lib/core/reader.mjs";
+import { finalizeReviewTurn } from "../plugins/council/scripts/lib/core/review.mjs";
 import { UsageError } from "../plugins/council/scripts/lib/core/args.mjs";
 import { PLUGIN_ROOT } from "../plugins/council/scripts/lib/core/catalog.mjs";
 import { fixturesDir, GUARD_VARS } from "./fixtures/fake-common.mjs";
@@ -228,3 +230,133 @@ test("global settings: absent file, HOME from the call's env, invalid content re
   assert.throws(() => gemini.buildTurn(big.request), /exceeds 2 MiB/);
   assert.deepEqual(readGlobalPolicy({ HOME: join(dir, "nowhere") }), { permissions: { allow: [], ask: [], deny: [] }, toolPermission: null });
 }));
+
+// --- S5.3 parseEvent and finalizeReview -------------------------------------------------------------------
+
+const STREAMS = join(fixturesDir, "streams", "agy");
+const captured = (name) => readFileSync(join(STREAMS, name), "utf8").split("\n").filter(Boolean);
+
+/** Feeds lines through the core reader with the gemini adapter; returns the reader state and the answer text. */
+function read(lines) {
+  let answer = "";
+  const reader = createReader({ adapter: gemini, onText: (t) => { answer += t; } });
+  reader.feed(lines.map((l) => (typeof l === "string" ? l : JSON.stringify(l)) + "\n").join(""));
+  reader.end();
+  return { state: reader.state, answer };
+}
+const CID = "0aefb9db-c350-4a61-bc6e-b242fc5946bb";
+const ok = (extra = {}) => ({ event: "result", result: { conversation_id: CID, status: "SUCCESS", response: "pong\n", duration_seconds: 1, num_turns: 1, usage: { total_tokens: 3 }, ...extra } });
+const delta = (text) => ({ event: "step_update", step_update: { conversation_id: CID, step_index: 1, state: "ACTIVE", step_type: "agent_response", text_delta: text } });
+const init = { event: "init", conversation_id: CID, init: { model: "gemini-4-argon", tools: [] } };
+
+test("captured minimal and resume streams: thread id, answer, completion, usage", () => {
+  for (const name of ["minimal.jsonl", "resume.jsonl", "effort-flash-plus-high.jsonl", "merge-2-session-replaces.jsonl"]) {
+    const { state, answer } = read(captured(name));
+    const result = captured(name).map((l) => JSON.parse(l)).find((e) => e.event === "result").result;
+    assert.equal(state.failed, null, name);
+    assert.equal(state.completed, true, name);
+    assert.equal(state.threadId, result.conversation_id, name);
+    assert.equal(answer, result.response, name);
+    assert.equal(state.denied, null, name);
+    assert.deepEqual(state.usage, result.usage, name);
+  }
+});
+
+test("captured denial: tool-step signature with the denied_actions key absent → denied, answer kept", () => {
+  const lines = captured("denied-write.jsonl");
+  assert.ok(!("denied_actions" in JSON.parse(lines.at(-1)).result), "the capture has no denied_actions key");
+  const { state, answer } = read(lines);
+  assert.equal(state.failed, null);
+  assert.equal(state.completed, true);
+  assert.match(state.denied, /^agy denied write_file .*Permission denied for write_file/);
+  assert.match(answer, /The attempt to create/);
+  assert.match(state.lastTool, /^failed: write_file .* — permission check failed/);
+});
+
+test("denial: an empty denied_actions array is no denial by itself; a non-empty one is; denial is checked before the empty-response rule", () => {
+  const signature = JSON.parse(captured("denied-write.jsonl").find((l) => l.includes('"state":"ERROR"')));
+  signature.step_update.conversation_id = CID;
+  assert.equal(isDenialStep(signature.step_update), true);
+  const withEmpty = read([init, signature, ok({ denied_actions: [] })]);
+  assert.match(withEmpty.state.denied, /^agy denied write_file/, "signature plus an empty array → denied");
+  const emptyOnly = read([init, delta("pong"), ok({ denied_actions: [] })]);
+  assert.equal(emptyOnly.state.denied, null, "an empty array alone is not a denial");
+  assert.equal(emptyOnly.state.completed, true);
+  const listed = read([init, ok({ denied_actions: [{ tool: "write_file", path: "/x" }] })]);
+  assert.match(listed.state.denied, /^agy denied 1 requested action\(s\): \{"tool":"write_file","path":"\/x"\}/);
+  const silent = read([init, signature, ok({ response: "" })]);
+  assert.equal(silent.state.failed, null, "denied with an empty response is not fatal");
+  assert.match(silent.answer, /^agy denied 1 tool call\(s\) by a deny rule: write_file/, "the answer names the denial");
+  const otherError = { event: "step_update", step_update: { ...signature.step_update, tool_info: { ...signature.step_update.tool_info, error: { type: "TOOL_ERROR", message: "file not found" } } } };
+  assert.equal(isDenialStep(otherError.step_update), false, "a failed tool step without the deny-rule text");
+  assert.equal(read([init, otherError, ok()]).state.denied, null);
+});
+
+test("terminal validation: missing, duplicate, malformed, ERROR status, empty response, print_timeout", () => {
+  const missing = read([init, delta("pong")]);
+  assert.equal(missing.state.completed, false, "no result: the core fails the turn");
+  assert.equal(missing.state.failed, null);
+  assert.equal(read([init, ok(), ok()]).state.failed, "agy emitted duplicate terminal results for one turn");
+  assert.match(read([init, { event: "result", result: { status: "SUCCESS" } }]).state.failed, /malformed result/);
+  assert.match(read([init, { event: "result", result: null }]).state.failed, /malformed result/);
+  assert.match(read([init, ok({ denied_actions: "x" })]).state.failed, /malformed denied_actions/);
+  const effort = read(captured("effort-flash-plus-xhigh.jsonl"));
+  assert.match(effort.state.failed, /^agy finished with status ERROR: invalid model selection .*has no "xhigh" effort/);
+  const interrupted = read(captured("cancel-group.jsonl"));
+  assert.equal(interrupted.state.failed, "agy finished with status ERROR: interrupted");
+  assert.equal(read([init, ok({ response: "  \n" })]).state.failed, "agy returned an empty response; no usable result was produced");
+  const timeout = read(captured("print-timeout-5s.jsonl"));
+  assert.equal(timeout.state.failed, null);
+  assert.equal(timeout.state.completed, true);
+  assert.match(timeout.state.incomplete, /print timeout/);
+  assert.equal(read(["not json"]).state.failed, "agy emitted malformed stream-json output; expected one JSON event per line");
+  assert.equal(read([{ step_update: {} }]).state.failed, "agy emitted a stream event without an event name");
+  assert.equal(read([init, { event: "step_update", step_update: { ...delta("x").step_update, conversation_id: "11111111-2222-4333-8444-555555555555" } }]).state.failed, `thread id changed during the turn (${CID} → 11111111-2222-4333-8444-555555555555)`);
+});
+
+test("answer: the response wins over deltas; deltas stand in for an empty response; partial cap", () => {
+  const both = read([init, delta("thinking aloud "), delta("pong"), ok({ response: "pong\n" })]);
+  assert.equal(both.answer, "pong\n");
+  const partialCap = { gemini: { result: false, partial: "", partialBytes: 32 * 1024 * 1024, denials: [] } };
+  assert.match(gemini.parseEvent(JSON.stringify(delta("x")), partialCap).fatal, /exceeds the 32 MiB limit/);
+  assert.equal(gemini.parseEvent("   ", {}), null);
+  assert.equal(gemini.parseEvent(JSON.stringify({ event: "heartbeat" }), {}), null, "an unknown event without an id carries nothing");
+});
+
+test("structured output: structured_output, else the first JSON object of the answer", () => {
+  const schema = read(captured("json-schema.jsonl"));
+  const recorded = captured("json-schema.jsonl").map((l) => JSON.parse(l)).find((e) => e.event === "result").result.structured_output;
+  assert.deepEqual(schema.state.structured, recorded);
+  const scanned = read([init, ok({ response: 'Here: ```json\n{"verdict":"approve","note":"a } in a string"}\n```' })]);
+  assert.deepEqual(scanned.state.structured, { verdict: "approve", note: "a } in a string" });
+  assert.equal(read([init, ok()]).state.structured, null);
+  assert.equal(firstJsonObject("{not json} [1] {\"a\":1}").a, 1);
+  assert.equal(firstJsonObject("{ unbalanced"), null);
+  assert.equal(firstJsonObject(null), null);
+  assert.equal(firstJsonObject('{"s":"\\"}"}').s, '"}', "escaped quotes inside strings");
+});
+
+test("tool steps are described with their main argument", () => {
+  assert.equal(describeToolStep({ tool_name: "read_file", tool_info: { parameters: { Recursive: "no", Path: "/repo/a.mjs" } } }), "read_file /repo/a.mjs");
+  assert.equal(describeToolStep({ tool_info: { name: "search_web", parameters: { query: "x" } } }), "search_web x");
+  assert.equal(describeToolStep({ step_type: "tool" }), "tool");
+  assert.equal(describeStepError({ tool_name: "run_command", error: "boom" }), "failed: run_command — boom");
+  assert.equal(describeStepError({ tool_name: "t" }), "failed: t — no reason given");
+  const { state } = read([init, { event: "step_update", step_update: { conversation_id: CID, step_index: 2, state: "DONE", step_type: "tool", tool_name: "view_file", tool_info: { name: "view_file", parameters: { AbsolutePath: "/r/x" } } } }, ok()]);
+  assert.equal(state.lastTool, "view_file /r/x");
+});
+
+test("finalizeReview: the shared validator maps schema output into A5.2; malformed output is incomplete", () => {
+  const recorded = captured("json-schema.jsonl").map((l) => JSON.parse(l)).find((e) => e.event === "result").result.structured_output;
+  const review = finalizeReviewTurn({ adapter: gemini, structured: recorded, unreviewed: [] });
+  assert.equal(review.result.verdict, recorded.findings.length || recorded.verdict === "needs-attention" ? "changes" : "approve");
+  assert.equal(review.result.findings.length, recorded.findings.length);
+  assert.match(review.renderedText, /^Verdict: /);
+  const malformed = finalizeReviewTurn({ adapter: gemini, structured: { verdict: "approve", findings: [{ severity: "low", title: "x", body: "y" }], next_steps: [] }, unreviewed: [] });
+  assert.equal(malformed.result.verdict, "incomplete");
+  assert.equal(malformed.exit, 10);
+  const none = finalizeReviewTurn({ adapter: gemini, structured: null, unreviewed: ["big.bin"] });
+  assert.deepEqual([none.result.verdict, none.result.incomplete, none.result.coverage.unreviewed], ["incomplete", "missing structured review output", ["big.bin"]]);
+  const clean = finalizeReviewTurn({ adapter: gemini, structured: { verdict: "approve", summary: "fine", findings: [], next_steps: [] }, unreviewed: [] });
+  assert.deepEqual([clean.result.verdict, clean.exit], ["approve", 0]);
+});
