@@ -8,6 +8,7 @@
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { normalizeStructuredReview, renderReview } from "../../plugins/council/scripts/lib/core/review.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const FAKE_CHILD = join(here, "fake-child.mjs");
@@ -83,8 +84,10 @@ const adapter = {
     return { native: false, diff: gitInfo.diff, template: request.adversarial ? "adversarial-review" : "review", schemaCarrier: "none" };
   },
 
+  /** The collected-diff mapping the gemini and grok adapters share: schema output through the core normalizer. */
   finalizeReview({ structured, unreviewed }) {
-    return { structured, unreviewed };
+    const { result, summary, nextSteps } = normalizeStructuredReview(structured, { unreviewed });
+    return { ...result, summary, nextSteps, renderedText: renderReview(result, { summary, nextSteps }) };
   },
 };
 

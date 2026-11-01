@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { BusyError, claimHeld, claimThread, releaseClaims } from "./claims.mjs";
 import {
-  EXPIRED, MISSING, candidates, cleanupNeeded, createJob, findJob, lastEvent, loadJob, loadRequest, loadTombstone, markDone, markStopped,
+  EXPIRED, MISSING, blockingJob, candidates, cleanupNeeded, createJob, findJob, lastEvent, loadJob, loadRequest, loadTombstone, markDone, markStopped,
   neverPrepared, requestReserved, resultRecord, saveJob, saveThread, stateOf,
 } from "./jobs.mjs";
 import { QUERY_MS, childEnv, companionState, executionController, recordRecoveryEvidence } from "./execution.mjs";
@@ -19,6 +19,7 @@ import { createReader } from "./reader.mjs";
 import { elapsed, elapsedOf, readAnswer, renderResult, resultJson, startLine } from "./output.mjs";
 import { refreshBeat, BEAT_MS } from "./heartbeat.mjs";
 import { UsageError, seconds } from "./args.mjs";
+import { finalizeReviewTurn } from "./review.mjs";
 
 /** Production defaults; tests inject shorter ones through hooks. */
 export const SHUTDOWN_MS = 60000;
@@ -109,6 +110,9 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     }
     job.threadIds = [...new Set([...job.threadIds, id])];
     save(job);
+    // A7.8: a lost or cleanup-pending job blocks its thread until cancel confirms, even without a claim.
+    const old = blockingJob(ctx.home, provider, id, job.id);
+    if (old) throw new BusyError(`thread ${id} requires cleanup of job ${old.id}; run cancel ${old.id}`, old.id);
   };
   let reader = null;
   let cleanupConfirmed = true; // No spawn yet.
@@ -339,17 +343,16 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
   else if (!error && (streamFailure || seen?.failed)) error = streamFailure ?? seen.failed;
   else if (!error && !seen?.completed) error = seen?.error ?? (job.stderrTail?.trim().split(/\r?\n/).at(-1) || `${provider} ended without finishing the turn`);
   else if (!error && child?.exitCode !== 0) error = seen?.error ?? `${provider} exited with code ${child?.exitCode}`;
-  else if (!error && seen?.incomplete && !isReview) error = seen.incomplete; // A5.1: a print timeout is exit 1, never 20.
+  else if (!error && seen?.incomplete) error = seen.incomplete; // A5.1/A3.3: an incomplete turn (print timeout) is exit 1, never 20, on every verb.
   else if (!error && isReview) {
-    const review = (options.finalizeReview ?? defaultFinalizeReview)({ adapter, request, answerText: parsed?.answer ?? "", structured: seen?.structured ?? null, unreviewed: job.unreviewed ?? [], incomplete: seen?.incomplete ?? null, denied: seen?.denied ?? null });
+    const review = finalizeReviewTurn({ adapter, answerText: parsed?.answer ?? "", structured: seen?.structured ?? null, unreviewed: job.unreviewed ?? [], reviewed: request.reviewed ?? [] });
     job.review = review.result;
     job.verdict = review.result?.verdict ?? null;
     if (review.renderedText !== undefined && review.renderedText !== null) {
       try { io.writeFileSync(answerFile, review.renderedText); parsed = readAnswer(answerFile); answer = parsed.answer; }
       catch (failure) { error = `answer storage failed: ${failure.message}`; }
     }
-    if (!error) outcome = review.exit === 10 ? "attention" : review.exit === 0 ? "ok" : "failed";
-    if (!error && review.exit !== 0 && review.exit !== 10) error = review.error ?? "review failed";
+    if (!error) outcome = review.exit === 10 ? "attention" : "ok";
   }
   else if (!error && !parsed) error = `${provider} wrote no answer`;
   else if (!error && !parsed.nonempty) error = `${provider} returned no answer`;
@@ -383,14 +386,6 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
   }
   announce();
   return { job: jobView(ctx.home, job), answer };
-}
-
-/** Until S2.5 wires review.mjs: structured output becomes the result as is. Replaced by the entry. */
-function defaultFinalizeReview({ structured, unreviewed }) {
-  if (!structured || typeof structured !== "object") return { result: { verdict: "incomplete", findings: [], coverage: { reviewed: [], unreviewed }, incomplete: "no structured review output" }, exit: 10, renderedText: null };
-  const findings = Array.isArray(structured.findings) ? structured.findings : [];
-  const verdict = findings.length || structured.verdict === "needs-attention" ? "changes" : "approve";
-  return { result: { verdict, findings, coverage: { reviewed: [], unreviewed }, incomplete: null }, exit: verdict === "approve" && !unreviewed.length ? 0 : 10, renderedText: null };
 }
 
 /** Explicit recovery. No metadata writes, no age-based reclamation, and no kill of a companion. */
