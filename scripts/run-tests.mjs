@@ -2,7 +2,8 @@
 // Test runner. Default: tests/**/*.test.mjs minus tests/live/** and *.live.test.mjs.
 // --live: tests/live/**/*.live.test.mjs only. --ratio: core test density check.
 // Spawns `node --test <files>` itself, so no shell globbing is needed on Windows.
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -91,8 +92,14 @@ function main(argv) {
   }
   // A suite run from inside Claude Code must not see that session: the entry falls back to its id.
   const { CLAUDE_CODE_SESSION_ID: _host, ...env } = process.env;
-  const result = spawnSync(process.execPath, ["--test", ...files], { stdio: "inherit", cwd: repoRoot, env });
-  return result.status ?? 1;
+  if (mode === "live") return spawnSync(process.execPath, ["--test", ...files], { stdio: "inherit", cwd: repoRoot, env }).status ?? 1;
+  // One temp root per default run, removed afterwards: the tests make thousands of directories under os.tmpdir().
+  const scratch = mkdtempSync(join(tmpdir(), "council-run-"));
+  try {
+    return spawnSync(process.execPath, ["--test", ...files], { stdio: "inherit", cwd: repoRoot, env: { ...env, TMPDIR: scratch, TMP: scratch, TEMP: scratch } }).status ?? 1;
+  } finally {
+    rmSync(scratch, { recursive: true, force: true, maxRetries: 3 });
+  }
 }
 
 const invokedDirectly = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
