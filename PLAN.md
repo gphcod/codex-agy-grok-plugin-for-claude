@@ -130,7 +130,7 @@ Slash commands (user-only, `disable-model-invocation: true`, generated from one 
 
 ### A3.5 Skill policy
 
-When the user did not name a model: `ask`/`reply`/`review` only, `--tier consult` passed explicitly, ask once before higher effort (not for Gemini), never `task`. When the user named a model or family: tier by complexity. Discussion protocol: F1/F2 findings tagged BLOCKER/MAJOR/MINOR with file:line; replies carry only `AGREE`, `CHANGE: …`, `REJECT: …` and new facts; 9-reply budget per thread in the footer; unresolved REJECT is reported as disagreement. Fan-out recipe per A6.
+When the user did not name a model: `ask`/`reply`/`review` only, `--tier consult` passed explicitly, ask once before higher effort (not for Gemini), never `task`, even when the user asks for a fix or edit (2026-11-01, S7.1 fix C1: a provider name is not a model; do the `ask` or `review`, then point to `/council:task` or naming a model). When the user named a model or family: tier by complexity. Discussion protocol: F1/F2 findings tagged BLOCKER/MAJOR/MINOR with file:line; replies carry only `AGREE`, `CHANGE: …`, `REJECT: …` and new facts; 9-reply budget per thread in the footer; unresolved REJECT is reported as disagreement. Fan-out recipe per A6.
 
 ## A4. Repository layout
 

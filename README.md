@@ -133,7 +133,7 @@ The skill tells Claude to open with Goal, Known, Files, Constraints and Done whe
 
 For a fan-out, Claude issues one background `ask` per provider in a single response. Each call carries the same brief, its own `--request-id` and the `consult` tier, unless you chose otherwise. Claude then compares the answers side by side. Follow-ups use `reply --thread <job>`, never `--last`. 1.0 has no coordinating `panel` process.
 
-When you did not name a model, the skill uses `ask`, `reply` and `review` only, passes `--tier consult`, asks you once before a higher effort (except for Gemini, whose consult tier is already its highest) and never starts a `task`. When you named one, it picks the tier by complexity. Reviews, tasks and deep, xhigh, max or ultra calls run in the background with a `--request-id`.
+When you did not name a model, the skill uses `ask`, `reply` and `review` only, passes `--tier consult`, asks you once before a higher effort (except for Gemini, whose consult tier is already its highest) and never starts a `task`, even when you ask for a fix or an edit. A provider name is not a model: it does the `ask` or `review`, then tells you to run `/council:task` or name a model if you want the provider to edit. When you named one, it picks the tier by complexity. Reviews, tasks and deep, xhigh, max or ultra calls run in the background with a `--request-id`.
 
 ## State and recovery
 

@@ -13,6 +13,14 @@ test("SKILL.md stays at or under 3,000 bytes", () => {
   assert.match(text, /^---\nname: council\ndescription: .+\n---\n/);
 });
 
+test("with no model named the skill rules out a task, even for a fix, and says how to get one (S7.1 C1)", () => {
+  const text = readFileSync(skillPath, "utf8");
+  assert.match(text, /User named no model \(a provider is no model\): ask\/reply\/review only/);
+  assert.match(text, /Never task, even for a fix or edit: ask or review, then say `\/council:task` or naming a model lets the provider edit\./);
+  assert.match(text, /`task --to <p> \[--thread id\]`: edits files; needs a named model and authorization\./);
+  assert.doesNotMatch(text, /only when the user authorizes it/, "the wording Claude read as permission");
+});
+
 test("every flag, verb and tier the skill states exists in the code as built", async () => {
   const text = readFileSync(skillPath, "utf8");
   const { SPEC, VERBS, PROVIDERS } = await import("../plugins/council/scripts/lib/core/args.mjs");
