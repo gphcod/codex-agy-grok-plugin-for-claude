@@ -23,7 +23,6 @@ const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 
 if (argv[0] === "--version") { process.stdout.write("null 0.0.0\n", () => process.exit(0)); await new Promise(() => {}); }
 if (argv[0] === "models") { process.stdout.write("null-model\n", () => process.exit(0)); await new Promise(() => {}); }
 
-if (env.COUNCIL_FAKE_SPAWN_LOG) appendFileSync(env.COUNCIL_FAKE_SPAWN_LOG, JSON.stringify({ argv, cwd: process.cwd(), at: Date.now() }) + "\n");
 if (!SCENARIOS.includes(scenario)) fail(`unknown scenario ${scenario}`);
 for (const g of GUARD_VARS) if (!env[g]) fail(`guard variable ${g} is not set on the child`);
 const job = flag("--job");
@@ -44,6 +43,8 @@ if (promptFile !== undefined) {
 } else {
   prompt = readStdin();
 }
+// One line per spawn, with the prompt bytes the child received, so tests can count children and check input.
+if (env.COUNCIL_FAKE_SPAWN_LOG) appendFileSync(env.COUNCIL_FAKE_SPAWN_LOG, JSON.stringify({ argv, cwd: process.cwd(), prompt, guards: GUARD_VARS.filter((g) => env[g] === "1"), at: Date.now() }) + "\n");
 if (!prompt.trim()) fail("empty prompt");
 if (env.COUNCIL_FAKE_EXPECT_PROMPT !== undefined && prompt !== env.COUNCIL_FAKE_EXPECT_PROMPT) fail("prompt differs from COUNCIL_FAKE_EXPECT_PROMPT");
 

@@ -70,9 +70,10 @@ export function catalogPath(home, provider) {
 }
 
 /** Static entry merged with the refreshed listing when present; the refreshed effort lists win per model. */
-export function loadCatalog(home, provider, { pluginRoot = PLUGIN_ROOT } = {}) {
-  if (!PROVIDERS.includes(provider)) throw new UsageError(`unknown provider ${provider}`);
-  const stat = loadStaticCatalog(pluginRoot)[provider] ?? {};
+export function loadCatalog(home, provider, { pluginRoot = PLUGIN_ROOT, staticEntry = null } = {}) {
+  // A provider outside models.json (the test-only null adapter) brings its own entry (A5 `catalog`).
+  if (!PROVIDERS.includes(provider) && !staticEntry) throw new UsageError(`unknown provider ${provider}`);
+  const stat = staticEntry ?? loadStaticCatalog(pluginRoot)[provider] ?? {};
   const catalog = {
     provider,
     models: { ...(stat.models ?? {}) },
@@ -170,7 +171,7 @@ export function resolveEffort(provider, id, requested, catalog) {
  */
 export function refreshCatalog(home, provider, probe, { now = () => new Date().toISOString() } = {}) {
   if (!home) throw new Error("refreshCatalog needs the state root");
-  if (!PROVIDERS.includes(provider)) throw new UsageError(`unknown provider ${provider}`);
+  if (!/^[a-z][a-z0-9-]{0,31}$/.test(provider ?? "")) throw new UsageError(`unknown provider ${provider}`);
   const result = typeof probe === "function" ? probe() : probe;
   const list = Array.isArray(result?.models) ? result.models : isObject(result?.models) ? Object.entries(result.models).map(([id, efforts]) => ({ id, efforts })) : null;
   if (!list) throw new Error(`${provider} probe returned no model list`);

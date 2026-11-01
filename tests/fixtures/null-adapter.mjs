@@ -6,9 +6,11 @@
 //   COUNCIL_NULL_TRUST  1 → trustsCleanExit returns true (default false: post-exit scan after every exit)
 // The entry loads this adapter only when COUNCIL_TEST_NULL_ADAPTER=1.
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizeStructuredReview, renderReview } from "../../plugins/council/scripts/lib/core/review.mjs";
+import { UsageError } from "../../plugins/council/scripts/lib/core/args.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const FAKE_CHILD = join(here, "fake-child.mjs");
@@ -34,6 +36,7 @@ const adapter = {
   binEnv: "COUNCIL_NULL_BIN",
   resolveLauncher(env = process.env) {
     const entry = env.COUNCIL_NULL_BIN || FAKE_CHILD;
+    if (!existsSync(entry)) return null; // like a real adapter whose binary is missing
     return { command: process.execPath, args: [entry], path: entry, kind: "node-script" };
   },
   trustsCleanExit() { return profile().trust; },
@@ -43,7 +46,15 @@ const adapter = {
     return { version: "null 0.0.0", loggedIn: true, models: [{ id: "null-model", efforts: EFFORTS }, { id: "null-fast", efforts: ["low", "medium"] }] };
   },
   catalog: { models: { "null-model": EFFORTS, "null-fast": ["low", "medium"] }, aliases: { fast: "null-fast" }, sharedEnum: EFFORTS, passThrough: [] },
-  tiers: { consult: { model: "null-model", effort: "high" }, exec: { model: "null-fast", effort: "medium" }, deep: { model: "null-model", effort: "xhigh" } },
+  /** COUNCIL_NULL_CONSULT=<model>/<effort> changes the consult tier, so a test can change tiers between a call and its replay. */
+  get tiers() {
+    const [model, effort] = (process.env.COUNCIL_NULL_CONSULT ?? "null-model/high").split("/");
+    return { consult: { model, effort }, exec: { model: "null-fast", effort: "medium" }, deep: { model: "null-model", effort: "xhigh" } };
+  },
+  /** Optional A5 hook: an adapter refuses a flag it has no tested mapping for (exit 2 before any job). */
+  checkRequest(request) {
+    if (request.web && process.env.COUNCIL_NULL_NO_WEB === "1") throw new UsageError("--web has no tested mapping for null");
+  },
 
   /** A5 buildTurn: {args, env, stdin | promptFile, answerFile, readOnly, agent?, contractCarrier, threadId?}. */
   buildTurn(request) {
