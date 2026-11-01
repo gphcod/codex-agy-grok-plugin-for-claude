@@ -99,6 +99,49 @@ export function toolPolicy({ verb, launcher, cwd, env = {}, run = runSync }) {
   return args;
 }
 
+// --- review output (lib/answer.mjs:16, codex-rs review_format) ------------------------------------------
+
+const FINDING_LINE = /^\s*[-*]\s+\[P(\d)\]\s+(.+?)\s+—\s+(.+):(\d+)(?:-(\d+))?\s*$/;
+const MARKER = /\[P\d\]/;
+const HEADER = /^\s*(?:Review comment|Full review comments):\s*$/;
+
+/**
+ * The native review text → A5.2. `[P0]` → BLOCKER and `[P1]` → MAJOR, scanned over the whole answer.
+ * Codex renders a review as its explanation plus, when there are findings, a "Review comment(s):"
+ * block of `- [P<n>] <title> — <path>:<start>-<end>` lines with indented bodies; a model output Codex
+ * could not parse becomes explanation text with no findings, so text without a [P0]/[P1] finding can
+ * never prove an approval (A5.1, A5.2). Any other finding form (another priority, a marker outside the
+ * line shape), an empty answer or Codex's fallback text is `incomplete`.
+ */
+export function parseNativeReview(answerText = "") {
+  const text = String(answerText).replace(/\r\n?/g, "\n");
+  const findings = [], unrecognized = [], summary = [];
+  let current = null, inBlock = false;
+  for (const line of text.split("\n")) {
+    if (HEADER.test(line)) { inBlock = true; current = null; continue; }
+    const m = FINDING_LINE.exec(line);
+    if (m && (m[1] === "0" || m[1] === "1")) {
+      const start = Number(m[4]), end = m[5] === undefined ? start : Number(m[5]);
+      if (start >= 1 && end >= start) {
+        current = { severity: m[1] === "0" ? "BLOCKER" : "MAJOR", file: m[3].trim(), line: start, ...(end > start ? { lineEnd: end } : {}), title: m[2].trim(), text: "" };
+        findings.push(current); inBlock = true;
+        continue;
+      }
+    }
+    if (MARKER.test(line)) { unrecognized.push(line.trim()); current = null; inBlock = true; continue; }
+    if (current && /^\s+\S/.test(line)) { current.text = current.text ? `${current.text}\n${line.trim()}` : line.trim(); continue; }
+    if (line.trim()) current = null;
+    if (!inBlock) summary.push(line);
+  }
+  const explanation = summary.join("\n").trim();
+  let incomplete = null;
+  if (!text.trim()) incomplete = "Codex returned no review text";
+  else if (text.trim() === REVIEW_FALLBACK) incomplete = "Codex's reviewer failed to output a response";
+  else if (unrecognized.length) incomplete = `${unrecognized.length} finding line(s) in a form other than [P0]/[P1] with a location: ${unrecognized.slice(0, 3).map((l) => JSON.stringify(l.slice(0, 120))).join(", ")}`;
+  else if (!findings.length) incomplete = "no [P0]/[P1] finding, and Codex's native review text cannot prove an approval";
+  return { findings, unrecognized, summary: explanation || null, incomplete };
+}
+
 // --- the adapter -----------------------------------------------------------------------------------------
 
 const adapter = {
@@ -190,11 +233,53 @@ const adapter = {
     return { ...base, args, stdin: request.text, readOnly: sandbox === "read-only", contractCarrier: "developer_instructions" };
   },
 
+  /** lib/reader.mjs:50-74. The answer comes from the -o file, so agent_message carries nothing here. */
+  parseEvent(line) {
+    let ev;
+    try { ev = JSON.parse(line); } catch { return null; }
+    if (typeof ev?.type !== "string") return null;
+    const item = ev.item;
+    switch (ev.type) {
+      case "thread.started":
+        return typeof ev.thread_id === "string" ? { threadId: ev.thread_id } : { fatal: "invalid thread.started id" };
+      case "turn.completed":
+        return { completed: true, ...(ev.usage ? { usage: ev.usage } : {}) };
+      case "turn.failed":
+        return { fatal: messageOf(ev.error) ?? "turn failed" };
+      case "error":
+        // Not latched: Codex reports retries this way and may still complete (lib/reader.mjs keeps it as
+        // the message for a turn that ends without turn.completed).
+        return { error: messageOf(ev) ?? "codex reported an error" };
+      case "item.started":
+        return item?.type === "command_execution" ? { toolStep: `command: ${shortCommand(item.command)}` } : item?.type ? { toolStep: item.type } : null;
+      case "item.completed":
+        if (item?.type === "file_change" && item.status === "completed") {
+          if (!Array.isArray(item.changes)) return { fatal: "invalid file_change changes" };
+          return { edited: item.changes.map((c) => c?.path).filter((p) => typeof p === "string"), toolStep: "file_change" };
+        }
+        if (item?.type === "command_execution" && Number.isInteger(item.exit_code) && item.exit_code !== 0) {
+          return { failedCommand: { cmd: shortCommand(item.command), exit: item.exit_code }, toolStep: "command_execution" };
+        }
+        return item?.type ? { toolStep: item.type } : null;
+      default:
+        return null;
+    }
+  },
+
   /** Native route always: the target flags, or the target sentence plus focus on stdin. */
   reviewPlan(gitInfo, request) {
     const target = gitInfo.target;
     const focus = typeof request.text === "string" && request.text.trim() ? request.text : null;
     return { native: true, flags: target.flags, stdin: focus ? `${target.sentence}\n\n${focus}` : null };
+  },
+
+  /** The whole stored answer → A5.2; an incomplete result keeps Codex's text after the verdict. */
+  finalizeReview({ answerText = "" }) {
+    const parsed = parseNativeReview(answerText);
+    const result = { verdict: parsed.incomplete ? "incomplete" : "changes", findings: parsed.findings, coverage: { reviewed: [], unreviewed: [] }, incomplete: parsed.incomplete };
+    let renderedText = renderReview(result, { summary: parsed.summary });
+    if (parsed.incomplete && String(answerText).trim()) renderedText += `\nCodex review output:\n\n${String(answerText).trimEnd()}\n`;
+    return { ...result, summary: parsed.summary, renderedText };
   },
 };
 

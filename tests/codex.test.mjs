@@ -7,7 +7,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import adapter, { LINE_CAP, MCP_TRADE_OFF, SANDBOX, toolPolicy, waitsForCodex } from "../plugins/council/scripts/lib/providers/codex.mjs";
+import adapter, { LINE_CAP, MCP_TRADE_OFF, REVIEW_FALLBACK, SANDBOX, parseNativeReview, toolPolicy, waitsForCodex } from "../plugins/council/scripts/lib/providers/codex.mjs";
 import { UsageError } from "../plugins/council/scripts/lib/core/args.mjs";
 import { loadStaticCatalog } from "../plugins/council/scripts/lib/core/catalog.mjs";
 import { finalizeReviewTurn } from "../plugins/council/scripts/lib/core/review.mjs";
@@ -257,4 +257,91 @@ test("checkRequest: --adversarial and --web exit 2, a bad COUNCIL_CODEX_MCP exit
   assert.throws(() => adapter.checkRequest({ verb: "ask", web: true }, {}), (e) => e instanceof UsageError && /--web has no tested mapping for codex/.test(e.message));
   assert.throws(() => adapter.checkRequest({ verb: "ask" }, { COUNCIL_CODEX_MCP: "none" }), /COUNCIL_CODEX_MCP must be inherit or off/);
   for (const env of [{}, { COUNCIL_CODEX_MCP: "off" }, { COUNCIL_CODEX_MCP: "inherit" }]) assert.doesNotThrow(() => adapter.checkRequest({ verb: "ask", web: false, adversarial: false }, env));
+});
+
+// --- S3.3 parseEvent and finalizeReview ----------------------------------------------------------------------
+
+test("parseEvent over the recorded minimal, resume and review streams", () => {
+  const parse = (name) => stream(name).split("\n").filter(Boolean).map((l) => adapter.parseEvent(l, {}));
+  const minimal = parse("minimal.jsonl");
+  assert.deepEqual(minimal, [{ threadId: "01a1936d-c678-73b2-b282-4b3c3d2ed281" }, null, { toolStep: "agent_message" },
+    { completed: true, usage: { input_tokens: 16062, cached_input_tokens: 13184, cache_write_input_tokens: 0, output_tokens: 5, reasoning_output_tokens: 0 } }]);
+  assert.ok(parse("resume.jsonl").some((e) => e?.threadId), "resume repeats thread.started");
+  const review = parse("review-unfocused.jsonl");
+  assert.ok(review.filter((e) => e?.toolStep?.startsWith("command: ")).length >= 1, "command steps are reported as progress");
+  assert.equal(review.at(-1).completed, true);
+});
+
+test("parseEvent: failure, error, file_change, failed command, junk", () => {
+  const p = (obj) => adapter.parseEvent(typeof obj === "string" ? obj : JSON.stringify(obj), {});
+  assert.deepEqual(p({ type: "turn.failed", error: { message: '{"error":{"message":"quota exceeded"}}' } }), { fatal: "quota exceeded" });
+  assert.deepEqual(p({ type: "turn.failed" }), { fatal: "turn failed" });
+  assert.deepEqual(p({ type: "error", message: "Reconnecting... 1/5" }), { error: "Reconnecting... 1/5" }, "not latched: Codex may still complete");
+  assert.deepEqual(p({ type: "error" }), { error: "codex reported an error" });
+  assert.deepEqual(p({ type: "thread.started", thread_id: 7 }), { fatal: "invalid thread.started id" });
+  assert.deepEqual(p({ type: "item.completed", item: { type: "file_change", status: "completed", changes: [{ path: "/w/a.js" }, { path: "b.js" }, {}] } }), { edited: ["/w/a.js", "b.js"], toolStep: "file_change" });
+  assert.deepEqual(p({ type: "item.completed", item: { type: "file_change", status: "completed", changes: "x" } }), { fatal: "invalid file_change changes" });
+  assert.deepEqual(p({ type: "item.completed", item: { type: "file_change", status: "failed", changes: [{ path: "a" }] } }), { toolStep: "file_change" }, "a failed patch edits nothing");
+  assert.deepEqual(p({ type: "item.completed", item: { type: "command_execution", command: "/bin/zsh -lc 'npm test'", exit_code: 2 } }), { failedCommand: { cmd: "npm test", exit: 2 }, toolStep: "command_execution" });
+  assert.deepEqual(p({ type: "item.completed", item: { type: "command_execution", command: "ls", exit_code: 0 } }), { toolStep: "command_execution" });
+  assert.deepEqual(p({ type: "item.completed", item: { type: "command_execution", command: "ls", exit_code: null } }), { toolStep: "command_execution" });
+  assert.deepEqual(p({ type: "item.started", item: { type: "command_execution", command: "bash -lc \"git status\"" } }), { toolStep: "command: git status" });
+  assert.deepEqual(p({ type: "item.started", item: { type: "reasoning" } }), { toolStep: "reasoning" });
+  for (const junk of ["not json", "{}", '{"type":5}', '{"type":"turn.started"}', '{"type":"item.completed"}']) assert.equal(p(junk), null, junk);
+});
+
+test("finalizeReview: the recorded [P1] answer → one MAJOR finding with file, line and body; exit 10", () => {
+  const text = stream("review-unfocused.answer.md");
+  const r = adapter.finalizeReview({ answerText: text, answerFile: null, structured: null, unreviewed: [] });
+  assert.equal(r.verdict, "changes");
+  assert.equal(r.incomplete, null);
+  assert.deepEqual(r.findings.map((f) => [f.severity, f.file, f.line, f.title]), [["MAJOR", "<scratch>/codex/review-repo/calc.js", 3, "Stop iteration before the array length"]]);
+  assert.match(r.findings[0].text, /^The inclusive bound reads `items\[items.length\]`/);
+  assert.match(r.summary, /^The changed loop bound introduces an out-of-bounds read/);
+  assert.match(r.renderedText, /^Verdict: changes requested\. The changed loop bound/);
+  assert.match(r.renderedText, /\nF1 MAJOR <scratch>\/codex\/review-repo\/calc.js:3: Stop iteration before the array length\n/);
+  const turn = finalizeReviewTurn({ adapter, answerText: text });
+  assert.equal(turn.exit, 10);
+  assert.equal(turn.result.verdict, "changes");
+  assert.equal(finalizeReviewTurn({ adapter, answerText: stream("review-focused.answer.md") }).result.findings.length, 1);
+});
+
+test("finalizeReview: P0 → BLOCKER, ranges, several findings, a finding past 24 KiB", () => {
+  const text = ["Two problems.", "", "Full review comments:", "",
+    "- [P0] Data loss on save — /repo/src/save.js:10-14", "  Truncates before writing.", "  Second line.",
+    "- [P1] Off by one — /repo/src/loop.js:7", "  Inclusive bound."].join("\n");
+  const r = adapter.finalizeReview({ answerText: text });
+  assert.equal(r.verdict, "changes");
+  assert.deepEqual(r.findings, [
+    { severity: "BLOCKER", file: "/repo/src/save.js", line: 10, lineEnd: 14, title: "Data loss on save", text: "Truncates before writing.\nSecond line." },
+    { severity: "MAJOR", file: "/repo/src/loop.js", line: 7, title: "Off by one", text: "Inclusive bound." },
+  ]);
+  const late = adapter.finalizeReview({ answerText: `${"x".repeat(30 * 1024)}\n\nReview comment:\n\n- [P1] Late finding — /r/a.js:1-1\n  body` });
+  assert.deepEqual(late.findings.map((f) => f.title), ["Late finding"], "the whole answer is scanned, not the 24 KiB preview");
+});
+
+test("finalizeReview → incomplete (exit 10): other priorities, unparseable lines, empty, fallback text, prose without findings", () => {
+  const cases = [
+    ["Review comment:\n\n- [P2] Naming — /r/a.js:4-4\n  minor", /form other than \[P0\]\/\[P1\]/],
+    ["Review comment:\n\n- [P1] Real bug — /r/a.js:4-4\n  body\n- [P3] Nit — /r/b.js:1-1", /1 finding line/],
+    ["- [P1] no location given", /form other than/],
+    ["Something [P1] mentioned inline", /form other than/],
+    ["", /no review text/],
+    ["   \n", /no review text/],
+    [REVIEW_FALLBACK, /reviewer failed to output a response/],
+    ["Looks fine to me, nothing to flag.", /no \[P0\]\/\[P1\] finding, and Codex's native review text cannot prove an approval/],
+    ["No findings. The change is correct.", /cannot prove an approval/],
+  ];
+  for (const [text, reason] of cases) {
+    const r = adapter.finalizeReview({ answerText: text });
+    assert.equal(r.verdict, "incomplete", text);
+    assert.match(r.incomplete, reason, text);
+    const turn = finalizeReviewTurn({ adapter, answerText: text });
+    assert.equal(turn.exit, 10, text);
+    assert.equal(turn.result.verdict, "incomplete");
+    if (text.trim()) assert.ok(turn.renderedText.includes(`Codex review output:\n\n${text.trimEnd()}`), "Codex's own text is kept after the verdict");
+  }
+  const mixed = adapter.finalizeReview({ answerText: cases[1][0] });
+  assert.deepEqual(mixed.findings.map((f) => f.title), ["Real bug"], "recognized findings stay reported");
+  assert.deepEqual(parseNativeReview("- [P1] Bad range — /r/a.js:9-3").findings, [], "an inverted range is not a location");
 });
