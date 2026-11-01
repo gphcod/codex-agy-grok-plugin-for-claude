@@ -115,7 +115,7 @@ test("fake child: ok in every profile, with the spawn log", async () => {
     assert.equal(JSON.parse(r2.lines[0]).thread, "disc-1");
     assert.equal(readFileSync(join(dir, "answer.md"), "utf8"), "pong for job j1");
     assert.equal(readFileSync(log, "utf8").trim().split("\n").length, 2, "two spawns logged");
-    const r3 = await runChild([...base, "--thread", "t-1"], { input: "hello", cwd: dir, env: { COUNCIL_NULL_ID: "discovered" } });
+    const r3 = await runChild([...base, "--thread", "t-1"], { input: "hello", cwd: dir, env: { COUNCIL_NULL_ID: "discovered", COUNCIL_FAKE_FRESH: "1" } });
     assert.equal(r3.code, 99, "discovered profile refuses --thread on a fresh turn");
     const r4 = await runChild(base, { input: "", cwd: dir });
     assert.equal(r4.code, 99, "empty prompt refused");

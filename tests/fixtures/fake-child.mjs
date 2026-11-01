@@ -33,7 +33,8 @@ const promptFile = flag("--prompt-file");
 const answerFile = flag("--answer-file");
 const review = argv.includes("--review");
 if (argv.includes("--thread") === false && env.COUNCIL_NULL_ID === "preassigned") fail("preassigned profile needs --thread");
-if (argv.includes("--thread") && env.COUNCIL_NULL_ID === "discovered") fail("discovered profile passes no --thread");
+// A discovered profile passes --thread only when resuming (like `codex exec resume <id>`); COUNCIL_FAKE_FRESH=1 lets a test assert a fresh turn passes none.
+if (argv.includes("--thread") && env.COUNCIL_NULL_ID === "discovered" && env.COUNCIL_FAKE_FRESH === "1") fail("discovered profile passes no --thread on a fresh turn");
 
 let prompt;
 if (promptFile !== undefined) {
