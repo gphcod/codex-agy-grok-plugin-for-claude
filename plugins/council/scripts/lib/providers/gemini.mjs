@@ -14,6 +14,7 @@ import { UsageError } from "../core/args.mjs";
 import { PLUGIN_ROOT, loadStaticCatalog, parseModelListing, splitSuffix } from "../core/catalog.mjs";
 import { hasFlagOperand } from "../core/execution.mjs";
 import { normalizeStructuredReview, renderReview } from "../core/review.mjs";
+import { TIERS, loadTiers } from "../core/tiers.mjs";
 import { resolveLauncher as resolveBinary, runSync } from "../core/launcher.mjs";
 
 /** One stream-json frame, and the streamed answer, are capped at 32 MiB (gemini-plugin-cc lib/agy.mjs). */
@@ -206,8 +207,23 @@ export function checkGeminiRequest(request, env = {}, platform = process.platfor
   if (request?.web) throw new UsageError("--web has no tested mapping for gemini: agy's search_web tool cannot be denied by a settings rule (S1.2), so web search cannot be switched; omit --web");
 }
 
+export const WEB_NOTE = "web search stays available on read-only turns: agy's search_web tool ignores a search_web(*) deny rule (S1.2), so --web --to gemini exits 2 rather than pretending to switch it";
+
+/** A5.1: each tier's resolved suffixed id (`gemini-4-argon` + high → `gemini-4-argon-high`) must be listed by `agy models`. */
+export function tierWarnings(listed, tiers = loadTiers().gemini ?? {}) {
+  const ids = new Set(listed);
+  const warnings = [];
+  for (const t of TIERS) {
+    const tier = tiers[t];
+    if (!tier?.model) continue;
+    const id = /-(low|medium|high|xhigh|max)$/.test(tier.model) ? tier.model : `${tier.model}-${tier.effort}`;
+    if (!ids.has(id)) warnings.push(`tier ${t} resolves to ${id}, which agy models does not list`);
+  }
+  return warnings;
+}
+
 /** gemini-plugin-cc getAgyAuthStatus: `agy models` exiting 0 is the login check; also the listing. */
-export function probeAgy(launcher, env = {}, platform = process.platform, run = runSync) {
+export function probeAgy(launcher, env = {}, platform = process.platform, run = runSync, tiers = undefined) {
   assertPlatform(platform);
   const version = run(launcher, ["--version"], { env });
   if (version.error) throw new Error(`agy --version failed: ${version.error.message}`);
@@ -220,7 +236,8 @@ export function probeAgy(launcher, env = {}, platform = process.platform, run = 
     throw new Error(`agy ${versionText ?? "?"}: not logged in or listing failed (${detail}); run agy once in a terminal to sign in`);
   }
   const parsed = parseModelListing("gemini", listing.stdout ?? "");
-  return { version: versionText, loggedIn: true, models: Object.entries(parsed.models).map(([id, efforts]) => ({ id, efforts })) };
+  const models = Object.entries(parsed.models).map(([id, efforts]) => ({ id, efforts }));
+  return { version: versionText, loggedIn: true, models, notes: [WEB_NOTE], warnings: tierWarnings(models.map((m) => m.id), tiers) };
 }
 
 const adapter = {

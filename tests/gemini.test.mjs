@@ -1,11 +1,12 @@
 // S5: Gemini adapter against tests/fixtures/fake-agy.mjs (PLAN.md S5.1-S5.5).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import gemini, { BINARIES, MAX_FRAME_BYTES, WINDOWS_UNSUPPORTED, checkGeminiRequest, globalSettingsPath, modelArgs, printTimeout, probeAgy, readGlobalPolicy, sessionSettings, settingsPathOf, firstJsonObject, describeToolStep, describeStepError, isDenialStep } from "../plugins/council/scripts/lib/providers/gemini.mjs";
+import gemini, { WEB_NOTE, tierWarnings, BINARIES, MAX_FRAME_BYTES, WINDOWS_UNSUPPORTED, checkGeminiRequest, globalSettingsPath, modelArgs, printTimeout, probeAgy, readGlobalPolicy, sessionSettings, settingsPathOf, firstJsonObject, describeToolStep, describeStepError, isDenialStep } from "../plugins/council/scripts/lib/providers/gemini.mjs";
+import { DEADLINE_S } from "../plugins/council/scripts/lib/core/lifecycle.mjs";
 import { createReader } from "../plugins/council/scripts/lib/core/reader.mjs";
 import { finalizeReviewTurn } from "../plugins/council/scripts/lib/core/review.mjs";
 import { UsageError } from "../plugins/council/scripts/lib/core/args.mjs";
@@ -53,13 +54,13 @@ function sandbox({ global = null } = {}) {
   const env = { ...process.env, COUNCIL_HOME: home, HOME: userHome, COUNCIL_AGY_BIN: FAKE_AGY, COUNCIL_STDIN_DEADLINE_MS: "300", COUNCIL_FAKE_JOB_DIR: join(home, "jobs"), COUNCIL_FAKE_EXPECT_CONTRACT: CONTRACT };
   for (const g of GUARD_VARS) delete env[g];
   for (const k of Object.keys(env)) if (k.startsWith("COUNCIL_FAKE_") && !["COUNCIL_FAKE_JOB_DIR", "COUNCIL_FAKE_EXPECT_CONTRACT"].includes(k)) delete env[k];
-  const call = async (argv, { text = "", prompt, scenario = "ok", extra = {}, hooks = {} } = {}) => {
+  const call = async (argv, { text = "", prompt, scenario = "ok", extra = {}, hooks = {}, json: asJson = true } = {}) => {
     let out = "", err = "";
     const stdin = new PassThrough(); stdin.end("");
     const marker = prompt !== undefined ? prompt : { COUNCIL_FAKE_EXPECT_PROMPT: `${CONTRACT}\n\n${text}` };
     const callEnv = { ...env, COUNCIL_FAKE_SCENARIO: scenario, ...(typeof marker === "string" ? { COUNCIL_FAKE_EXPECT_PROMPT_CONTAINS: marker } : marker), ...extra };
     if (callEnv.COUNCIL_FAKE_EXPECT_CONTRACT === null) delete callEnv.COUNCIL_FAKE_EXPECT_CONTRACT;
-    const code = await main([...argv, "--json", ...(text ? ["--", text] : [])], callEnv, { stdout: { write: (x) => { out += x; } }, stderr: { write: (x) => { err += x; } }, stdin, cwd }, hooks);
+    const code = await main([...argv, ...(asJson ? ["--json"] : []), ...(text ? ["--", text] : [])], callEnv, { stdout: { write: (x) => { out += x; } }, stderr: { write: (x) => { err += x; } }, stdin, cwd }, hooks);
     let json = null;
     try { json = JSON.parse(out.trim().split("\n").at(-1)); } catch { /* not JSON */ }
     return { code, out, err, json };
@@ -406,5 +407,207 @@ test("review --adversarial renders the adversarial template; malformed output �
     const [spawn] = logLines(log);
     assert.match(spawn.content, /User focus: focus on the constant/);
     assert.match(spawn.content, /REVIEW-ME/);
+  } finally { s.done(); }
+});
+
+// --- S5.5 every verb against fake-agy ---------------------------------------------------------------------
+
+const args = (spawn, flag) => { const i = spawn.argv.indexOf(flag); return i < 0 ? undefined : spawn.argv[i + 1]; };
+
+test("ask → task --thread → reply → task --thread: settings, --sandbox, --mode and --conversation on every transition", async () => {
+  const s = sandbox({ global: GLOBAL });
+  try {
+    const log = join(s.root, "agy.log");
+    const extra = { COUNCIL_FAKE_AGY_LOG: log };
+    const ask = await s.call(["ask", "--to", "gemini", "--effort", "low"], { text: "first", extra });
+    assert.equal(ask.code, 0, ask.out + ask.err);
+    assert.equal(ask.json.answer, "pong\n");
+    assert.deepEqual([ask.json.model, ask.json.effort, ask.json.round], ["gemini-4-argon", "low", 1]);
+    const thread = ask.json.thread;
+    const task1 = await s.call(["task", "--thread", ask.json.job], { text: "edit it", scenario: "resume", extra });
+    assert.equal(task1.code, 0, task1.out + task1.err);
+    const reply = await s.call(["reply", "--thread", task1.json.job], { text: "explain", scenario: "resume", extra });
+    assert.equal(reply.code, 0, reply.out + reply.err);
+    const task2 = await s.call(["task", "--thread", thread], { text: "again", scenario: "resume", extra });
+    assert.equal(task2.code, 0, task2.out + task2.err);
+    assert.deepEqual([task1.json.round, reply.json.round, task2.json.round], [2, 3, 4]);
+    const spawns = logLines(log);
+    assert.equal(spawns.length, 4);
+    const expected = [
+      { readOnly: true, conversation: undefined }, { readOnly: false, conversation: thread },
+      { readOnly: true, conversation: thread }, { readOnly: false, conversation: thread },
+    ];
+    const readOnlySettings = { permissions: { allow: ["read_file(/etc/hosts)", "read_url(https://x.test/*)"], ask: ["command(npm *)"], deny: ["read_file(/secret/*)", ...READ_ONLY_DENY] }, toolPermission: "strict" };
+    const taskSettings = { permissions: GLOBAL.permissions, toolPermission: "strict" };
+    for (const [i, spawn] of spawns.entries()) {
+      const want = expected[i];
+      assert.ok(spawn.argv.includes("--sandbox"), `turn ${i + 1}: --sandbox always`);
+      assert.equal(args(spawn, "--mode"), want.readOnly ? undefined : "accept-edits", `turn ${i + 1}: --mode only on tasks`);
+      assert.equal(args(spawn, "--conversation"), want.conversation, `turn ${i + 1}: --conversation`);
+      assert.deepEqual(spawn.settings, want.readOnly ? readOnlySettings : taskSettings, `turn ${i + 1}: settings`);
+      assert.match(args(spawn, "--settings"), new RegExp(`/jobs/[a-z0-9]{16}/settings\\.json$`));
+      assert.equal(args(spawn, "--print-timeout"), `${DEADLINE_S}s`, "the execution deadline (A3.3)");
+      assert.ok(spawn.content.startsWith(CONTRACT));
+    }
+    assert.equal(new Set(spawns.map((x) => args(x, "--settings"))).size, 4, "a settings file per job");
+    assert.equal(args(spawns[1], "--effort"), "high", "a fresh task --thread uses the exec tier unless told otherwise");
+    assert.equal(args(spawns[2], "--effort"), "high", "reply inherits the thread's model and effort");
+    const list = await s.call(["wait"], {});
+    assert.equal(list.code, 0);
+  } finally { s.done(); }
+});
+
+test("denial exits 10: signature with the key absent, signature with an empty array, a non-empty array, an empty response", async () => {
+  const s = sandbox();
+  try {
+    const absent = await s.call(["ask", "--to", "gemini"], { text: "create a file", scenario: "denied" });
+    assert.equal(absent.code, 10, absent.out + absent.err);
+    assert.match(absent.json.answer, /blocked by a user-configured permission deny rule/);
+    for (const variant of ["denied-actions-empty", "denied-actions", "denied-empty-response"]) {
+      const r = await s.call(["ask", "--to", "gemini"], { text: "x", extra: { COUNCIL_FAKE_AGY_RESULT: variant } });
+      assert.equal(r.code, 10, `${variant}: ${r.out}${r.err}`);
+      assert.equal(r.json.status, "attention", variant);
+    }
+    const quiet = await s.call(["ask", "--to", "gemini"], { text: "x", extra: { COUNCIL_FAKE_AGY_RESULT: "denied-empty-response" }, json: false });
+    assert.match(quiet.out, /^agy denied 1 tool call\(s\) by a deny rule: write_file /m);
+    assert.match(quiet.out, /^council gemini needs attention · job [a-z0-9]{16} · gemini-4-argon\/high · /m);
+  } finally { s.done(); }
+});
+
+test("failures exit 1: print_timeout, duplicate, missing, ERROR status, empty response; effort error from agy", async () => {
+  const s = sandbox();
+  try {
+    for (const [variant, re] of [
+      ["print-timeout", /print timeout/], ["duplicate", /duplicate terminal results/], ["missing", /ended without finishing the turn|print timeout|turn/],
+      ["error", /agy finished with status ERROR: backend unavailable/], ["empty", /agy returned an empty response/],
+    ]) {
+      const r = await s.call(["ask", "--to", "gemini"], { text: "x", extra: { COUNCIL_FAKE_AGY_RESULT: variant } });
+      assert.equal(r.code, 1, `${variant}: ${r.out}${r.err}`);
+      assert.match(r.json.error ?? "", re, variant);
+    }
+    const effort = await s.call(["ask", "--to", "gemini"], { text: "x", scenario: "effort-error" });
+    assert.equal(effort.code, 1);
+    assert.match(effort.json.error, /invalid model selection/);
+  } finally { s.done(); }
+});
+
+test("refusals exit 2 before any spawn: --web, suffix conflict; suffixed id alone; xhigh clamped in the footer", async () => {
+  const s = sandbox();
+  try {
+    const log = join(s.root, "agy.log");
+    const extra = { COUNCIL_FAKE_AGY_LOG: log };
+    const web = await s.call(["ask", "--to", "gemini", "--web"], { text: "x", extra });
+    assert.equal(web.code, 2);
+    assert.match(web.json.error, /--web has no tested mapping for gemini/);
+    const conflict = await s.call(["ask", "--to", "gemini", "--model", "gemini-4-argon-high", "--effort", "medium"], { text: "x", extra });
+    assert.equal(conflict.code, 2);
+    assert.match(conflict.json.error, /already fixes the effort at high; --effort medium conflicts/);
+    assert.deepEqual(logLines(log), [], "nothing spawned");
+    assert.ok(!existsSync(join(s.home, "jobs")) || readdirSync(join(s.home, "jobs")).length === 0, "no job record");
+    const suffixed = await s.call(["ask", "--to", "gemini", "--model", "gemini-3.8-flash-medium"], { text: "x", extra });
+    assert.equal(suffixed.code, 0, suffixed.out + suffixed.err);
+    assert.deepEqual(logLines(log)[0].argv.slice(logLines(log)[0].argv.indexOf("--model")), ["--model", "gemini-3.8-flash-medium"], "the id alone, no --effort");
+    const clamped = await s.call(["ask", "--to", "gemini", "--effort", "xhigh"], { text: "x", extra, json: false });
+    assert.equal(clamped.code, 0, clamped.out + clamped.err);
+    assert.match(clamped.out, /^council gemini ok · job [a-z0-9]{16} · gemini-4-argon\/high<=xhigh · .* · round 1\/9 · next: reply [a-z0-9]{16}$/m);
+    assert.match(clamped.err, /^\[council\] provider=gemini job=[a-z0-9]{16} thread=[0-9a-f-]{36}$/m);
+    assert.equal(args(logLines(log)[1], "--effort"), "high");
+  } finally { s.done(); }
+});
+
+test("two concurrent jobs with the same model and effort are told apart by their settings paths", async () => {
+  const s = sandbox();
+  try {
+    const slow = { COUNCIL_FAKE_SLOW_MS: "800" };
+    const [a, b] = await Promise.all([
+      s.call(["ask", "--to", "gemini"], { text: "one", scenario: "slow", extra: slow }),
+      s.call(["ask", "--to", "gemini"], { text: "two", scenario: "slow", extra: slow }),
+    ]);
+    assert.equal(a.code, 0, a.out + a.err);
+    assert.equal(b.code, 0, b.out + b.err);
+    const ja = s.job(a.json.job), jb = s.job(b.json.job);
+    assert.deepEqual([ja.model, ja.effort], [jb.model, jb.effort]);
+    assert.notEqual(ja.turn.settingsPath, jb.turn.settingsPath);
+    const row = (job) => ({ argv: job.argv, raw: job.argv.join(" ") });
+    for (const platform of ["linux", "darwin"]) {
+      const view = (job) => (platform === "linux" ? { argv: job.argv } : { raw: row(job).raw });
+      assert.equal(gemini.ownsProcess(view(ja), ja, platform), true, platform);
+      assert.equal(gemini.ownsProcess(view(jb), ja, platform), false, `${platform}: the other job's row`);
+      assert.equal(gemini.ownsProcess(view(ja), jb, platform), false, platform);
+    }
+  } finally { s.done(); }
+});
+
+test("the stop path kills a language-server child in agy's group", { skip: process.platform === "win32" }, async () => {
+  const s = sandbox();
+  const pidfile = join(s.root, "ls.pid");
+  let ls = null;
+  try {
+    const r = await s.call(["ask", "--to", "gemini", "--deadline", "1"], { text: "x", scenario: "slow", extra: { COUNCIL_FAKE_AGY_CHILD: "group", COUNCIL_FAKE_AGY_CHILD_PIDFILE: pidfile, COUNCIL_FAKE_SLOW_MS: "20000" }, hooks: { graceMs: 300, retryMs: 300, drainMs: 300, pipeWaitMs: 300 } });
+    ls = Number(readFileSync(pidfile, "utf8"));
+    assert.equal(r.code, 1, r.out + r.err);
+    assert.match(r.json.error, /wall-clock deadline passed/);
+    assert.equal(r.json.cleanupPending, false);
+    for (const end = Date.now() + 3000; alive(ls) && Date.now() < end;) await sleep(20);
+    assert.equal(alive(ls), false, "the child died with the group");
+  } finally { if (ls && alive(ls)) process.kill(ls, "SIGKILL"); s.done(); }
+});
+
+test("a language-server child reparented to pid 1 after agy exits is found and stopped", { skip: process.platform === "win32" }, async () => {
+  const s = sandbox();
+  const pidfile = join(s.root, "ls.pid");
+  let ls = null;
+  try {
+    const r = await s.call(["ask", "--to", "gemini"], { text: "x", extra: { COUNCIL_FAKE_AGY_CHILD: "orphan", COUNCIL_FAKE_AGY_CHILD_PIDFILE: pidfile, COUNCIL_FAKE_AGY_HOLD_MS: "700" }, hooks: { beatMs: 100, graceMs: 300, retryMs: 300, drainMs: 300, pipeWaitMs: 300, shutdownMs: 4000 } });
+    ls = Number(readFileSync(pidfile, "utf8"));
+    assert.ok(s.job(r.json.job).execution.some((x) => x.pid === ls), "recorded at a heartbeat while agy ran");
+    assert.equal(r.code, 1, r.out + r.err);
+    assert.equal(r.json.error, "owned execution survived the launcher");
+    assert.equal(r.json.cleanupPending, false);
+    for (const end = Date.now() + 3000; alive(ls) && Date.now() < end;) await sleep(20);
+    assert.equal(alive(ls), false, "stopped by its verified identity");
+  } finally { if (ls && alive(ls)) process.kill(ls, "SIGKILL"); s.done(); }
+});
+
+test("wait and cancel: a slow job is listed, cancelled and its claim released", async () => {
+  const s = sandbox();
+  try {
+    const running = s.call(["ask", "--to", "gemini", "--session", "s1"], { text: "x", scenario: "slow", extra: { COUNCIL_FAKE_SLOW_MS: "20000" } });
+    let job = null;
+    for (const end = Date.now() + 5000; !job && Date.now() < end; await sleep(50)) {
+      const listed = await s.call(["wait", "--session", "s1"], {});
+      job = /([a-z0-9]{16})/.exec(listed.out)?.[1] ?? null;
+    }
+    assert.ok(job, "listed by wait");
+    for (const end = Date.now() + 5000; !s.job(job).threadId && Date.now() < end;) await sleep(50);
+    const cancel = await s.call(["cancel", job], {});
+    assert.equal(cancel.code, 0, cancel.out + cancel.err);
+    const r = await running;
+    assert.equal(r.code, 1);
+    assert.equal(r.json.status, "cancelled");
+  } finally { s.done(); }
+});
+
+test("setup and models --refresh through the fake: ready, notes, tier ids checked against agy models", async () => {
+  const s = sandbox();
+  try {
+    const setup = await s.call(["setup", "--to", "gemini"], {});
+    assert.equal(setup.code, 0, setup.out + setup.err);
+    const [row] = JSON.parse(setup.out);
+    assert.deepEqual([row.ready, row.version, row.loggedIn, row.launcher.kind], [true, "1.4.12", true, "node-script"]);
+    assert.deepEqual(row.notes, [WEB_NOTE]);
+    assert.deepEqual(row.warnings, []);
+    assert.deepEqual(row.tiers, { consult: "gemini-4-argon/high", exec: "gemini-3.8-flash/high", deep: "gemini-4-argon/high" });
+    const text = await s.call(["setup", "--to", "gemini"], { json: false });
+    assert.match(text.out, /^gemini: ready · .*fake-agy\.mjs \(node-script\) · 1\.4\.12 · logged in$/m);
+    assert.match(text.out, /^  note: web search stays available/m);
+    const refresh = await s.call(["models", "--to", "gemini", "--refresh"], {});
+    assert.equal(refresh.code, 0, refresh.out + refresh.err);
+    const [m] = JSON.parse(refresh.out);
+    assert.equal(m.source, "refreshed");
+    assert.deepEqual(m.models["gemini-4-argon"], ["low", "medium", "high"]);
+    assert.deepEqual(m.models["gemini-3.8-flash-low"], ["low"]);
+    assert.ok(!Object.keys(m.models).some((id) => id.startsWith("claude-")), "only routed ids");
+    assert.deepEqual(tierWarnings(["gemini-4-argon-high"], { consult: { model: "gemini-4-argon", effort: "high" }, exec: { model: "gemini-3.8-flash", effort: "high" }, deep: { model: "gemini-4-argon-high", effort: "high" } }), ["tier exec resolves to gemini-3.8-flash-high, which agy models does not list"]);
   } finally { s.done(); }
 });
