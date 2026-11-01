@@ -226,6 +226,7 @@ Fixes after the S7.1 matrices, as ruled by the coordinator. X1, X2 and X3 apply 
   - **C-F3b: backslashes (this host's code).** `a\b` and `a/b` no longer collapse on POSIX. Backslashes are normalized only on win32, in the snapshot's path handling and also in the reader, whose event paths the union compares with; the ruling named only the snapshot, but the same collapse happened there.
   - **R1: cancel before spawn.** On this host the only check came before the before-snapshot, so a cancel marker written during it still spawned the provider. The recheck now follows the snapshot, and such a turn ends cancelled with zero spawn attempts and nothing compared.
   - **R4: executable bit.** Each compared entry carries it, so `chmod +x` on an already dirty file counts. This host already compared it; this round adds the test with real Git.
+  - **R2: footer injection.** `attention:` and `error:` can carry provider text. `oneLine`, the shared helper, now strips control characters (C0 including ESC, plus DEL and C1, whose 0x9b also starts an escape sequence) and replaces a standalone `·` with `-`, including at either end of the value, so a value cannot fake a footer token. The rest of an escape sequence stays as plain text (`[31m`). Paths are not redacted, as asked in review and rejected: they are the user's own workspace paths. Since `--json` uses the helper too, its `edited` paths get the same treatment.
 
 ## 2026-11-01 The test runner keeps its temp directories in one removed root
 

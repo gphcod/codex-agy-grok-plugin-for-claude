@@ -17,7 +17,11 @@ export function utf8Prefix(text, cap) {
   while (end > 0 && (bytes[end] & 0xc0) === 0x80) end -= 1;
   return bytes.subarray(0, end).toString("utf8");
 }
-export const oneLine = (text, max = 200) => utf8Prefix(String(text).replace(/\s+/g, " ").trim(), max);
+/**
+ * One line of at most `max` bytes, safe inside a footer: provider text in `error:` or `attention:` can
+ * carry no control character or escape sequence introducer, and no ` · ` that would fake a footer token.
+ */
+export const oneLine = (text, max = 200) => utf8Prefix(String(text).replace(/[\x00-\x08\x0e-\x1f\x7f-\x9f]/g, "").replace(/\s+/g, " ").trim().replace(/(^| )·(?= |$)/g, "$1-"), max);
 /** X1: the footer's `attention: <reason>`, one line, at most this many bytes, cause first. */
 export const ATTENTION_MAX = 200;
 export const QUESTIONS_REASON = "open questions in the answer";
