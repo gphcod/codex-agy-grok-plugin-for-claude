@@ -121,6 +121,8 @@ test("answers: none, blank, and open questions", async () => {
       assert.equal(questions.job.code, 10, "open questions need Claude's attention");
       assert.equal(questions.job.outcome, "attention");
       assert.match(questions.answer, /should the cache be per user/);
+      assert.equal(questions.job.attention, "open questions in the answer", "X1: the footer names the reason");
+      assert.match(footer(questions.job, false), / · attention: open questions in the answer/);
       const answered = await run(s, { env: { ...af, COUNCIL_FAKE_ANSWER: "Outcome: done.\nOpen questions: none\nNext: none\n" } });
       assert.equal(answered.job.code, 0);
     }

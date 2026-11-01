@@ -236,7 +236,7 @@ const adapter = {
           // Grok's own `cancelled` stop is its headless permission refusal: a denial (exit 10), the turn
           // completed. With no text, the refusal is the answer, so the empty-answer rule cannot fail it
           // (S4.9, as the Codex-host twin). Council's own cancel path is unchanged.
-          ...(stop === "cancelled" ? { denied: PERMISSION_STOP, ...(state.hasText ? {} : { textDelta: PERMISSION_STOP }) }
+          ...(stop === "cancelled" ? { denied: PERMISSION_STOP, deniedAction: deniedAction([...g.calls.values()].at(-1)?.name), ...(state.hasText ? {} : { textDelta: PERMISSION_STOP }) }
             // Any other stop but end_turn keeps the answer and fails the turn as incomplete (exit 1).
             : NORMAL_STOPS.has(stop) ? {} : { incomplete: `incomplete: Grok stopped with reason ${JSON.stringify(stop)}` }),
           ...(structured !== undefined && structured !== null ? { structured } : {}),
@@ -273,6 +273,8 @@ export const NORMAL_STOPS = new Set(["end_turn"]);
 export const UNCONFIRMED = "session not confirmed: start a new ask";
 /** Grok's own `cancelled` stop: a tool needed a permission headless Grok cannot ask for (grok-build lifecycle.mjs:22). */
 export const PERMISSION_STOP = "Grok cancelled the turn (a tool needed permission headless Grok cannot ask for)";
+/** X1: the footer's `attention: denied <action>` for that refusal, naming the tool call still open when the turn stopped, if any. */
+export const deniedAction = (tool) => `${typeof tool === "string" && tool && tool !== "tool_call" ? tool : "a tool call"} (needed permission headless Grok cannot ask for)`;
 const EDIT_TOOLS = new Set(["search_replace", "write"]);
 // Grok names MCP tools server__tool; a read-only turn that calls one fails.
 const MCP_TOOL = /__/;

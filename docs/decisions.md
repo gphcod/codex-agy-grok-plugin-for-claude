@@ -200,3 +200,11 @@ Reviewed by Codex gpt-6.1-sol and Gemini 4 Argon; rulings by the coordinator. Th
 - A deny-rule step stays a denial and counts as neither.
 - A write tool completing on a read-only turn should be impossible under the A2 deny list. If it happens, the turn fails closed as `incomplete` (exit 1, like an event-level incomplete on any verb) and the write is not counted as an edit.
 - The live stream is kept as `tests/fixtures/streams/agy/task-edit.jsonl`. Tests are in `tests/gemini.test.mjs`. The run is recorded in `docs/qualification/gemini-macos.md`.
+
+## 2026-11-01 S7.1 fixes
+
+Fixes after the S7.1 matrices, as ruled by the coordinator. X1, X2 and X3 apply to both hosts; the Codex-host twin gets the same change.
+
+- **X1: the attention reason in the footer.** A turn that exits 10 for a reason other than plain findings printed a bare `needs attention`; the reason was only in `meta.json`. The footer now takes `attention: <reason>` in `error:`'s slot, and `--json` an `attention` field (string or null). One line, at most 200 B, cause first: `denied <action>[ (+N more)]`, `open questions in the answer`, or why a review is incomplete or malformed. The A5 event gains two optional fields: `deniedAction` (the short summary) and `deniedTotal` (a provider-reported total, so agy's result does not count the steps it repeats). Two readings of the ruling:
+  - On this host an incomplete non-review turn exits 1 and already shows `error:`. So the incomplete-message source applies only to an incomplete or malformed review.
+  - A denial on a review also gets the token, though the ruling names only incomplete and malformed reviews. Nothing else shows it, and it is not a plain finding.

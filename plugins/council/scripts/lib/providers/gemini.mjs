@@ -187,7 +187,7 @@ export function parseAgyEvent(line, state) {
     }
     if (step.step_type === "tool" || step.tool_name || step.tool_info) {
       out.toolStep = step.state === "ERROR" ? describeStepError(step) : describeToolStep(step);
-      if (isDenialStep(step)) { own.denials.push(out.toolStep); out.denied = `agy denied ${out.toolStep.replace(/^failed: /, "")}`; }
+      if (isDenialStep(step)) { own.denials.push(out.toolStep); out.denied = `agy denied ${out.toolStep.replace(/^failed: /, "")}`; out.deniedAction = describeToolStep(step); }
       else {
         const { write, edited, failedCommand } = stepCounters(step);
         // The deny list should make this impossible; a completed write on a read-only turn is reported, never counted.
@@ -215,7 +215,12 @@ export function parseAgyEvent(line, state) {
   if (!denied && !answer.trim()) return { ...out, fatal: "agy returned an empty response; no usable result was produced" };
   const structured = isObject(r.structured_output) ? r.structured_output : firstJsonObject(answer);
   if (structured) out.structured = structured;
-  if (denied) out.denied = denied;
+  if (denied) {
+    out.denied = denied;
+    // The steps were counted as they came; the result reports the turn's total.
+    out.deniedTotal = Math.max(actions.length, own.denials.length);
+    if (actions.length) out.deniedAction = clip(typeof actions[0] === "string" ? actions[0] : JSON.stringify(actions[0]), 160);
+  }
   out.textDelta = answer.trim() ? answer : `${denied}\n`;
   out.completed = true;
   return out;

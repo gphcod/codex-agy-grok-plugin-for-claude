@@ -286,7 +286,7 @@ test("parseEvent: failure, error, file_change, failed command, junk", () => {
   assert.deepEqual(p({ type: "item.completed", item: { type: "command_execution", command: "/bin/zsh -lc 'npm test'", exit_code: 2 } }), { failedCommand: { cmd: "npm test", exit: 2 }, toolStep: "command_execution" });
   assert.deepEqual(p({ type: "item.completed", item: { type: "command_execution", command: "ls", exit_code: 0 } }), { toolStep: "command_execution" });
   assert.deepEqual(p({ type: "item.completed", item: { type: "command_execution", command: "/bin/zsh -lc 'printf hello > x.txt'", aggregated_output: "zsh: operation not permitted: x.txt\n", exit_code: 1, status: "failed" } }),
-    { failedCommand: { cmd: "printf hello > x.txt", exit: 1 }, denied: "sandbox denied: printf hello > x.txt (exit 1)", toolStep: "command_execution" }, "macOS seatbelt refusal");
+    { failedCommand: { cmd: "printf hello > x.txt", exit: 1 }, denied: "sandbox denied: printf hello > x.txt (exit 1)", deniedAction: "printf hello > x.txt (sandbox, exit 1)", toolStep: "command_execution" }, "macOS seatbelt refusal");
   for (const output of ["touch: a: Read-only file system", "bash: b: Permission denied", "landlock: restricted", "seccomp filter", "Command denied by sandbox: rm", "failed to write file c"]) {
     assert.ok(p({ type: "item.completed", item: { type: "command_execution", command: "x", aggregated_output: output, exit_code: 1 } }).denied, output);
   }

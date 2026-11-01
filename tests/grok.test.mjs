@@ -401,7 +401,7 @@ test("Grok's own cancelled stop is a denial: answer kept, exit 10, thread confir
     const r = await h.call(["ask", "--to", "grok", "--effort", "low"], { text: "push it", env: { COUNCIL_FAKE_GROK_END: "cancelled" } });
     assert.equal(r.code, 10, r.out + r.err);
     assert.match(r.out, /^pong\n/);
-    assert.match(footer(r.out), new RegExp(`^council grok needs attention · job ${r.job} · grok-4\\.7/low · \\d+s · round 1/9 · next: reply ${r.job}$`));
+    assert.match(footer(r.out), new RegExp(`^council grok needs attention · job ${r.job} · grok-4\\.7/low · \\d+s · round 1/9 · attention: denied a tool call \\(needed permission headless Grok cannot ask for\\) · next: reply ${r.job}$`));
     const job = h.job(r.job);
     assert.equal(job.denied, "Grok cancelled the turn (a tool needed permission headless Grok cannot ask for)");
     assert.equal(job.threadId, job.requestedThreadId, "the session was confirmed");

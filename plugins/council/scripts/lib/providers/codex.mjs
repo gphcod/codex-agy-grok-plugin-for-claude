@@ -275,7 +275,7 @@ const adapter = {
         if (item?.type === "command_execution" && Number.isInteger(item.exit_code) && item.exit_code !== 0) {
           const failedCommand = { cmd: shortCommand(item.command), exit: item.exit_code };
           // A3.4: a denied action needs attention (exit 10); an ordinary failing command does not.
-          if (sandboxDenied(item.aggregated_output)) return { failedCommand, denied: `sandbox denied: ${failedCommand.cmd} (exit ${item.exit_code})`, toolStep: "command_execution" };
+          if (sandboxDenied(item.aggregated_output)) return { failedCommand, denied: `sandbox denied: ${failedCommand.cmd} (exit ${item.exit_code})`, deniedAction: `${failedCommand.cmd} (sandbox, exit ${item.exit_code})`, toolStep: "command_execution" };
           return { failedCommand, toolStep: "command_execution" };
         }
         return item?.type ? { toolStep: item.type } : null;

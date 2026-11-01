@@ -67,7 +67,7 @@ Slash commands: `/council:ask`, `/council:reply`, `/council:review`, `/council:t
 - `--rounds <n>`: the reply budget of a thread (default 9, or `COUNCIL_ROUNDS`). The thread keeps it. Refused on `review`.
 - `--request-id <id>`: 1–128 characters, `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`. Retrying an identical call with the same id replays or awaits the first result and never starts a second CLI. The same id with different input exits 2.
 - `--deadline <s>` (default 14400) and `--inactivity-timeout <s>` (default 1200) stop a turn and clean up, exit 1. `wait --timeout` only stops waiting.
-- `--json`: one JSON object instead of the text output: `provider, job, thread, session, model, modelVerified, effort, requestedEffort, tier, round, rounds, verdict, findings, coverage, edited, failedCommands, costUsd, exit, answerFile`, plus `verb, status, elapsedMs, error, cleanupPending, answer, clipped`.
+- `--json`: one JSON object instead of the text output: `provider, job, thread, session, model, modelVerified, effort, requestedEffort, tier, round, rounds, verdict, findings, coverage, edited, failedCommands, costUsd, exit, answerFile`, plus `verb, status, elapsedMs, error, attention, cleanupPending, answer, clipped`. `attention` is the footer's reason, or null.
 - `--session <id>`: the Claude session that scopes `--last`, bare `wait` and bare `cancel`.
 
 Any flag that a provider has no tested mapping for exits 2 before a job is recorded and before any process starts.
@@ -107,7 +107,7 @@ The answer, then a one-line footer on stdout:
 council grok ok · job 0j52lxy97fhtkbom · grok-4.7/low · 3s · round 1/9 · next: reply 0j52lxy97fhtkbom
 ```
 
-Grammar: `council <provider> <ok|needs attention|failed|cancelled> · job <16 chars> · <model>/<effort>[<=requested] · <duration>[ · round N/M][ · edited N][ · unreviewed N][ · model unverified][ · full: <file>][ · error: <msg>][ · <recovery hint>]`. `round` appears on `ask`, `reply` and `task`; `edited` on `task` only; `unreviewed` on `review` only. An answer over 24 KiB is clipped, and `full:` names the file that holds all of it.
+Grammar: `council <provider> <ok|needs attention|failed|cancelled> · job <16 chars> · <model>/<effort>[<=requested] · <duration>[ · round N/M][ · edited N][ · unreviewed N][ · model unverified][ · full: <file>][ · error: <msg> | · attention: <reason>][ · <recovery hint>]`. `round` appears on `ask`, `reply` and `task`; `edited` on `task` only; `unreviewed` on `review` only. `attention:` says why a turn needs attention, in one line of at most 200 B: `denied <action>` (with ` (+N more)` for several), `open questions in the answer`, or why a review is incomplete or malformed. Plain review findings add no token; they are the answer. An answer over 24 KiB is clipped, and `full:` names the file that holds all of it.
 
 | Exit | Meaning |
 |---|---|

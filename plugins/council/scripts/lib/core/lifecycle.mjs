@@ -16,7 +16,7 @@ import {
 import { QUERY_MS, childEnv, companionState, executionController, recordRecoveryEvidence } from "./execution.mjs";
 import { spawnChild } from "./launcher.mjs";
 import { createReader } from "./reader.mjs";
-import { elapsed, elapsedOf, readAnswer, renderResult, resultJson, startLine } from "./output.mjs";
+import { attentionReason, elapsed, elapsedOf, readAnswer, renderResult, resultJson, startLine } from "./output.mjs";
 import { refreshBeat, BEAT_MS } from "./heartbeat.mjs";
 import { UsageError, seconds } from "./args.mjs";
 import { finalizeReviewTurn } from "./review.mjs";
@@ -428,6 +428,8 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
   Object.assign(job, {
     status: ["ok", "attention"].includes(outcome) ? "done" : outcome, outcome, code: outcome === "ok" ? 0 : outcome === "attention" ? 10 : refused && outcome === "failed" && cleanupConfirmed ? 2 : 1,
     error, cleanupPending: !cleanupConfirmed, endedAt: new Date().toISOString(),
+    // X1: the reason a turn needs attention, shown in the footer as `attention: <reason>`.
+    attention: outcome === "attention" ? attentionReason({ isReview, review: job.review, denied: seen?.denied, deniedAction: seen?.deniedAction, deniedCount: seen?.deniedCount, questions: parsed?.questions }) : null,
     edited: [...(seen?.edited ?? [])], failedCommands: seen?.failedCommands ?? [], failedCommandCount: seen?.failedCommandCount ?? 0,
     unconfirmed: isReview ? null : seen?.unconfirmed ?? null, denied: seen?.denied ?? null, costUsd: seen?.costUsd ?? null, usage: seen?.usage ?? null, answerClipped: parsed?.answerClipped ?? false,
   });
@@ -445,7 +447,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     if (cleanupConfirmed) releaseClaims(ctx.home, job);
   } catch (failure) {
     // Retain the claim if durable finalization or release could not be completed.
-    job.code = 1; job.outcome = "failed"; job.cleanupPending = true;
+    job.code = 1; job.outcome = "failed"; job.cleanupPending = true; job.attention = null;
     job.error = `finalization failed: ${failure.message}`;
   }
   // A5: afterTurn runs once, after finalization, and only once cleanup is verified (also on failure or cancel).

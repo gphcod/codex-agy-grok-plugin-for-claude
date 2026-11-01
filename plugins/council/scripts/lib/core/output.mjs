@@ -18,6 +18,24 @@ export function utf8Prefix(text, cap) {
   return bytes.subarray(0, end).toString("utf8");
 }
 export const oneLine = (text, max = 200) => utf8Prefix(String(text).replace(/\s+/g, " ").trim(), max);
+/** X1: the footer's `attention: <reason>`, one line, at most this many bytes, cause first. */
+export const ATTENTION_MAX = 200;
+export const QUESTIONS_REASON = "open questions in the answer";
+/** `denied <action>[ (+N more)]`: the action is clipped so the count survives. */
+export function deniedReason(action, count = 1) {
+  const more = count > 1 ? ` (+${count - 1} more)` : "";
+  return `denied ${oneLine(action || "an action", ATTENTION_MAX - Buffer.byteLength(`denied ${more}`))}${more}`;
+}
+/**
+ * Why a turn needs attention (exit 10), or null. Reviews: only an incomplete or malformed review (its
+ * findings already show as findings), else a denied action. Other verbs: a denied action, else open
+ * questions in the answer.
+ */
+export function attentionReason({ isReview, review = null, denied = null, deniedAction = null, deniedCount = 0, questions = false }) {
+  const deny = denied ? deniedReason(deniedAction ?? denied, Math.max(1, deniedCount)) : null;
+  if (isReview) return review?.incomplete ? oneLine(review.incomplete, ATTENTION_MAX) : deny;
+  return deny ?? (questions ? QUESTIONS_REASON : null);
+}
 export const pendingCleanup = (job) => Boolean((job.cleanupPending && !job.stopped) || job.claimHeld);
 
 export function elapsed(ms) {
@@ -58,7 +76,9 @@ export function recoveryHint(job) {
 /**
  * A3.4 footer, one line on stdout:
  * council <provider> <ok|needs attention|failed|cancelled> · job <16 chars> · <model>/<effort>[<=requested] · <duration>
- * [ · round N/M][ · edited N][ · unreviewed N][ · model unverified][ · full: <file>][ · error: <msg>][ · <recovery hint>]
+ * [ · round N/M][ · edited N][ · unreviewed N][ · model unverified][ · full: <file>][ · error: <msg> | · attention: <reason>][ · <recovery hint>]
+ * `attention:` only on a turn that needs attention for a reason the footer would not otherwise show
+ * (never with `error:`, which only a failed or cancelled turn carries).
  */
 export function footer(job, clipped) {
   const parts = [`council ${job.provider} ${LABELS[job.outcome] ?? job.outcome}`, `job ${job.id}`, effortToken(job), elapsed(elapsedOf(job))];
@@ -68,6 +88,7 @@ export function footer(job, clipped) {
   if (job.modelVerified === false) parts.push("model unverified");
   if (clipped || job.answerClipped) parts.push(`full: ${answerPath(job)}`);
   if (job.error) parts.push(`error: ${oneLine(job.error)}`);
+  else if (job.attention) parts.push(`attention: ${oneLine(job.attention, ATTENTION_MAX)}`);
   const hint = recoveryHint(job);
   if (hint) parts.push(hint);
   return parts.join(" · ");
@@ -91,6 +112,7 @@ export function resultJson(job, answer) {
     edited: (job.edited ?? []).slice(0, 100).map((p) => oneLine(p)), failedCommands: (job.failedCommands ?? []).slice(0, 20).map((f) => (typeof f === "string" ? oneLine(f, 120) : { cmd: oneLine(f.cmd ?? "", 120), exit: f.exit ?? null })),
     costUsd: job.costUsd ?? null, exit: job.code, answerFile: answerPath(job),
     verb: job.verb, status: job.outcome, elapsedMs: elapsedOf(job), error: job.error ? oneLine(job.error, 2000) : null,
+    attention: !job.error && job.attention ? oneLine(job.attention, ATTENTION_MAX) : null,
     cleanupPending: pendingCleanup(job), answer: text, clipped: clipped || Boolean(job.answerClipped),
   };
 }

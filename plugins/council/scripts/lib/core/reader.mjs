@@ -13,8 +13,11 @@ const FAILED_DETAILS_CAP = 100;
 
 /**
  * Chunk-bounded JSONL reader for one turn. `adapter.parseEvent(line, state)` returns the A5 event
- * shape ({threadId?, textDelta?, toolStep?, completed?, fatal?, denied?, incomplete?, structured?,
- * edited?, failedCommand?, costUsd?, usage?}) or null. `onThread(id)` runs before the id is
+ * shape ({threadId?, textDelta?, toolStep?, completed?, fatal?, denied?, deniedAction?, deniedTotal?,
+ * incomplete?, structured?, edited?, failedCommand?, costUsd?, usage?}) or null. `denied` is the
+ * message (the first one is kept); `deniedAction` the short tool/action summary the footer's
+ * `attention: denied <action>` names; each denied event counts one denial unless it carries
+ * `deniedTotal`, the turn's total as the provider reported it. `onThread(id)` runs before the id is
  * published so the caller can claim it; a throw there fails the turn. `turn` is the adapter's own
  * buildTurn result, exposed read-only as `state.turn`, so parseEvent can apply per-turn rules (the
  * grok adapter's read-only tool guard needs the turn's mode) without module-level state.
@@ -22,7 +25,7 @@ const FAILED_DETAILS_CAP = 100;
 export function createReader({ adapter, cwd = process.cwd(), turn = null, onThread, onText, onEvent, onFailure, maxLineBytes = adapter?.maxLineBytes ?? LINE_CAP } = {}) {
   if (!adapter || typeof adapter.parseEvent !== "function") throw new Error("createReader needs an adapter with parseEvent");
   const state = {
-    threadId: null, completed: false, failed: null, error: null, denied: null, incomplete: null, structured: null,
+    threadId: null, completed: false, failed: null, error: null, denied: null, deniedAction: null, deniedCount: 0, incomplete: null, structured: null,
     edited: new Set(), failedCommands: [], failedCommandCount: 0, costUsd: null, usage: null, lastEvent: null, lastTool: null, events: 0, hasText: false,
     unconfirmed: null, turn,
   };
@@ -61,7 +64,12 @@ export function createReader({ adapter, cwd = process.cwd(), turn = null, onThre
     if (typeof ev.textDelta === "string" && ev.textDelta) { state.hasText = true; onText?.(ev.textDelta); }
     if (ev.toolStep !== undefined) state.lastTool = ev.toolStep;
     if (ev.completed) state.completed = true;
-    if (ev.denied) state.denied ??= typeof ev.denied === "string" ? ev.denied : "the provider denied an action";
+    if (ev.denied) {
+      state.denied ??= typeof ev.denied === "string" ? ev.denied : "the provider denied an action";
+      if (typeof ev.deniedAction === "string" && ev.deniedAction.trim()) state.deniedAction ??= ev.deniedAction;
+    }
+    if (Number.isInteger(ev.deniedTotal) && ev.deniedTotal > 0) state.deniedCount = Math.max(state.deniedCount, ev.deniedTotal);
+    else if (ev.denied) state.deniedCount += 1;
     // The turn finished but the provider never confirmed its thread: the answer stands, the thread is not resumable.
     if (ev.unconfirmed) state.unconfirmed ??= typeof ev.unconfirmed === "string" ? ev.unconfirmed : "thread not confirmed: start a new ask";
     if (ev.incomplete) state.incomplete ??= typeof ev.incomplete === "string" ? ev.incomplete : "the turn ended incomplete";
