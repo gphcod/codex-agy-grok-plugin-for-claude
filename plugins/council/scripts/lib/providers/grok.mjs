@@ -124,7 +124,7 @@ const adapter = {
     const parsed = parseModelListing("grok", listing.stdout, { grokEfforts: EFFORTS });
     // grok-build setup.mjs warnings: several executables on PATH, no login, a tier model missing from the listing.
     const warnings = [];
-    const candidates = env.COUNCIL_GROK_BIN ? [] : pathCandidates("grok", env, process.platform);
+    const candidates = env.COUNCIL_GROK_BIN ? [] : distinctExecutables(pathCandidates("grok", env, process.platform));
     if (candidates.length > 1) warnings.push(`${candidates.length} grok executables on PATH; the first one runs`);
     if (!parsed.loggedIn) warnings.push("Grok is not logged in: run `grok` once and complete login");
     for (const [name, { model }] of Object.entries(loadTiers().grok ?? {})) {
@@ -291,6 +291,18 @@ function promptFileOf(args) {
   if (!Array.isArray(args)) return null;
   const i = args.indexOf("--prompt-file");
   return i >= 0 ? args[i + 1] ?? null : null;
+}
+
+/** PATH entries that resolve to one file (a symlink such as ~/.local/bin/grok → ~/.grok/bin/grok) are one executable. */
+export function distinctExecutables(candidates) {
+  const seen = new Set();
+  return candidates.filter((file) => {
+    let key;
+    try { key = fs.realpathSync(file); } catch { key = file; }
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export default adapter;
