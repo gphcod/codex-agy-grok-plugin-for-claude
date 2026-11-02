@@ -1,6 +1,6 @@
 {
   "name": "council",
-  "version": "1.0.0-rc.3",
+  "version": "1.0.0-rc.4",
   "description": "Ask Codex, Gemini or Grok a question, discuss findings, review changes, fan a brief out to several models, or delegate authorized edits from Claude Code. One companion process and one CLI child per call.",
   "author": {
     "name": "gphcod"

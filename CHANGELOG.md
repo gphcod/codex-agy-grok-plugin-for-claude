@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (unreleased; 1.0.0-rc.3 candidate)
+## 1.0.0 (unreleased; 1.0.0-rc.4 candidate)
 
 First release of `council`. A single plugin now provides the following, through one companion process and one provider CLI child per call:
 
@@ -15,6 +15,10 @@ The release check is S7 of `PLAN.md`: a macOS matrix, a Windows session and the 
 
 - A clean exit now waits up to 5 s for process-group members that are still exiting, so Codex's short-lived MCP servers no longer fail a finished turn with `cleanup pending` (6 of 12 Codex asks on a Mac with MCP servers configured). Nothing signals them; any that outlast the wait still leave cleanup pending.
 - agy runs with `PWD` set to the real working directory. agy takes its workspace root from `PWD`, so a folder reached through a symlink (`/tmp` on macOS) had every read and edit denied in headless mode.
+
+### PowerShell (1.0.0-rc.4)
+
+- Commands and the skill have a PowerShell form for a session with no Bash tool. The text goes in a file read through the new `--input-file`, never in the command, because text in a PowerShell here-string can end it and run as a command.
 
 ### Windows (checked 2026-11-01, `docs/qualification/windows.md`)
 

@@ -91,6 +91,8 @@ export function harness() {
   const run = (argv, env = {}) => collect(spawn(process.execPath, [ENTRY, ...argv], { cwd: repo, env: { ...base, ...env }, stdio: ["ignore", "pipe", "pipe"] }));
   /** A shell body run by bash, as Claude's Bash tool runs a command's block; `node` resolves on PATH. */
   const sh = (body, env = {}) => collect(spawn(WINDOWS ? windowsBash() : "/bin/bash", ["-c", body], { cwd: repo, env: { ...base, PATH: searchPath(trapDir, dirname(process.execPath)), ...env }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true }));
+  /** A command run by a PowerShell executable, as Claude's PowerShell tool runs it. */
+  const ps = (exe, body, env = {}) => collect(spawn(exe, ["-NoProfile", "-NonInteractive", "-Command", body], { cwd: repo, env: { ...base, PATH: searchPath(trapDir, dirname(process.execPath)), ...env }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true }));
   /** A threaded turn of `provider` with the fake's content markers. */
   const turn = (provider, argv, text, env = {}) => run([...argv, "--session", SESSION, "--", text], { ...markers(provider, text), ...env });
   const job = (id) => loadJob(canonical(home), id);
@@ -105,5 +107,5 @@ export function harness() {
       catch (error) { if (Date.now() >= end) throw error; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250); }
     }
   };
-  return { root, home, repo, cwd, base, run, sh, turn, job, jobIds, invocations, trapped, done };
+  return { root, home, repo, cwd, base, run, sh, ps, turn, job, jobIds, invocations, trapped, done };
 }

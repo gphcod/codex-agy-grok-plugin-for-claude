@@ -2,7 +2,7 @@
 description: Ask Grok a question on a new read-only thread
 argument-hint: "[--tier consult|exec|deep] [--model <m>] [--effort <e>] <question>"
 disable-model-invocation: true
-allowed-tools: Bash(node:*)
+allowed-tools: Bash(node:*), PowerShell(node:*), Write
 ---
 
 Make one Bash tool call. Run it with `run_in_background: true` when the tier is deep or the effective effort is xhigh or above: the arguments carry `--tier deep`, `--effort xhigh`, `max` or `ultra`, or `--tier exec` and no `--effort` below xhigh (grok's exec tier runs at xhigh). Otherwise run it in the foreground with timeout 600000.
@@ -13,6 +13,12 @@ If a line of the arguments is exactly `COUNCIL_EOF`, use another delimiter that 
 node "${CLAUDE_PLUGIN_ROOT}/scripts/council.mjs" ask --to grok --request-id @RID@ --session "${CLAUDE_SESSION_ID}" <<'COUNCIL_EOF'
 $ARGUMENTS
 COUNCIL_EOF
+```
+
+If this session has no Bash tool, use the PowerShell tool with the same background and timeout rule. Never put the arguments in a PowerShell command: use the Write tool to save them verbatim, even when empty, to a new UTF-8 file in the system temp directory, outside the repository, then run this with `<file>` replaced:
+
+```powershell
+node "${CLAUDE_PLUGIN_ROOT}/scripts/council.mjs" ask --to grok --request-id @RID@ "--session=${CLAUDE_SESSION_ID}" "--input-file=<file>"; exit $LASTEXITCODE
 ```
 
 Act on the output or summarize it briefly; do not repeat it. A background call reports through its task notification; `/council:wait <job>` prints a finished result again. After `thread locked` or `session not confirmed`, start a new ask; after `cleanup pending`, run `/council:cancel <job>`.

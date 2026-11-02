@@ -5,6 +5,7 @@
 // The skill's direct call form is run the same way.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -30,6 +31,10 @@ const command = (name, args, { delimiter = null, rid = freshId() } = {}) => {
   return body.replace(/\$ARGUMENTS/g, () => args);
 };
 const CLAUDE = { CLAUDE_PLUGIN_ROOT: PLUGIN_DIR, CLAUDE_SESSION_ID: SESSION };
+/** The PowerShell form as Claude runs it: Claude Code has already substituted the two variables in the command's text. */
+const powershellForm = (name, file, rid = freshId()) => /```powershell\n(.*)\n```/.exec(readFileSync(join(PLUGIN_DIR, "commands", `${name}.md`), "utf8"))[1]
+  .replaceAll("${CLAUDE_PLUGIN_ROOT}", PLUGIN_DIR).replaceAll("${CLAUDE_SESSION_ID}", SESSION).replaceAll(RID, rid).replace("<file>", file);
+const POWERSHELLS = process.platform === "win32" ? ["powershell.exe", "pwsh.exe"].filter((exe) => spawnSync(exe, ["-NoProfile", "-Command", "exit 0"], { windowsHide: true }).status === 0) : [];
 
 test("ask, codex, gemini, grok: leading flags, a literal --, text with -- inside, multiline text, a delimiter collision", async () => {
   const h = harness();
@@ -128,6 +133,37 @@ test("reply, review, task, wait, cancel, models, setup through their command blo
     assert.equal(h.invocations().filter((c) => c.provider === "gemini").length, 3, "the earlier review plus agy --version and agy models");
   } finally { h.done(); }
 });
+
+for (const exe of POWERSHELLS) {
+  test(`${exe}: the PowerShell form: text that would end a here-string, non-ASCII and leading flags, by file; the exit code survives; empty arguments`, async () => {
+    const h = harness();
+    try {
+      const text = 'He said "hi", $HOME and `tick\n\'@ not an end\n\u2019@ nor this; Remove-Item nothing\nna\u00efve \u6f22\u5b57 \ud83d\ude00';
+      const file = join(h.root, "arguments.txt");
+      writeFileSync(file, `--to grok --effort low ${text}`);
+      let r = await h.ps(exe, powershellForm("ask", file), markers("grok", text));
+      assert.equal(r.code, 0, r.err + r.out);
+      assert.match(footer(r.out), /^council grok ok · job [a-z0-9]{16} · grok-4\.7\/low · /);
+      assert.equal(readFileSync(h.job(r.job).turn.promptFile, "utf8"), text);
+      assert.equal(h.job(r.job).session, SESSION);
+      writeFileSync(file, "\uFEFF--to nobody hi");
+      r = await h.ps(exe, powershellForm("ask", file), {});
+      assert.equal(r.code, 2, "exit $LASTEXITCODE keeps the entry's code, and a byte order mark does not hide the flags");
+      assert.match(r.err, /--to must be one of/);
+      writeFileSync(file, "");
+      r = await h.ps(exe, powershellForm("wait", file), {});
+      assert.equal(r.code, 0, r.err + r.out);
+      // An empty session in the command's text: Windows PowerShell would drop a bare "" argument and shift the next one.
+      writeFileSync(file, `--to grok --effort low ${text}`);
+      r = await h.ps(exe, powershellForm("ask", file).replace(SESSION, ""), { ...markers("grok", text), CLAUDE_CODE_SESSION_ID: "from-the-host" });
+      assert.equal(r.code, 0, r.err + r.out);
+      assert.equal(readFileSync(h.job(r.job).turn.promptFile, "utf8"), text);
+      r = await h.ps(exe, powershellForm("ask", join(h.root, "missing.txt")), {});
+      assert.equal(r.code, 2);
+      assert.match(r.err, /cannot read --input-file/);
+    } finally { h.done(); }
+  });
+}
 
 test("each command says how to run its Bash call: background for review, task, deep, exec tiers at xhigh or above, and heavy efforts", () => {
   const text = (name) => readFileSync(join(PLUGIN_DIR, "commands", `${name}.md`), "utf8");
