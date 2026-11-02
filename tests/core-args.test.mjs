@@ -24,7 +24,12 @@ test("parseArgv: option arity", () => {
   usage(() => parseArgv(["--to"]), /Missing value for --to/);
   usage(() => parseArgv(["--effort"]), /Missing value/);
   usage(() => parseArgv(["--bogus", "x"]), /Unknown option --bogus/);
-  assert.deepEqual(parseArgv(["-x", "text"]).positionals, ["-x", "text"], "single-dash tokens are text, as in the donor");
+  usage(() => parseArgv(["-x", "text"]), /Unknown option -x\. Put -- before the text/);
+  usage(() => parseArgv(["--to", "codex", "-m", "gpt-5", "why"]), /Unknown option -m/);
+  assert.deepEqual(parseArgv(["text", "-x"]).positionals, ["text", "-x"], "only a leading short flag is refused");
+  assert.deepEqual(parseArgv(["-", "item"]).positionals, ["-", "item"], "a bare dash is text");
+  assert.deepEqual(parseArgv(["-5", "degrees"]).positionals, ["-5", "degrees"], "so is a number");
+  assert.deepEqual(parseArgv(["--", "-x"]).positionals, ["-x"]);
   // a value option consumes the next token even when it looks like a flag
   assert.deepEqual(parseArgv(["--model", "--json"]).options, { model: "--json" });
 });
@@ -56,6 +61,14 @@ test("splitLeading: text with no leading option is returned untouched", () => {
   assert.equal(r.text, raw);
   assert.equal(splitLeading("").text, "");
   assert.equal(splitLeading("   \n").text, "   \n");
+});
+
+test("splitLeading: a leading short flag is refused; later dashes, bullets, numbers and a literal -- are text", () => {
+  usage(() => splitLeading("-v"), /Unknown option -v\. Put -- before the text/);
+  usage(() => splitLeading("--to codex -m gpt-5 explain"), /Unknown option -m/);
+  for (const raw of ["why does -v fail", "- first item\n- second", "-5 degrees", "  - item"]) assert.equal(splitLeading(raw).text, raw, raw);
+  assert.equal(splitLeading("--to codex why does -v fail").text, "why does -v fail");
+  assert.equal(splitLeading("--to grok -- -v stays").text, "-v stays");
 });
 
 test("splitLeading: a literal -- stops parsing and strips one line break", () => {

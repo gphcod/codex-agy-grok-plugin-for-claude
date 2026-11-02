@@ -318,8 +318,10 @@ const adapter = {
     if (request.thread?.threadId) args.push("--conversation", request.thread.threadId);
     if (review) args.push("--json-schema", SCHEMA_PATH);
     const content = review ? request.reviewPrompt : `${request.contract}\n\n${request.text}`;
+    // A review's paths are relative to the repository root, and agy's workspace root decides what it may read.
+    const cwd = review ? request.reviewTarget?.root ?? request.cwd : request.cwd;
     return {
-      args, env: agyWorkspaceEnv(request.cwd), stdin: `${JSON.stringify({ event: "user", message: { content } })}\n`, settingsPath,
+      args, cwd, env: agyWorkspaceEnv(cwd), stdin: `${JSON.stringify({ event: "user", message: { content } })}\n`, settingsPath,
       answerFile: null, readOnly, contractCarrier: review ? "none" : "stdin-prefix", threadId: null,
     };
   },

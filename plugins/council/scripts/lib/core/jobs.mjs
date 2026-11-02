@@ -11,10 +11,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { canonical, readJson, sleepSync, writeFileAtomic } from "./fs.mjs";
+import { canonical, readJson, readRecord, retryLocked, sleepSync, writeFileAtomic } from "./fs.mjs";
 import { UsageError } from "./catalog.mjs";
 import { claimHeld } from "./claims.mjs";
 import { BEAT_STALE_MS, beatMs, touchBeat } from "./heartbeat.mjs";
+import { MESSAGES } from "./output.mjs";
 
 export const KEEP_FINISHED = 100;
 const ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -235,18 +236,23 @@ export function loadJob(home, id) {
   const dir = path.join(jobsRoot(home), id);
   // One directory read finds every marker, before the metadata: metadata read after done was seen is
   // final. Every turn loads every job, so a finished job costs a listing and one file read.
-  let names;
-  try { names = new Set(fs.readdirSync(dir)); }
-  catch { return null; }
+  // A job that cannot be read now throws: dropped from a listing, an older job would be selected instead.
+  let names, meta;
+  try {
+    names = new Set(retryLocked(() => fs.readdirSync(dir)));
+    meta = readRecord(path.join(dir, "meta.json"));
+  } catch (error) {
+    if (error.code === "ENOENT" || error.code === "ENOTDIR") return null;
+    throw new Error(MESSAGES.jobUnreadable(id, error.code ?? error.message));
+  }
   const done = names.has("done");
   const stoppedAt = names.has("stopped") ? mtime(path.join(dir, "stopped"))?.toISOString() ?? null : null;
-  const meta = readJson(path.join(dir, "meta.json"));
   // Only an unfinished job's state depends on its heartbeat.
   const beat = done || stoppedAt || !names.has("beat") ? 0 : beatMs(dir);
   return meta && { ...meta, dir, done, beatMs: beat, stopped: stoppedAt !== null, stoppedAt, cancelRequested: names.has("cancel") };
 }
 
-/** Every readable job, newest first. A failed directory query is not an empty job list. */
+/** Every job, newest first; a damaged record is no job. A failed directory query or a locked job is not a shorter list: it throws. */
 export function listJobs(home) {
   let names;
   try { names = fs.readdirSync(jobsRoot(home)); }
@@ -261,7 +267,10 @@ export function listJobs(home) {
  * job out of jobs/, so a listing never sees part of one. Thread records are never pruned.
  */
 export function prune(home, keep = KEEP_FINISHED) {
-  const finished = listJobs(home).filter((j) => (j.done || j.stopped) && !cleanupNeeded(j));
+  let finished = [];
+  // Pruning never fails a new turn: with a job unreadable now, a later turn prunes instead.
+  try { finished = listJobs(home).filter((j) => (j.done || j.stopped) && !cleanupNeeded(j)); }
+  catch { /* Next turn. */ }
   const trash = path.join(home, "trash");
   for (const job of finished.slice(keep)) {
     if (claimHeld(home, job)) continue;

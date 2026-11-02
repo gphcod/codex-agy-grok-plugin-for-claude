@@ -3,10 +3,22 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-const BUSY = ["EPERM", "EBUSY", "EACCES"];
+export const BUSY = ["EPERM", "EBUSY", "EACCES"];
+/** How long a read or a release waits out a Windows lock before it reports one. */
+export const LOCK_WAIT_MS = 2000;
 
 export function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** `action()`, tried again while it fails with one of `codes`, for up to LOCK_WAIT_MS. */
+export function retryLocked(action, codes = BUSY) {
+  for (const deadline = Date.now() + LOCK_WAIT_MS; ; sleepSync(10 + Math.floor(Math.random() * 20))) {
+    try { return action(); }
+    catch (error) {
+      if (!codes.includes(error?.code) || Date.now() >= deadline) throw error;
+    }
+  }
 }
 
 /**
@@ -42,6 +54,21 @@ export function readJson(file) {
       sleepSync(10);
     }
   }
+}
+
+/**
+ * A record whose absence decides something. Null when it is missing or its JSON is damaged (writes
+ * are atomic, so no retry repairs that). A lock that outlasts the wait, or any other read failure,
+ * throws: a record that cannot be read now is not a record that does not exist.
+ */
+export function readRecord(file) {
+  let text;
+  try { text = retryLocked(() => fs.readFileSync(file, "utf8")); }
+  catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+  try { return JSON.parse(text); } catch { return null; }
 }
 
 /** The real path of `p` (8.3 short names and junctions resolved), or its absolute form. */

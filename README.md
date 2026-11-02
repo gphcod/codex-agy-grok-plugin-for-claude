@@ -28,7 +28,7 @@ Is this lock ordering safe? …
 COUNCIL_EOF
 ```
 
-The slash commands use the second form. `$ARGUMENTS` goes inside the heredoc and argv carries no `--`. The companion parses the leading options out of the text and keeps everything after them byte for byte. A `--` in the text ends option parsing, so text that starts with a dash can follow it:
+The slash commands use the second form. `$ARGUMENTS` goes inside the heredoc and argv carries no `--`. The companion parses the leading options out of the text and keeps everything after them byte for byte. A `--` in the text ends option parsing, so text that starts with a dash can follow it. Without one, a first word such as `-v` or `-m` exits 2, because council has no short options and taking it as text would start a turn on the wrong input; a bullet (`- item`) and a number (`-5`) stay text:
 
 ```text
 /council:ask --to codex --effort low Why does this test flake?
@@ -46,7 +46,7 @@ Text can also come on stdin with no `--`. With no input, use `</dev/null`. Stdin
 |---|---|---|
 | `ask --to <p>` | New thread, one answer | read-only |
 | `reply --thread <job\|thread>`, `--last`, or the job id as the first word | Delta on an existing thread. The provider comes from the record; a different `--to` exits 2. Model, effort and tier are inherited unless given | read-only, also after a task |
-| `review --to <p> [--base <ref> \| --commit <sha> \| --uncommitted] [--adversarial] [focus]` | Structured review. With no target flag: uncommitted changes when the tree is dirty, otherwise the branch against the default branch. `--base <ref>` reviews from the merge base through the working tree, including untracked files | read-only |
+| `review --to <p> [--base <ref> \| --commit <sha> \| --uncommitted] [--adversarial] [focus]` | Structured review. With no target flag: uncommitted changes when the tree is dirty, otherwise the branch against the default branch. `--base <ref>` reviews from the merge base through the working tree, including untracked files. A review always runs at the repository root, wherever you call it | read-only |
 | `task --to <p> [--thread <id>]` | Work that may edit the working tree. Runs only when you ask for it; the skill never starts one on its own | edit |
 | `wait [job] [--timeout <s>]` | Lists this session's jobs in this workspace, or waits for one (90 s default) and prints its result again. Returns 20 while the job runs; stops nothing | — |
 | `cancel [job] [--timeout <s>]` | Stops a job and confirms cleanup (30 s default) | — |
@@ -117,7 +117,7 @@ Grammar: `council <provider> <ok|needs attention|failed|cancelled> · job <16 ch
 | 1 | failed, cancelled or busy |
 | 2 | invalid input |
 
-Reviews are reported as `Verdict: …`, then findings `F1 BLOCKER path:line: title`. Severity mapping: critical or high → BLOCKER, medium → MAJOR, low → MINOR; Codex `[P0]` → BLOCKER, `[P1]` → MAJOR, `[P2]`/`[P3]` → MINOR. Malformed output is never an approval. Files a review left out (over the size limit) are listed and counted as `unreviewed N`, with exit 10.
+Reviews are reported as `Verdict: …`, then findings `F1 BLOCKER path:line: title`. Severity mapping: critical or high → BLOCKER, medium → MAJOR, low → MINOR; Codex `[P0]` → BLOCKER, `[P1]` → MAJOR, `[P2]`/`[P3]` → MINOR. Malformed output is never an approval. Files a review left out (over the size limit, binary or unreadable) are listed and counted as `unreviewed N`, with exit 10. A changed binary file always is, because Git shows nothing of its content.
 
 A denied action exits 10 on every provider. The signals are:
 
@@ -143,11 +143,12 @@ State lives under `~/.council/` (override with `COUNCIL_HOME`): `jobs/`, `claims
 - **Threads belong to one provider and one workspace.** Two providers that report the same native id never share claims or history, and a thread is never resumed from another workspace.
 - **One turn per thread at a time.** A second call on a busy thread exits 1 (busy).
 - **Lost results.** Rerun the identical call with the same `--request-id`. The retry prints or awaits the first result; if that job was pruned, it prints `result expired` and starts nothing.
-- **Cleanup pending.** When council cannot confirm that a stopped or finished child is gone, the footer says `cleanup pending; next: cancel <job>; do not resume`, and the thread stays blocked until `cancel` confirms. `cancel` signals only processes it can identify by the job's own argv evidence and creation time. It never signals the companion or an unverified pid.
+- **Cleanup pending.** When council cannot confirm that a stopped or finished child is gone, the footer says `cleanup pending; next: cancel <job>; do not resume`, and the thread stays blocked until `cancel` confirms. `cancel` signals only processes it can identify by the job's own argv evidence and creation time. It never signals the companion or an unverified pid. A finished turn whose thread claim could not be released shows the same hint: the result and its exit code stand, and `cancel` releases the claim.
+- **A job that cannot be read.** A job record still locked after 2 s (on Windows, usually a scanner) stops `--last`, bare `wait`, bare `cancel` and a reply with exit 1 and `retry: job <id> cannot be read right now`. It never selects an older job instead. A fresh `ask` is not affected. A damaged record counts as no job.
 - **`thread locked`.** A process outside the job held the output pipes for more than 12 s after a clean exit. Start a new `ask`.
 - **`session not confirmed: start a new ask`.** Grok finished without confirming its session. The answer and exit code stand, but the thread cannot be resumed.
 - **Pruning.** Finished job bodies beyond the newest 100 are deleted. Running, lost, cleanup-pending and claim-holding jobs and all thread records are kept.
-- **Nesting.** Every provider child gets `COUNCIL_DEPTH`, `CODEX_COMPANION_DEPTH`, `GROK_BUILD_DEPTH` and `CLAUDE_PLUGIN_CODEX_DEPTH`. council refuses to start when any of them is set, so no child can call back into council or into one of the replaced plugins.
+- **Nesting.** Every provider child gets `COUNCIL_DEPTH`, `CODEX_COMPANION_DEPTH`, `GROK_BUILD_DEPTH`, `CLAUDE_PLUGIN_CODEX_DEPTH`, `GROK_CODEX_DEPTH` and `AGY_BRIDGE_DEPTH`. council refuses to start when any of them is set, so no child can call back into council or into one of the replaced plugins.
 - Never delete files under `claims/` by hand.
 
 Environment variables: `COUNCIL_HOME`, `COUNCIL_CODEX_BIN`, `COUNCIL_AGY_BIN`, `COUNCIL_GROK_BIN` (binary overrides, which take precedence over `PATH`), `COUNCIL_CODEX_MCP=inherit|off`, `COUNCIL_ROUNDS`.
@@ -178,7 +179,7 @@ On Windows council never launches through `cmd.exe`. An npm `.cmd` shim runs its
 
 The full lists are in `docs/parity/codex.md`, `docs/parity/gemini.md` and `docs/parity/grok.md`. Nothing is missing. The intentional differences:
 
-- **All three.** One state root `~/.council` and one footer grammar, `council <p> <status> · job … · model/effort …`. The start line names the provider. Costs and counters move to `--json`. `round N/M` appears on every threaded verb, and `edited N` appears on `task` only. `reply` is always read-only, also after a task. Efforts are clamped against the catalog. Every child gets four guard variables. `rescue` is renamed `task`. `models` is a new verb.
+- **All three.** One state root `~/.council` and one footer grammar, `council <p> <status> · job … · model/effort …`. The start line names the provider. Costs and counters move to `--json`. `round N/M` appears on every threaded verb, and `edited N` appears on `task` only. `reply` is always read-only, also after a task. Efforts are clamped against the catalog. Every child gets six guard variables. `rescue` is renamed `task`. `models` is a new verb. A leading short flag exits 2 instead of becoming the prompt.
 - **codex-plugin-cc.** A clean review is `incomplete` (exit 10) instead of exit 0. `[P2]`/`[P3]` findings are MINOR. A sandbox denial exits 10 instead of counting as a failed command. `ultra` on a model whose catalog entry lacks it exits 2. `--adversarial` and `--web` exit 2 (use focus text).
 - **grok-build-plugin-cc.**
   - `max` is clamped to `xhigh`.

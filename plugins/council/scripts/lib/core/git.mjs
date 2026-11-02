@@ -243,7 +243,9 @@ export function reviewTarget(cwd, { base, commit, uncommitted } = {}) {
     if (missing) throw new UsageError(`commit ${oid.slice(0, 12)} has parent ${missing.slice(0, 12)} missing from this clone (shallow history); deepen the clone or review another commit`);
     const merge = parents.length > 1;
     const label = merge ? `commit ${oid.slice(0, 12)} (merge; first-parent diff against ${parents[0].slice(0, 12)})` : `commit ${oid.slice(0, 12)}${parents.length ? "" : " (root commit)"}`;
-    return { kind: "commit", root, ref: commit, oid, parents, merge, label, flags: ["--commit", commit], sentence: `Review the changes introduced by commit ${JSON.stringify(commit)}; run \`git show ${oid}\`.` };
+    // `git show` on a clean merge prints a combined diff with no file patches.
+    const inspect = merge ? `git diff ${parents[0]} ${oid}` : `git show ${oid}`;
+    return { kind: "commit", root, ref: commit, oid, parents, merge, label, flags: ["--commit", commit], sentence: `Review the changes introduced by commit ${JSON.stringify(commit)}; run \`${inspect}\`.` };
   }
   if (base !== undefined || fallback) {
     // An implicit base is the default branch already resolved: its qualified ref and oid, never the short name again.
@@ -254,7 +256,7 @@ export function reviewTarget(cwd, { base, commit, uncommitted } = {}) {
     const shown = fallback ? fallback.ref : base;
     const mb = git(root, ["merge-base", oid, "HEAD"]);
     if (mb.status !== 0 || !OID.test(mb.stdout.trim())) throw new UsageError(`--base ${shown} has no common ancestor with HEAD`);
-    return { kind: "base", root, ref: shown, qualified: ref, oid, base: mb.stdout.trim(), merge: false, parents: [], label: `branch against ${shown} (${oid.slice(0, 12)}) plus working tree`, flags: ["--base", ref], sentence: `Review the changes on this branch against ${JSON.stringify(shown)}; run \`git diff ${oid}...HEAD\`.` };
+    return { kind: "base", root, ref: shown, qualified: ref, oid, base: mb.stdout.trim(), merge: false, parents: [], label: `branch against ${shown} (${oid.slice(0, 12)}) plus working tree`, flags: ["--base", ref], sentence: `Review the changes from the merge base with ${JSON.stringify(shown)} through the working tree, including untracked files; run \`git diff ${mb.stdout.trim()}\` and \`git ls-files --others --exclude-standard\`.` };
   }
   return { kind: "uncommitted", root, ref: null, oid: null, merge: false, parents: [], label: "working tree (staged, unstaged and untracked)", flags: ["--uncommitted"], sentence: "Review the uncommitted changes in this working tree (staged, unstaged and untracked); run `git status` and `git diff HEAD`." };
 }
@@ -296,19 +298,23 @@ export function readRegular(file, size) {
   } finally { fs.closeSync(fd); }
 }
 const isText = (buffer) => !buffer.subarray(0, 8192).includes(0);
+// All Git says about a changed binary file. A text diff's lines carry a one-character prefix, so none matches.
+const BINARY_DIFF = /^Binary files .* differ$/m;
 
-/** Whole per-file diffs up to the cap, then untracked text files; everything left out is named. */
+/** Whole per-file diffs up to the cap, then untracked text files; everything left out is named. A binary diff shows no content, so it stays in the text as context and counts as left out. */
 export function bound(root, diff, untracked, cap = INLINE_CAP) {
   const files = diff.split(/(?=^diff --git )/m).filter((f) => f.trim());
   const omitted = [], reviewed = [];
   let text = "", bytes = 0;
-  const add = (name, part) => {
+  const add = (name, part, shown = true) => {
     const size = Buffer.byteLength(part);
     if (bytes + size > cap) { omitted.push(`${name} (over the inline cap)`); return false; }
-    text += part; bytes += size; reviewed.push(name);
+    text += part; bytes += size;
+    if (shown) reviewed.push(name);
+    else omitted.push(`${name} (binary)`);
     return true;
   };
-  for (const file of files) add(diffFileName(file), file.endsWith("\n") ? file : `${file}\n`);
+  for (const file of files) add(diffFileName(file), file.endsWith("\n") ? file : `${file}\n`, !BINARY_DIFF.test(file));
   for (const name of untracked) {
     const header = `new untracked file ${name}\n`;
     let body;

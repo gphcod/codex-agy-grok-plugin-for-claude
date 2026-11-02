@@ -71,9 +71,9 @@ test("ask, codex, gemini, grok: leading flags, a literal --, text with -- inside
 
     // The skill's direct form (`--` on argv, text in the heredoc) runs as written.
     const direct = block(join("skills", "council", "SKILL.md")).replace("<text>", "skill form\n-- not an option");
-    r = await h.sh(direct, { ...env, ...markers("codex", "skill form\n-- not an option") });
+    r = await h.sh(direct, { ...env, ...markers("grok", "skill form\n-- not an option") });
     assert.equal(r.code, 0, r.err + r.out);
-    assert.match(footer(r.out), /^council codex ok · .* · gpt-6\.1-sol\/xhigh · /);
+    assert.match(footer(r.out), /^council grok ok · .* · grok-4\.7\/high · /);
     assert.equal(h.job(r.job).tier, "consult");
   } finally { h.done(); }
 });

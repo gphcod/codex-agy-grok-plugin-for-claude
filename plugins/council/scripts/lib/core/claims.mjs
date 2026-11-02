@@ -4,12 +4,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { PROVIDERS } from "./catalog.mjs";
+import { BUSY, retryLocked } from "./fs.mjs";
 import { MESSAGES } from "./output.mjs";
 
 // Native thread ids are UUIDs or similar tokens the CLIs return; never a path.
 export const THREAD = /^[a-zA-Z0-9_-]{1,128}$/;
 const TOKEN = /^[a-f0-9]{32}$/;
 const JOB_ID = /^[a-z0-9]{1,16}$/;
+// On Windows a file another process held open when it was unlinked stays listed until that handle
+// closes, and rmdir meanwhile reports the directory as not empty.
+const RMDIR_RETRY = [...BUSY, "ENOTEMPTY", "EEXIST"];
 export class BusyError extends Error {
   constructor(message, job = null) { super(message); this.name = "BusyError"; this.job = job; }
 }
@@ -75,13 +79,17 @@ export function claimThread(home, provider, thread, job, io = fs) {
 }
 
 /**
- * Only the successful unlinker may try rmdir, exactly once. A delayed second releaser must not
- * remove a replacement owner's directory. No recursive deletion and no retry after ENOENT.
+ * Only the successful unlinker may try rmdir. A delayed second releaser must not remove a replacement
+ * owner's directory: no recursive deletion and no retry after ENOENT. A retry after a failed rmdir is
+ * safe, because nobody else can own a directory that still exists. If it never goes, the owner file
+ * comes back, so the job holds the claim again and cancel can release it; an empty claim would read as
+ * unknown for good.
  */
 export function releaseThread(home, provider, thread, job, io = fs) {
   const dir = claimPath(home, provider, thread);
+  const owner = path.join(dir, ownerName(job));
   try {
-    io.unlinkSync(path.join(dir, ownerName(job)));
+    io.unlinkSync(owner);
   } catch (error) {
     if (error.code === "ENOENT") {
       return false;
@@ -89,9 +97,11 @@ export function releaseThread(home, provider, thread, job, io = fs) {
     throw error;
   }
   try {
-    io.rmdirSync(dir);
+    retryLocked(() => io.rmdirSync(dir), RMDIR_RETRY);
   } catch (error) {
-    if (error.code !== "ENOENT" && error.code !== "ENOTEMPTY" && error.code !== "EEXIST") {
+    if (error.code !== "ENOENT") {
+      try { retryLocked(() => io.writeFileSync(owner, `${job.id}\n`, { flag: "wx" })); }
+      catch { /* The claim reads as unknown; the rmdir failure is the one to report. */ }
       throw error;
     }
   }

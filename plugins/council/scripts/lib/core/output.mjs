@@ -33,13 +33,13 @@ export function deniedReason(action, count = 1) {
   return `denied ${oneLine(action || "an action", ATTENTION_MAX - Buffer.byteLength(`denied ${more}`))}${more}`;
 }
 /**
- * Why a turn needs attention (exit 10), or null. Reviews: only an incomplete or malformed review (its
- * findings already show as findings), else a denied action. Other verbs: a denied action, else open
- * questions in the answer.
+ * Why a turn needs attention (exit 10), or null. Reviews: a denied action, which can be what left a
+ * review incomplete, else an incomplete or malformed review (its findings already show as findings).
+ * Other verbs: a denied action, else open questions in the answer.
  */
 export function attentionReason({ isReview, review = null, denied = null, deniedAction = null, deniedCount = 0, questions = false }) {
   const deny = denied ? deniedReason(deniedAction ?? denied, Math.max(1, deniedCount)) : null;
-  if (isReview) return review?.incomplete ? oneLine(review.incomplete, ATTENTION_MAX) : deny;
+  if (isReview) return deny ?? (review?.incomplete ? oneLine(review.incomplete, ATTENTION_MAX) : null);
   return deny ?? (questions ? QUESTIONS_REASON : null);
 }
 /**
@@ -57,6 +57,7 @@ export const MESSAGES = {
   requestFreed: (name) => `retry with the same id to run it: the first call of ${name} failed before the provider started and freed the id`,
   requestNeverRan: (name, job) => `a new request id is safe: ${name} names job ${job}, whose call ended before the provider started; nothing ran`,
   requestMissing: (name, job) => `use a new request id: ${name} names job ${job}, whose records were deleted or cannot be read; nothing was started again, and whether the provider ran for it is unknown`,
+  jobUnreadable: (job, why) => `retry: job ${job} cannot be read right now (${why}), so nothing was selected or started`,
 };
 export const pendingCleanup = (job) => Boolean((job.cleanupPending && !job.stopped) || job.claimHeld);
 

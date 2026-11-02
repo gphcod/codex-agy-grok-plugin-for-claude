@@ -100,7 +100,7 @@ test("a name with a space is reported without the tab Git ends its diff header w
   } finally { rmSync(base, { recursive: true, force: true }); }
 });
 
-test("collection: deletions are named by their old path, binary diffs stay whole, odd names are decoded", () => {
+test("collection: deletions are named by their old path, a binary diff stays as context and counts as left out, odd names are decoded", () => {
   const base = tmp();
   try {
     const dir = initRepo(join(base, "repo"));
@@ -116,7 +116,8 @@ test("collection: deletions are named by their old path, binary diffs stay whole
     writeFileSync(join(dir, tab), "t2\n");
     writeFileSync(join(dir, quote), "q2\n");
     const c = collectReview(reviewTarget(dir, { uncommitted: true }));
-    assert.deepEqual(c.reviewed.sort(), ["gone.txt", "image.bin", quote, tab].sort());
+    assert.deepEqual(c.reviewed.sort(), ["gone.txt", quote, tab].sort());
+    assert.deepEqual(c.omitted, ["image.bin (binary)"]);
     assert.match(c.diff, /^Binary files a\/image\.bin and b\/image\.bin differ$/m);
     assert.match(c.diff, /^deleted file mode 100644$/m);
     if (process.platform !== "win32") assert.match(c.diff, /^\+\+\+ "b\/tab\\tname\.txt"$/m, "Git C-quotes the header; the name is decoded for coverage");
@@ -134,10 +135,20 @@ test("the native review route: flags and sentence for every target kind", () => 
     assert.match(reviewTarget(dir, { uncommitted: true }).sentence, /run `git status` and `git diff HEAD`/);
     const b = reviewTarget(dir, { base: "main" });
     assert.deepEqual(b.flags, ["--base", "main"]);
-    assert.equal(b.sentence, `Review the changes on this branch against "main"; run \`git diff ${head}...HEAD\`.`);
+    assert.equal(b.sentence, `Review the changes from the merge base with "main" through the working tree, including untracked files; run \`git diff ${head}\` and \`git ls-files --others --exclude-standard\`.`);
     const c = reviewTarget(dir, { commit: head.slice(0, 8) });
     assert.deepEqual(c.flags, ["--commit", head.slice(0, 8)], "the ref is passed as the user gave it");
     assert.equal(c.sentence, `Review the changes introduced by commit "${head.slice(0, 8)}"; run \`git show ${head}\`.`);
+    // A clean merge shows no patch in `git show`: the sentence names the first-parent diff the label promises.
+    git(dir, ["reset", "-q", "--hard"]);
+    git(dir, ["checkout", "-q", "-b", "topic"]);
+    writeFileSync(join(dir, "b"), "1\n");
+    commitAll(dir, "topic");
+    git(dir, ["checkout", "-q", "main"]);
+    git(dir, ["merge", "-q", "--no-ff", "-m", "merge", "topic"]);
+    const m = reviewTarget(dir, { commit: "HEAD" });
+    assert.equal(m.merge, true);
+    assert.equal(m.sentence, `Review the changes introduced by commit "HEAD"; run \`git diff ${head} ${m.oid}\`.`);
   } finally { rmSync(base, { recursive: true, force: true }); }
 });
 

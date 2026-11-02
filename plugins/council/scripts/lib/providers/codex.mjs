@@ -229,7 +229,9 @@ const adapter = {
   buildTurn(request) {
     const env = request.env ?? {};
     const answerFile = path.join(request.jobDir, "answer.md");
-    const tools = toolPolicy({ verb: request.verb, launcher: request.launcher, cwd: request.cwd, env });
+    // A review runs at the repository root, whose paths it reports; MCP discovery runs where the turn will, since Codex layers config by directory.
+    const reviewRoot = request.verb === "review" ? request.reviewTarget?.root ?? request.cwd : null;
+    const tools = toolPolicy({ verb: request.verb, launcher: request.launcher, cwd: reviewRoot ?? request.cwd, env });
     const effortArgs = [...(request.effort ? ["-c", `model_reasoning_effort=${request.effort}`] : []), ...tools];
     const base = { env: {}, answerFile, threadId: null };
     if (request.verb === "review") {
@@ -237,7 +239,7 @@ const adapter = {
       const focused = typeof native.stdin === "string" && native.stdin.length > 0;
       const args = ["exec", "review", ...(focused ? [] : native.flags), "--json", "-o", answerFile, "-c", "sandbox_mode=read-only",
         "-m", request.model, "-c", `review_model=${request.model}`, ...effortArgs, ...(focused ? ["-"] : [])];
-      return { ...base, args, ...(focused ? { stdin: native.stdin } : {}), readOnly: true, contractCarrier: "none" };
+      return { ...base, args, cwd: reviewRoot, ...(focused ? { stdin: native.stdin } : {}), readOnly: true, contractCarrier: "none" };
     }
     const sandbox = request.readOnly === false ? SANDBOX.task : SANDBOX[request.verb] ?? "read-only";
     const tail = ["-m", request.model, ...effortArgs, "-c", `developer_instructions=${JSON.stringify(request.contract)}`, "-"];

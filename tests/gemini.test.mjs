@@ -190,6 +190,17 @@ test("buildTurn task: global lists intact, --mode accept-edits; --conversation o
   assert.ok(f.settings().permissions.deny.includes("command(*)"));
 }));
 
+test("buildTurn review: runs at the repository root with agy's workspace there; other verbs run where called", () => withTmp((dir) => {
+  const root = join(dir, "repo"), sub = join(root, "sub");
+  const f = turnFixture(dir, { verb: "review", reviewPrompt: "REVIEW PROMPT", text: "", cwd: sub, reviewTarget: { root } });
+  const review = gemini.buildTurn(f.request);
+  assert.equal(review.cwd, root);
+  if (process.platform !== "win32") assert.equal(review.env.PWD, root);
+  const ask = gemini.buildTurn({ ...f.request, verb: "ask", reviewTarget: null, text: "hello" });
+  assert.equal(ask.cwd, sub);
+  if (process.platform !== "win32") assert.equal(ask.env.PWD, sub);
+}));
+
 test("buildTurn review: rendered prompt alone, --json-schema with the repository schema", () => withTmp((dir) => {
   const f = turnFixture(dir, { verb: "review", reviewPrompt: "REVIEW PROMPT", text: "" });
   const turn = gemini.buildTurn(f.request);

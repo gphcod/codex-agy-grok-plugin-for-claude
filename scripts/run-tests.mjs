@@ -103,11 +103,12 @@ function main(argv) {
 
 /**
  * Removes the run's temp root. On Windows a directory stays locked while a process has it as its cwd, so the fixtures'
- * leftover holders go first: each names the root on its command line. A root that cannot go fails the run.
+ * leftover holders go first: each is a node.exe that names the root on its command line, and nothing else is stopped.
+ * A root that cannot go fails the run.
  */
 function removeScratch(scratch) {
   if (process.platform === "win32") {
-    const stop = "$env:PSModulePath=\"$PSHOME\\Modules\"; CimCmdlets\\Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine.IndexOf($env:COUNCIL_RUN_SCRATCH, [StringComparison]::OrdinalIgnoreCase) -ge 0 } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
+    const stop = "$env:PSModulePath=\"$PSHOME\\Modules\"; CimCmdlets\\Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.Name -eq 'node.exe' -and $_.CommandLine -and $_.CommandLine.IndexOf($env:COUNCIL_RUN_SCRATCH, [StringComparison]::OrdinalIgnoreCase) -ge 0 } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
     const powershell = process.env.SystemRoot ? join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe") : "powershell.exe";
     spawnSync(powershell, ["-NoProfile", "-NonInteractive", "-Command", stop], { env: { ...process.env, COUNCIL_RUN_SCRATCH: scratch }, stdio: "ignore", windowsHide: true, timeout: 30000 });
   }
