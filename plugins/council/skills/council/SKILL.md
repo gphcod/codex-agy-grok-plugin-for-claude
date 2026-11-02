@@ -12,7 +12,7 @@ COUNCIL_EOF
 ```
 
 New delimiter if a line equals it. No input: `</dev/null`. Never append `|| true`.
-No Bash tool: never put text in a PowerShell command. Write it to a new UTF-8 temp file, then PowerShell `node "…/council.mjs" ask … "--input-file=<file>" --; exit $LASTEXITCODE`.
+No Bash tool: no text in a PowerShell command. Write it to a new UTF-8 temp file `council-${CLAUDE_SESSION_ID}-<random>.txt`, then PowerShell `node "…/council.mjs" ask … "--input-file=<file>" --`.
 
 - `ask --to codex|gemini|grok`: new read-only thread. `reply --thread <job|thread>` or `--last`: read-only delta; provider inherited.
 - `review --to <p> [--base ref | --commit sha | --uncommitted] [--adversarial] [focus]`: read-only; `--adversarial` gemini/grok only. A clean Codex review reports `incomplete`: no approval.
@@ -29,6 +29,6 @@ Fan-out: one background `ask` per provider in one response, same brief, each its
 
 Open with Goal, Known, Files, Constraints, Done when. F1/F2 findings, BLOCKER/MAJOR/MINOR, file:line. Replies send only `F1 AGREE`, `F2 CHANGE: …`, `F3 REJECT: …` and new facts. Stop when nothing changes or at the footer's `round N/N`. Unresolved REJECT is disagreement.
 
-`run_in_background: true` for every review, task, exec, deep, xhigh (codex consult), max or ultra call, with a fresh `--request-id <8 random letters/digits>` never used earlier in this conversation; else foreground, timeout 600000. Lost result: rerun unchanged, same id (replays, no second CLI). `already used with different input`: new id, rerun.
+`run_in_background: true` for every review, task, exec, deep, xhigh (codex consult), max or ultra call, with a fresh `--request-id <8 random letters/digits>` never used earlier in this conversation; else foreground, timeout 600000. Lost result: rerun unchanged, same id (replays). `already used with different input`: new id, rerun.
 Footer: `council <p> <status> · job <id> · …`. Exit 0 done, 10 needs attention (findings, or `attention: <why>`), 20 still running, 1 failed/cancelled/busy, 2 invalid input.
 Summarize, never repeat the answer. `full: <file>` holds a clipped answer; `unreviewed N` is no approval. `session not confirmed`, `thread locked`: new ask. `cleanup pending`: `cancel <job>` first.

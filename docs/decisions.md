@@ -253,3 +253,14 @@ A whole-project review by Codex, Grok and Gemini, plus a separate list of four i
 - **Rejected from the review: turning `approve` plus a denial into `incomplete`.** The exit is already 10 and the footer names the denial. agy's read-only deny list refuses every `run_command`, so denials are routine on otherwise complete Gemini reviews. Only the attention reason changed: the denial now comes first.
 - **Reduced from the review: Windows test cleanup identities.** Recording each fixture's identity and creation time is more than the risk needs, since the temp root's name is random and exists only during a run. Requiring `node.exe` removes the case that could lose someone's work, and a holder it misses fails the run loudly.
 - **rc.5, not 1.0.0.** S7.4's final tag stays behind the A8 gate: `docs/qualification/windows.md` still lists the npm grok shim as not checked.
+
+## 2026-11-02 1.0.0-rc.6 rulings
+
+From the Windows matrix and the default-permissions check (`docs/qualification/windows-matrix.md`). The plan was settled with Codex, Grok and Gemini before the code changed.
+
+- **The PowerShell form is one statement.** `; exit $LASTEXITCODE` made the call need approval under `PowerShell(node:*)`, and it added nothing: the tool reports a native exit code on 5.1 and on 7. `tests/commands-e2e.test.mjs` still appends the `exit` itself, because a bare `powershell -Command` reduces a native exit to 0 or 1, unlike the tool.
+- **The temp file's name carries the session id as well as a random part.** Temp directories are shared, and models repeat "random" tokens across sessions (`k7Qm2xP9` in 9 of 37 jobs, recorded in `docs/qualification/matrix.md`). `Read` stays ungranted, so a leftover name can only make `Write` refuse.
+- **No workaround for Store `pwsh` in the plugin.** It fails Claude Code's own parser with no plugin loaded, so the plugin can only document it.
+- **The skill keeps no `allowed-tools`.** A natural-language call that asks for approval is the intended control; the slash commands are the route a person chose explicitly.
+- **A stronger wording against inline text was tried and dropped.** Sonnet put the arguments in a PowerShell call in 6 of 14 sessions with the plain wording and 3 of 8 with the stronger one. Opus did in 0 of 8. The gap stays recorded: `bypassPermissions` would run such a call.
+- **rc.6, not 1.0.0.** Shipped commands changed, so the version moves. The final tag still needs the macOS re-run and the interactive check, and stays with the owner (S7.4).

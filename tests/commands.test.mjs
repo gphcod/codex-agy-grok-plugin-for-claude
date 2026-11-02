@@ -21,8 +21,9 @@ test("eleven commands with the required frontmatter and the slash-command form",
     assert.doesNotMatch(text, / -- /, `${f}: slash-command form carries no -- on argv`);
     assert.match(text, /If a line of the arguments is exactly `COUNCIL_EOF`/);
     const powershell = /```powershell\n(.*)\n```/.exec(text)?.[1];
-    assert.match(powershell ?? "", /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/council\.mjs" .* "--session=\$\{CLAUDE_SESSION_ID\}" "--input-file=<file>"; exit \$LASTEXITCODE$/, `${f}: starts with node, so PowerShell(node:*) matches it, and carries no text`);
-    assert.doesNotMatch(powershell, /ARGUMENTS/, f);
+    assert.match(powershell ?? "", /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/council\.mjs" [^;]* "--session=\$\{CLAUDE_SESSION_ID\}" "--input-file=<file>"$/, `${f}: one statement that starts with node, because under default permissions PowerShell(node:*) grants nothing more, and it carries no text`);
+    assert.doesNotMatch(powershell, /ARGUMENTS|LASTEXITCODE/, f);
+    assert.match(text, /a new UTF-8 file named `council-\$\{CLAUDE_SESSION_ID\}-<8 random letters and digits>\.txt` in the system temp directory/, `${f}: temp directories are shared, and models repeat "random" names across sessions`);
   }
   for (const p of ["codex", "gemini", "grok"]) {
     assert.match(readFileSync(join(commandsDir, `${p}.md`), "utf8"), new RegExp(`council\\.mjs" ask --to ${p} --request-id @RID@ --session`));

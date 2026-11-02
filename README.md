@@ -158,10 +158,12 @@ Environment variables: `COUNCIL_HOME`, `COUNCIL_CODEX_BIN`, `COUNCIL_AGY_BIN`, `
 | | Codex | Grok | Gemini |
 |---|---|---|---|
 | macOS | live contract tests passed (S3.5); matrix in S7.1 | live contract tests passed (S4.6); matrix in S7.1 | live contract tests passed (S5.6); matrix in S7.1 |
-| Windows | checked: the npm `codex.cmd` shim, run through its native executable | checked: native `grok.exe`; the npm shim is not yet checked | checked: native `agy.exe` (`docs/qualification/windows.md`) |
+| Windows | matrix passed: the npm `codex.cmd` shim, run through its native executable, and native `codex.exe` | matrix passed: native `grok.exe` and the npm `grok.cmd` shim | matrix passed: native `agy.exe` (`docs/qualification/windows-matrix.md`) |
 | Linux | optional, not qualified | optional, not qualified | optional, not qualified |
 
-Claude Code sessions with no Bash tool (`CLAUDE_CODE_USE_POWERSHELL_TOOL`) use the PowerShell form in each command: the text goes in a UTF-8 file named by `--input-file`, never in the command.
+Claude Code sessions with no Bash tool (`CLAUDE_CODE_USE_POWERSHELL_TOOL`) use the PowerShell form in each command: the text goes in a UTF-8 file named by `--input-file`, never in the command. The call is one statement, because under default permissions `PowerShell(node:*)` grants no more than that; the tool reports the exit code itself.
+
+Under default permissions the slash commands' `allowed-tools` grant their calls, while a natural-language request through the skill asks you to approve each one. With the Microsoft Store build of `pwsh` on `PATH`, Claude Code 2.1.314 fails every PowerShell tool call under default permissions, with or without this plugin (`pwsh exited with code 1: The command line is too long`). Windows PowerShell 5.1 or the Bash tool (`CLAUDE_CODE_USE_POWERSHELL_TOOL=0`) avoids it.
 
 On Windows council never launches through `cmd.exe`. An npm `.cmd` shim runs its JS entry with node. Process queries run inline in PowerShell with `PSModulePath` set.
 

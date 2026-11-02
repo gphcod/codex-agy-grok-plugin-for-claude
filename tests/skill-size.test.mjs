@@ -13,6 +13,14 @@ test("SKILL.md stays at or under 3,000 bytes", () => {
   assert.match(text, /^---\nname: council\ndescription: .+\n---\n/);
 });
 
+test("the skill's PowerShell form is one statement, and its temp file is named for the session", () => {
+  const text = readFileSync(skillPath, "utf8");
+  const [, form] = /then PowerShell `(.*?)`\./.exec(text);
+  assert.match(form, /^node "/, "PowerShell(node:*) matches only a statement that starts with node");
+  assert.doesNotMatch(form, /;|LASTEXITCODE/, "a second statement needs approval under default permissions");
+  assert.match(text, /new UTF-8 temp file `council-\$\{CLAUDE_SESSION_ID\}-<random>\.txt`/);
+});
+
 test("the skill's example is a foreground call by its own rule, and the rule names a consult tier that is not", () => {
   const text = readFileSync(skillPath, "utf8");
   const tiers = JSON.parse(readFileSync(join(root, "plugins", "council", "tiers.json"), "utf8"));

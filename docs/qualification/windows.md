@@ -30,8 +30,12 @@ New headless sessions at 1.0.0-rc.4 (2026-11-02), which have no Bash tool under 
 
 ## At 1.0.0-rc.5 (2026-11-02)
 
-`npm test` passes. `review --uncommitted` with focus text ran from the rc.5 working tree on the real codex, gemini and grok, and returned each review. `/council:*` and the S7.1 matrix were not repeated, on Windows or macOS.
+`npm test` passes. `review --uncommitted` with focus text ran from the rc.5 working tree on the real codex, gemini and grok, and returned each review.
+
+## Matrix and default permissions (2026-11-02)
+
+The S7.1 matrix per launcher kind, the npm grok shim and `allowed-tools` under default permissions: `docs/qualification/windows-matrix.md`. All 86 cells pass. The check found that the commands' PowerShell form needed approval, fixed in 1.0.0-rc.6, and that Store `pwsh` fails Claude Code's own parser under default permissions, with or without this plugin.
 
 ## Not checked
 
-The npm grok shim, and `allowed-tools` under default permissions (this machine runs `bypassPermissions`).
+The interactive app under default permissions, and macOS at this version.
