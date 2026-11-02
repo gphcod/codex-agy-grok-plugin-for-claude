@@ -96,7 +96,7 @@ function main(argv) {
   // One temp root per default run, removed afterwards: the tests make thousands of directories under os.tmpdir().
   const scratch = realpathSync.native(mkdtempSync(join(tmpdir(), "council-run-")));
   // Windows process queries and antivirus scans of new files cost seconds when every test file runs at once.
-  const concurrency = process.platform === "win32" ? [`--test-concurrency=${Math.max(2, Math.floor(availableParallelism() / 2))}`] : [];
+  const concurrency = process.platform === "win32" ? [`--test-concurrency=${Math.max(1, Math.floor(availableParallelism() / 2))}`] : [];
   const status = spawnSync(process.execPath, ["--test", ...concurrency, ...files], { stdio: "inherit", cwd: repoRoot, env: { ...env, TMPDIR: scratch, TMP: scratch, TEMP: scratch } }).status ?? 1;
   return removeScratch(scratch) ? status : status || 1;
 }

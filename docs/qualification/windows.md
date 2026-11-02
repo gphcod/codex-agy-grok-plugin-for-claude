@@ -24,6 +24,10 @@ The global `toolPermission` here is `always-proceed`, so the turn's own settings
 - libuv puts non-detached children in a kill-on-close job object, so a hard-killed companion takes its provider child with it. Only a detached process outlives it. `cancel` still confirms cleanup and releases the claim.
 - Tests for what Windows lacks are skipped by platform: file names with a tab, newline or quote; FIFOs; `chmod` removing read access; POSIX signals, process groups and exec bits; symlinks without Developer Mode.
 
+## Inside a Claude Code chat
+
+New headless sessions at 1.0.0-rc.4 (2026-11-02), which have no Bash tool under `CLAUDE_CODE_USE_POWERSHELL_TOOL=1`: `/council:ask` and the skill wrote the text to a file and ran `--input-file` through PowerShell, with quotes, `$HOME` and non-ASCII intact. `/council:setup`, `models`, `codex`, `grok`, `review` and `wait` ran there at 1.0.0-rc.2.
+
 ## Not checked
 
-Slash commands inside a Claude Code chat, and the npm grok shim.
+The npm grok shim, and `allowed-tools` under default permissions (this machine runs `bypassPermissions`).
