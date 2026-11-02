@@ -31,9 +31,13 @@ const command = (name, args, { delimiter = null, rid = freshId() } = {}) => {
   return body.replace(/\$ARGUMENTS/g, () => args);
 };
 const CLAUDE = { CLAUDE_PLUGIN_ROOT: PLUGIN_DIR, CLAUDE_SESSION_ID: SESSION };
-/** The PowerShell form as Claude runs it: Claude Code has already substituted the two variables in the command's text. */
-const powershellForm = (name, file, rid = freshId()) => /```powershell\n(.*)\n```/.exec(readFileSync(join(PLUGIN_DIR, "commands", `${name}.md`), "utf8"))[1]
-  .replaceAll("${CLAUDE_PLUGIN_ROOT}", PLUGIN_DIR).replaceAll("${CLAUDE_SESSION_ID}", SESSION).replaceAll(RID, rid).replace("<file>", file);
+/**
+ * The PowerShell form as Claude runs it: Claude Code has already substituted the two variables in the command's text.
+ * Its PowerShell tool reports a native exit code by itself (checked live on 5.1 and 7); a bare `-Command` would reduce it
+ * to 0 or 1, so the `exit` here stands in for the tool. In the command it would make the call need approval.
+ */
+const powershellForm = (name, file, rid = freshId()) => `${/```powershell\n(.*)\n```/.exec(readFileSync(join(PLUGIN_DIR, "commands", `${name}.md`), "utf8"))[1]
+  .replaceAll("${CLAUDE_PLUGIN_ROOT}", PLUGIN_DIR).replaceAll("${CLAUDE_SESSION_ID}", SESSION).replaceAll(RID, rid).replace("<file>", file)}; exit $LASTEXITCODE`;
 const POWERSHELLS = process.platform === "win32" ? ["powershell.exe", "pwsh.exe"].filter((exe) => spawnSync(exe, ["-NoProfile", "-Command", "exit 0"], { windowsHide: true }).status === 0) : [];
 
 test("ask, codex, gemini, grok: leading flags, a literal --, text with -- inside, multiline text, a delimiter collision", async () => {
@@ -148,7 +152,7 @@ for (const exe of POWERSHELLS) {
       assert.equal(h.job(r.job).session, SESSION);
       writeFileSync(file, "\uFEFF--to nobody hi");
       r = await h.ps(exe, powershellForm("ask", file), {});
-      assert.equal(r.code, 2, "exit $LASTEXITCODE keeps the entry's code, and a byte order mark does not hide the flags");
+      assert.equal(r.code, 2, "the entry's code survives, and a byte order mark does not hide the flags");
       assert.match(r.err, /--to must be one of/);
       writeFileSync(file, "");
       r = await h.ps(exe, powershellForm("wait", file), {});
@@ -161,6 +165,14 @@ for (const exe of POWERSHELLS) {
       r = await h.ps(exe, powershellForm("ask", join(h.root, "missing.txt")), {});
       assert.equal(r.code, 2);
       assert.match(r.err, /cannot read --input-file/);
+      // The skill's form ends in `--`, which reaches node unchanged on both shells, so text that starts with a flag stays text.
+      assert.match(readFileSync(join(PLUGIN_DIR, "skills", "council", "SKILL.md"), "utf8"), /"--input-file=<file>" --`/);
+      const flagged = "--effort max -v is part of the text";
+      writeFileSync(file, flagged);
+      r = await h.ps(exe, `node "${join(PLUGIN_DIR, "scripts", "council.mjs")}" ask --to grok --effort low "--session=${SESSION}" "--input-file=${file}" --; exit $LASTEXITCODE`, markers("grok", flagged));
+      assert.equal(r.code, 0, r.err + r.out);
+      assert.match(footer(r.out), /^council grok ok · .* · grok-4\.7\/low · /, "no option was taken from the text");
+      assert.equal(readFileSync(h.job(r.job).turn.promptFile, "utf8"), flagged);
     } finally { h.done(); }
   });
 }

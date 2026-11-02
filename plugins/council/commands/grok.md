@@ -15,10 +15,10 @@ $ARGUMENTS
 COUNCIL_EOF
 ```
 
-If this session has no Bash tool, use the PowerShell tool with the same background and timeout rule. Never put the arguments in a PowerShell command: use the Write tool to save them verbatim, even when empty, to a new UTF-8 file in the system temp directory, outside the repository, then run this with `<file>` replaced:
+If this session has no Bash tool, use the PowerShell tool with the same background and timeout rule. Never put the arguments in a PowerShell command: use the Write tool to save them verbatim, even when empty, to a new UTF-8 file named `council-${CLAUDE_SESSION_ID}-<8 random letters and digits>.txt` in the system temp directory, outside the repository. Once it is written, run this with `<file>` replaced by its full path:
 
 ```powershell
-node "${CLAUDE_PLUGIN_ROOT}/scripts/council.mjs" ask --to grok --request-id @RID@ "--session=${CLAUDE_SESSION_ID}" "--input-file=<file>"; exit $LASTEXITCODE
+node "${CLAUDE_PLUGIN_ROOT}/scripts/council.mjs" ask --to grok --request-id @RID@ "--session=${CLAUDE_SESSION_ID}" "--input-file=<file>"
 ```
 
 Act on the output or summarize it briefly; do not repeat it. A background call reports through its task notification; `/council:wait <job>` prints a finished result again. After `thread locked` or `session not confirmed`, start a new ask; after `cleanup pending`, run `/council:cancel <job>`.

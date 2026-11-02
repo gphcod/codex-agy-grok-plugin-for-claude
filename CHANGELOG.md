@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (unreleased; 1.0.0-rc.5 candidate)
+## 1.0.0 (unreleased; 1.0.0-rc.6 candidate)
 
 First release of `council`. A single plugin now provides the following, through one companion process and one provider CLI child per call:
 
@@ -10,6 +10,12 @@ First release of `council`. A single plugin now provides the following, through 
 - authorized delegated edits
 
 The release check is S7 of `PLAN.md`: a macOS matrix, a Windows session and the tag.
+
+### 1.0.0-rc.6 (2026-11-02)
+
+- The PowerShell form of the commands and the skill is now one statement, with no `; exit $LASTEXITCODE`. Under default permissions the `exit` made every call need approval despite `PowerShell(node:*)`. The tool reports the exit code without it.
+- The temp file for that form is named `council-<session>-<random>`, and the command says to use its full path once it is written. A shared name made `Write` refuse a leftover file, and could have picked up another session's text.
+- Windows checks: the S7.1 matrix per launcher kind, the npm `grok.cmd` shim and `allowed-tools` under default permissions pass (`docs/qualification/windows-matrix.md`).
 
 ### 1.0.0-rc.5 (2026-11-02)
 
@@ -65,7 +71,7 @@ The release check is S7 of `PLAN.md`: a macOS matrix, a Windows session and the 
 - Fan-out: the skill issues up to three background `ask` calls in one response, each with its own `--request-id`.
 - `--request-id` replay across providers. One binding per session, workspace and id means a retry never starts a second CLI, even when `--last` or the catalog would now resolve differently.
 - Six guard variables (`COUNCIL_DEPTH`, `CODEX_COMPANION_DEPTH`, `GROK_BUILD_DEPTH`, `CLAUDE_PLUGIN_CODEX_DEPTH`, `GROK_CODEX_DEPTH`, `AGY_BRIDGE_DEPTH`) on every child, probes included. council refuses to start when any of them is set.
-- Eleven generated user-only slash commands with a drift check. The turn commands carry a fresh `--request-id` that Claude substitutes. One model-visible skill of 2,998 B.
+- Eleven generated user-only slash commands with a drift check. The turn commands carry a fresh `--request-id` that Claude substitutes. One model-visible skill of 3,000 B.
 
 ### Intentional differences
 
@@ -112,6 +118,8 @@ These come from `docs/parity/*.md` and `docs/decisions.md`.
 
 ### Known limits
 
-- On Windows the npm `grok` shim, and `allowed-tools` under default permissions, are not checked yet (`docs/qualification/windows.md`).
+- The interactive app under default permissions is not checked yet, and macOS has not been re-run at this version.
+- With the Microsoft Store build of `pwsh` on `PATH`, Claude Code 2.1.314 fails every PowerShell tool call under default permissions, with or without this plugin. Windows PowerShell 5.1 or the Bash tool avoids it.
+- A model that ignores the command's wording can put the arguments in a PowerShell call. Default permissions refuse a compound call or a here-string; `bypassPermissions` would not. Sonnet did this in 6 of 14 sessions, Opus in 0 of 8.
 - Linux is optional and not qualified.
 - `COUNCIL_CODEX_MCP=off` saves 19–29 % input tokens per ask. It costs one or two `codex mcp list` calls before each ask, reply and review. The default stays `inherit`.

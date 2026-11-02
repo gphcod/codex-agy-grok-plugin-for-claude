@@ -8,7 +8,9 @@ Measured 2026-11-01 on macOS (Darwin 27.0.0), Node 22.19.0, branch `s6` at the S
 | gemini | 91 B | 116 B | **207 B** | 207 B |
 | grok | 89 B | 108 B | **197 B** | 197 B |
 
-The skill is 2,999 B after the S7.1 fixes (2,998 B at S6.5, 3,000 B at the S7.1 matrix), and its description is 181 B (limit 3,000 B, enforced by `tests/skill-size.test.mjs`). The eleven command files are 919–1,802 B each after the S7.1 fixes (919–1,693 B after S6.8, 867–1,074 B at S6.5), and are read only when the user runs one. The table below is unchanged by those fixes: a plain `ask` carries no `attention:` token, and `npm run measure` still prints these figures.
+The skill is 3,000 B at 1.0.0-rc.6 (2,998 B at S6.5, 3,000 B at the S7.1 matrix, 2,999 B after the S7.1 fixes), and its description is 150 B (181 B at S6.5; limit 3,000 B, enforced by `tests/skill-size.test.mjs`). The eleven command files are 1,501–2,501 B each at 1.0.0-rc.6 (919–1,802 B after the S7.1 fixes, 919–1,693 B after S6.8, 867–1,074 B at S6.5), and are read only when the user runs one.
+
+The table above and the comparison below are the S6.5 baseline. At 1.0.0-rc.6, `npm run measure` prints codex 90 + 113 = 203 B, gemini 91 + 118 = 209 B and grok 89 + 108 = 197 B: the 1.0.0-rc.5 consult tiers moved Codex to `xhigh` (+1 B) and Gemini to `medium` (+2 B). A plain `ask` carries no `attention:` token.
 
 The lines measured (job and thread ids vary per run; their lengths do not):
 
