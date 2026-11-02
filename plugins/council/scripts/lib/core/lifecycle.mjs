@@ -31,6 +31,7 @@ export const DRAIN_MS = 1500;
  * the turn ends "cleanup pending" with the thread locked (codex-plugin-cc lib/lifecycle.mjs:18-25).
  */
 export const PIPE_WAIT_MS = 12000;
+const UNVERIFIED_WAIT_MS = 5000;
 // A process caught mid-exit, or a pid reused during a query, reads as unknown for a moment.
 const UNSURE_MS = 1000;
 export const DEFAULT_ROUNDS = 9;
@@ -166,6 +167,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
       const retryMs = hooks.retryMs ?? RETRY_MS;
       const drainMs = hooks.drainMs ?? DRAIN_MS;
       const pipeWaitMs = hooks.pipeWaitMs ?? PIPE_WAIT_MS;
+      const unverifiedWaitMs = hooks.unverifiedWaitMs ?? UNVERIFIED_WAIT_MS;
       const graceMs = hooks.graceMs ?? 1500;
       const beatMs = hooks.beatMs ?? BEAT_MS;
       // A7.5 (S2.9): at every heartbeat the identities (pid + creation time) of the owned descendants
@@ -326,6 +328,13 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
       };
       if (!cleanupConfirmed) {
         let { found, stopped } = await scanOwned();
+        // After a clean exit, group members no identity covers are usually helpers still exiting
+        // (Codex's MCP servers on a short turn). Wait a bounded time; nothing here signals them.
+        for (const end = Date.now() + unverifiedWaitMs; found.unverified?.length && !stopped && !reason && !running(child) && child.exitCode === 0 && Date.now() < end;) {
+          await sleep(100);
+          if (Date.now() - beatAt >= BEAT_MS && beat()) beatAt = Date.now();
+          ({ found, stopped } = await scanOwned());
+        }
         cleanupConfirmed = found.state === "gone" && !running(child);
         if (drainExpired) {
           // Stopping an identified process proves nothing about an unidentified one holding the pipes:

@@ -664,3 +664,8 @@ test("setup and models --refresh through the fake: ready, notes, tier ids checke
     assert.deepEqual(tierWarnings(["gemini-4-argon-high"], { consult: { model: "gemini-4-argon", effort: "high" }, exec: { model: "gemini-3.8-flash", effort: "high" }, deep: { model: "gemini-4-argon-high", effort: "high" } }), ["tier exec resolves to gemini-3.8-flash-high, which agy models does not list"]);
   } finally { s.done(); }
 });
+
+test("buildTurn: PWD is the realpath cwd on POSIX, so agy's workspace root matches the paths it resolves", { skip: process.platform === "win32" && "agy reads no PWD there" }, () => withTmp((dir) => {
+  const f = turnFixture(dir);
+  assert.deepEqual(gemini.buildTurn({ ...f.request, cwd: "/private/tmp/real" }).env, { PWD: "/private/tmp/real" });
+}));

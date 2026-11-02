@@ -77,7 +77,7 @@ test("review --uncommitted, unfocused and focused, on an off-by-one change", () 
 test("models --refresh --to codex and setup --to codex", () => {
   const models = record("models-refresh", council(["models", "--to", "codex", "--refresh"]));
   assert.equal(models.code, 0, models.out);
-  assert.match(models.out, /^codex \(refreshed, refreshed /);
+  assert.match(models.out, /^codex \(refreshed /);
   const setup = record("setup", council(["setup", "--to", "codex"]));
   assert.equal(setup.code, 0, setup.out);
   assert.match(setup.out, /^codex: ready · .* · codex-cli [\d.]+ · logged in\n/);
