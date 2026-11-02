@@ -55,9 +55,9 @@ test("static catalog matches the recorded listings", () => {
 
 test("tiers.json equals the A2 table", () => {
   assert.deepEqual(loadTiers(), {
-    codex: { consult: { model: "gpt-6.1-sol", effort: "high" }, exec: { model: "gpt-6-luna", effort: "max" }, deep: { model: "gpt-6.1-sol", effort: "xhigh" } },
+    codex: { consult: { model: "gpt-6.1-sol", effort: "xhigh" }, exec: { model: "gpt-6-luna", effort: "max" }, deep: { model: "gpt-6.1-sol", effort: "xhigh" } },
     grok: { consult: { model: "grok-4.7", effort: "high" }, exec: { model: "grok-4.7-build-fast", effort: "xhigh" }, deep: { model: "grok-4.7", effort: "xhigh" } },
-    gemini: { consult: { model: "gemini-4-argon", effort: "high" }, exec: { model: "gemini-3.8-flash", effort: "high" }, deep: { model: "gemini-4-argon", effort: "high" } },
+    gemini: { consult: { model: "gemini-4-argon", effort: "medium" }, exec: { model: "gemini-3.8-flash", effort: "high" }, deep: { model: "gemini-4-argon", effort: "high" } },
   });
 });
 
@@ -141,10 +141,11 @@ test("refresh honours COUNCIL_HOME and the refreshed list wins with identical ru
 
 test("resolveTier: defaults, explicit overrides win, clamp reported, inheritance", () => {
   const codex = loadCatalog(null, "codex"), gemini = loadCatalog(null, "gemini"), grok = loadCatalog(null, "grok");
-  assert.deepEqual(resolveTier("codex", undefined, {}, codex), { tier: "consult", model: "gpt-6.1-sol", modelVerified: true, alias: null, effort: "high", requestedEffort: "high", clamped: false, suffixed: false });
+  assert.deepEqual(resolveTier("codex", undefined, {}, codex), { tier: "consult", model: "gpt-6.1-sol", modelVerified: true, alias: null, effort: "xhigh", requestedEffort: "xhigh", clamped: false, suffixed: false });
   assert.equal(resolveTier("codex", "exec", {}, codex).effort, "max");
   assert.equal(resolveTier("codex", "deep", { model: "luna" }, codex).model, "gpt-6-luna");
-  assert.equal(resolveTier("gemini", "deep", {}, gemini).effort, "high", "gemini deep and consult coincide");
+  assert.equal(resolveTier("gemini", undefined, {}, gemini).effort, "medium");
+  assert.equal(resolveTier("gemini", "deep", {}, gemini).effort, "high", "explicit deep stays above the default");
   const clamped = resolveTier("gemini", "consult", { effort: "xhigh" }, gemini);
   assert.equal(clamped.effort, "high"); assert.equal(clamped.requestedEffort, "xhigh"); assert.equal(clamped.clamped, true);
   const suffixed = resolveTier("gemini", "consult", { model: "gemini-4-argon-low" }, gemini);
@@ -159,7 +160,7 @@ test("resolveTier: defaults, explicit overrides win, clamp reported, inheritance
   const inherited = resolveTier("codex", undefined, {}, codex, { inherited: { model: "gpt-6-luna", effort: "low" }, tierExplicit: false });
   assert.equal(inherited.model, "gpt-6-luna"); assert.equal(inherited.effort, "low");
   const explicitTier = resolveTier("codex", "consult", {}, codex, { inherited: { model: "gpt-6-luna", effort: "low" }, tierExplicit: true });
-  assert.equal(explicitTier.model, "gpt-6.1-sol"); assert.equal(explicitTier.effort, "high");
+  assert.equal(explicitTier.model, "gpt-6.1-sol"); assert.equal(explicitTier.effort, "xhigh");
   const unverified = resolveTier("codex", "consult", { model: "gpt-9-nova" }, codex);
   assert.equal(unverified.modelVerified, false);
   assert.deepEqual(SHARED_ENUM, ["low", "medium", "high", "xhigh", "max"]);
@@ -192,7 +193,7 @@ test("F4: an omitted --tier keeps the thread's persisted tier", () => {
   const kept = resolveTier("codex", undefined, {}, cat, { inherited: { tier: "deep", model: "gpt-6.1-sol", effort: "xhigh" }, tierExplicit: false });
   assert.equal(kept.tier, "deep"); assert.equal(kept.effort, "xhigh");
   const lowered = resolveTier("codex", "consult", {}, cat, { inherited: { tier: "deep", model: "gpt-6.1-sol", effort: "xhigh" }, tierExplicit: true });
-  assert.equal(lowered.tier, "consult"); assert.equal(lowered.effort, "high");
+  assert.equal(lowered.tier, "consult"); assert.equal(lowered.effort, "xhigh");
   assert.equal(resolveTier("codex", undefined, {}, cat, { inherited: { model: "gpt-6-luna", effort: "low" }, tierExplicit: false }).tier, "consult", "no persisted tier → default");
 });
 

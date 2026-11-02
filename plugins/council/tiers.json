@@ -1,6 +1,6 @@
 {
   "codex": {
-    "consult": { "model": "gpt-6.1-sol", "effort": "high" },
+    "consult": { "model": "gpt-6.1-sol", "effort": "xhigh" },
     "exec": { "model": "gpt-6-luna", "effort": "max" },
     "deep": { "model": "gpt-6.1-sol", "effort": "xhigh" }
   },
@@ -10,7 +10,7 @@
     "deep": { "model": "grok-4.7", "effort": "xhigh" }
   },
   "gemini": {
-    "consult": { "model": "gemini-4-argon", "effort": "high" },
+    "consult": { "model": "gemini-4-argon", "effort": "medium" },
     "exec": { "model": "gemini-3.8-flash", "effort": "high" },
     "deep": { "model": "gemini-4-argon", "effort": "high" }
   }

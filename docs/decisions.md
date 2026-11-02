@@ -235,3 +235,7 @@ Fixes after the S7.1 matrices, as ruled by the coordinator. X1, X2 and X3 apply 
 ## 2026-11-01 The test runner keeps its temp directories in one removed root
 
 The default suite makes thousands of directories under `os.tmpdir()` and most tests never remove them; about 43,000 entries and 9 GB had built up over this project's runs. `scripts/run-tests.mjs` now points `TMPDIR`, `TMP` and `TEMP` at one `council-run-*` directory per default run and removes it afterwards. Live runs keep the real temp directory, because they write result files there. A direct `node --test` is unchanged. The twin has the same change.
+
+## 2026-11-02 Owner-selected consultation defaults
+
+The owner set default calls to Gemini 4 Argon/medium, Codex 6.1 Sol/xhigh and Grok 4.7/high. `tiers.json`, the skill and the A2/README tables now agree. Explicit model, effort and tier overrides still apply, and the execution/deep presets remain available. Generated ask, codex and reply commands account for the now-heavy Codex consultation tier, so a default xhigh call follows the background rule even without an explicit effort flag. This is a defaults-only change; the shared runtime findings from the separate comparison are outside its scope.

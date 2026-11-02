@@ -20,23 +20,31 @@ export function heavyExec(tiers = TIERS) {
 const list = (items, and = "and") => items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} ${and} ${items.at(-1)}`;
 const HEAVY_FLAGS = "`--tier deep`, `--effort xhigh`, `max` or `ultra`";
 const FOREGROUND_ELSE = "Otherwise run it in the foreground with timeout 600000.";
+function consultRule(providers = Object.keys(TIERS), reply = false) {
+  const heavy = providers.filter((provider) => HEAVY.includes(TIERS[provider].consult.effort));
+  if (!heavy.length) return "";
+  const names = list(heavy.map((provider) => `\`${provider}\``), "or");
+  return reply
+    ? `On ${names} threads, \`--tier consult\` also runs in the background unless \`--effort\` is below xhigh. `
+    : `Default consult calls for ${names} also run in the background when \`--tier\` is omitted or consult, unless \`--effort\` is below xhigh. `;
+}
 /** ask: the provider comes from the arguments, so every heavy exec tier is named. */
 function askRule() {
   const exec = Object.entries(heavyExec());
   const execClause = exec.length ? `, or \`--tier exec\` with ${list(exec.map(([p]) => `\`--to ${p}\``), "or")} and no \`--effort\` below xhigh (their exec tiers run at ${list(exec.map(([p, e]) => `${e}`))})` : "";
-  return `Make one Bash tool call. Run it with \`run_in_background: true\` when the tier is deep or the effective effort is xhigh or above: the arguments carry ${HEAVY_FLAGS}${execClause}. ${FOREGROUND_ELSE}`;
+  return `Make one Bash tool call. Run it with \`run_in_background: true\` when the tier is deep or the effective effort is xhigh or above: the arguments carry ${HEAVY_FLAGS}${execClause}. ${consultRule()}${FOREGROUND_ELSE}`;
 }
 /** /council:<p>: the provider is fixed, so only its own exec tier matters. */
 function providerRule(provider) {
   const effort = heavyExec()[provider];
   const execClause = effort ? `, or \`--tier exec\` and no \`--effort\` below xhigh (${provider}'s exec tier runs at ${effort})` : "";
-  return `Make one Bash tool call. Run it with \`run_in_background: true\` when the tier is deep or the effective effort is xhigh or above: the arguments carry ${HEAVY_FLAGS}${execClause}. ${FOREGROUND_ELSE}`;
+  return `Make one Bash tool call. Run it with \`run_in_background: true\` when the tier is deep or the effective effort is xhigh or above: the arguments carry ${HEAVY_FLAGS}${execClause}. ${consultRule([provider])}${FOREGROUND_ELSE}`;
 }
 function replyRule() {
   const exec = Object.keys(heavyExec());
   return "Make one Bash tool call. A reply keeps its thread's tier and effort unless the arguments set them. Run it with `run_in_background: true` when the tier is deep or the effective effort is xhigh or above: " +
     `the arguments carry ${HEAVY_FLAGS}${exec.length ? `, or \`--tier exec\` on a ${list(exec, "or")} thread with no \`--effort\` below xhigh` : ""}, or they set neither and the thread already runs at deep or at xhigh or above. ` +
-    "When you cannot tell, run it in the background. " + FOREGROUND_ELSE;
+    "When you cannot tell, run it in the background. " + consultRule(Object.keys(TIERS), true) + FOREGROUND_ELSE;
 }
 const BACKGROUND = "Make one Bash tool call with `run_in_background: true`.";
 const CONTROL = "Make one Bash tool call in the foreground. It starts no provider CLI.";

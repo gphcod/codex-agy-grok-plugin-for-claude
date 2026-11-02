@@ -20,10 +20,10 @@ No Bash tool: never put text in a PowerShell command. Write it to a new UTF-8 te
 - `wait [job]`, `cancel [job]`, `models [--refresh]`, `setup`. `--model`, `--effort low…max` (clamped: `<=asked`), `--web` (grok).
 
 Tiers consult · exec · deep:
-- codex: gpt-6.1-sol/high · gpt-6-luna/max · gpt-6.1-sol/xhigh
+- codex: gpt-6.1-sol/xhigh · gpt-6-luna/max · gpt-6.1-sol/xhigh
 - grok: grok-4.7/high · grok-4.7-build-fast/xhigh · grok-4.7/xhigh
-- gemini: gemini-4-argon/high · gemini-3.8-flash/high · gemini-4-argon/high
-User named no model (a provider is no model): ask/reply/review only, pass `--tier consult`, also on replies; ask once before higher effort (not for gemini). Never task, even for a fix or edit: ask or review, then say `/council:task` or naming a model lets the provider edit. User named one: tier by complexity; explicit model/effort wins; `ultra` (codex) only if named.
+- gemini: gemini-4-argon/medium · gemini-3.8-flash/high · gemini-4-argon/high
+User named no model (a provider is no model): ask/reply/review only, pass `--tier consult`, also on replies; ask once before higher effort. Never task, even for a fix or edit: ask or review, then say `/council:task` or naming a model lets the provider edit. User named one: tier by complexity; explicit model/effort wins; `ultra` (codex) only if named.
 
 Fan-out: one background `ask` per provider in one response, same brief, each its own `--request-id`. Follow up with `reply --thread <job>`, never `--last`.
 
