@@ -18,6 +18,11 @@ export const CONTROL_VERBS = ["wait", "cancel", "models", "setup"];
 export const VERBS = [...TURN_VERBS, ...CONTROL_VERBS];
 export const PROVIDERS = ["codex", "gemini", "grok"];
 
+// council has no short options. A first word like `-m` is a mistyped flag: taken as text, it would
+// start a paid turn on the wrong input and the wrong model. `- item` and `-5` stay text.
+const SHORT_FLAG = /^-[A-Za-z]/;
+const unknownOption = (token) => new UsageError(`Unknown option ${token}. Put -- before the text if it starts with a dash.`);
+
 function option(token, spec, next) {
   const [key, inline] = token.slice(2).split(/=(.*)/s, 2);
   if (spec.bool.includes(key)) {
@@ -30,7 +35,7 @@ function option(token, spec, next) {
     }
     return { key, value, used: inline === undefined ? 1 : 0 };
   }
-  throw new UsageError(`Unknown option ${token}. Put -- before the text if it starts with a dash.`);
+  throw unknownOption(token);
 }
 
 /** Leading `--options` of a command line; the first other token and the rest are positionals. */
@@ -46,6 +51,7 @@ export function parseArgv(argv, spec = SPEC) {
       break;
     }
     if (!token.startsWith("--")) {
+      if (!positionals.length && SHORT_FLAG.test(token)) throw unknownOption(token);
       positionals.push(token);
       continue;
     }
@@ -79,6 +85,7 @@ export function splitLeading(raw, spec = SPEC) {
       return { options, text: raw.slice(t.end).replace(/^[ \t]*(\r?\n)?/, ""), literal: true };
     }
     if (!t.text.startsWith("--")) {
+      if (SHORT_FLAG.test(t.text)) throw unknownOption(t.text);
       return { options, text: pos ? raw.slice(t.start) : raw, literal: false };
     }
     const found = option(t.text, spec, () => read(t.end)?.text);

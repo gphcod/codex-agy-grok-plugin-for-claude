@@ -23,6 +23,7 @@ const CASES = [
   ["requestFreed", (_t, r) => MESSAGES.requestFreed(r), "retry with the same id to run it"],
   ["requestNeverRan", (_t, r, j) => MESSAGES.requestNeverRan(r, j), "a new request id is safe"],
   ["requestMissing", (_t, r, j) => MESSAGES.requestMissing(r, j), "use a new request id"],
+  ["jobUnreadable", (_t, _r, j) => MESSAGES.jobUnreadable(j, "EBUSY"), `retry: job ${JOB}`],
 ];
 
 test("every message is covered, and its action survives the footer's clip at the longest ids", () => {

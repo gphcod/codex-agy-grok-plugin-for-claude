@@ -113,7 +113,11 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     job.threadIds = [...new Set([...job.threadIds, id])];
     save(job);
     // A7.8: a lost or cleanup-pending job blocks its thread until cancel confirms, even without a claim.
-    const old = blockingJob(ctx.home, provider, id, job.id);
+    // A job that cannot be read now matters only to a thread with history, never to one this turn just
+    // started: failing there would stop a provider already answering.
+    let old = null;
+    try { old = blockingJob(ctx.home, provider, id, job.id); }
+    catch (error) { if (id === resumed) throw error; }
     if (old) throw new BusyError(MESSAGES.threadCleanup(id, old.id), old.id);
   };
   let reader = null, edits = null;
@@ -244,7 +248,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
           resolve();
         };
         try {
-          child = (hooks.spawn ?? spawnChild)(launcher, turn.args, { cwd: request.cwd, env: childEnv(ctx.env, turn.env ?? {}) });
+          child = (hooks.spawn ?? spawnChild)(launcher, turn.args, { cwd: turn.cwd ?? request.cwd, env: childEnv(ctx.env, turn.env ?? {}) });
         } catch (error) { spawnError = error; cleanupConfirmed = true; finish(); return; }
         child.on("error", (error) => { spawnError = error; finish(); });
         child.on("exit", () => {
@@ -450,6 +454,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     unconfirmed: isReview ? null : seen?.unconfirmed ?? null, denied: seen?.denied ?? null, costUsd: seen?.costUsd ?? null, usage: seen?.usage ?? null, answerClipped: parsed?.answerClipped ?? false,
   });
   delete job.stderrTail;
+  let published = false;
   try {
     beat();
     await hooks.beforeFinalize?.(job);
@@ -460,11 +465,15 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
       (hooks.saveThread ?? saveThread)(ctx.home, { provider, threadId: job.threadId, cwd: job.cwd, model: job.model, effort: job.effort, tier: job.tier, round: job.round, rounds: job.rounds, roundsSet: job.roundsSet, web: job.web, agent: turn?.agent ?? null, lastJob: job.id, lastVerb: job.verb, readOnly: job.readOnly, ...(job.unconfirmed ? { resumable: false, unconfirmed: job.unconfirmed } : {}) });
     }
     save(job); finishMarker(job); // No other process writes these result artifacts.
+    published = true;
     if (cleanupConfirmed) releaseClaims(ctx.home, job);
   } catch (failure) {
-    // Retain the claim if durable finalization or release could not be completed.
-    job.code = 1; job.outcome = "failed"; job.cleanupPending = true; job.attention = null;
-    job.error = `finalization failed: ${failure.message}`;
+    // A published result stands, the same here as in any replay: the claim still held shows as cleanup
+    // pending through jobView, and cancel releases it. Before publication nothing is final, so the claim is kept.
+    if (!published) {
+      job.code = 1; job.outcome = "failed"; job.cleanupPending = true; job.attention = null;
+      job.error = `finalization failed: ${failure.message}`;
+    }
   }
   // A5: afterTurn runs once, after finalization, and only once cleanup is verified (also on failure or cancel).
   // The two hooks are independent: afterTurn needs only a built turn, not a beforeTurn.

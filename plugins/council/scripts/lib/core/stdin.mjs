@@ -73,7 +73,7 @@ export async function stdinText(positionals, { stream = process.stdin, idleMs = 
 export async function readText(options, positionals, literal, io = {}) {
   const raw = (await stdinText(positionals, io)).replace(/\r?\n$/, "");
   if (raw.trim() && positionals.length) throw new UsageError("give the text on stdin or as arguments, not both");
-  if (positionals.length) return { options, text: positionals.join(" "), literal: true };
+  if (positionals.length) return { options, text: positionals.join(" "), literal };
   if (literal) return { options, text: raw, literal };
   const split = splitLeading(raw, INPUT_SPEC);
   return { options: { ...options, ...split.options }, text: split.text, literal: split.literal };

@@ -26,7 +26,8 @@ test("attentionReason: denial, then open questions; a review only when incomplet
   assert.equal(attentionReason({ isReview: false, questions: true }), "open questions in the answer");
   assert.equal(attentionReason({ isReview: false }), null);
   assert.equal(attentionReason({ isReview: true, review: { verdict: "changes", findings: [{}], incomplete: null } }), null, "plain findings add no token");
-  assert.equal(attentionReason({ isReview: true, review: { verdict: "incomplete", incomplete: "bad output" }, denied: "d" }), "bad output");
+  assert.equal(attentionReason({ isReview: true, review: { verdict: "incomplete", incomplete: "missing structured review output" }, denied: "d", deniedAction: "a tool call" }), "denied a tool call", "the denial can be why the review is incomplete");
+  assert.equal(attentionReason({ isReview: true, review: { verdict: "incomplete", incomplete: "bad output" } }), "bad output");
   assert.equal(attentionReason({ isReview: true, review: { verdict: "approve", incomplete: null }, denied: "d", deniedAction: "rm x" }), "denied rm x");
   assert.ok(bytes(attentionReason({ isReview: true, review: { incomplete: "x".repeat(500) } })) <= ATTENTION_MAX);
 });

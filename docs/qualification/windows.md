@@ -28,6 +28,10 @@ The global `toolPermission` here is `always-proceed`, so the turn's own settings
 
 New headless sessions at 1.0.0-rc.4 (2026-11-02), which have no Bash tool under `CLAUDE_CODE_USE_POWERSHELL_TOOL=1`: `/council:ask` and the skill wrote the text to a file and ran `--input-file` through PowerShell, with quotes, `$HOME` and non-ASCII intact. `/council:setup`, `models`, `codex`, `grok`, `review` and `wait` ran there at 1.0.0-rc.2.
 
+## At 1.0.0-rc.5 (2026-11-02)
+
+`npm test` passes. `review --uncommitted` with focus text ran from the rc.5 working tree on the real codex, gemini and grok, and returned each review. `/council:*` and the S7.1 matrix were not repeated, on Windows or macOS.
+
 ## Not checked
 
 The npm grok shim, and `allowed-tools` under default permissions (this machine runs `bypassPermissions`).

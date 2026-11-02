@@ -32,10 +32,10 @@ function harness() {
     COUNCIL_FAKE_EXPECT_CONTRACT: CONTRACT, COUNCIL_STDIN_DEADLINE_MS: "300",
   };
   for (const k of [...GUARD_VARS, "COUNCIL_FAKE_SCENARIO", "COUNCIL_CODEX_MCP", "COUNCIL_FAKE_MCP_SERVERS", "COUNCIL_FAKE_CODEX_EDIT", "COUNCIL_FAKE_EXPECT_PROMPT", "COUNCIL_FAKE_EXPECT_PROMPT_CONTAINS", "COUNCIL_TEST_NULL_ADAPTER"]) delete base[k];
-  const call = async (argv, { env = {}, stdin = "" } = {}) => {
+  const call = async (argv, { env = {}, stdin = "", at = repo } = {}) => {
     let out = "", err = "";
     const stream = new PassThrough(); stream.end(stdin);
-    const code = await main(argv, { ...base, ...env }, { stdout: { write: (s) => { out += s; return true; } }, stderr: { write: (s) => { err += s; return true; } }, stdin: stream, cwd: repo });
+    const code = await main(argv, { ...base, ...env }, { stdout: { write: (s) => { out += s; return true; } }, stderr: { write: (s) => { err += s; return true; } }, stdin: stream, cwd: at });
     return { code, out, err };
   };
   /** A turn verb with text after `--`; the fake checks the prompt bytes it receives. */
@@ -105,6 +105,23 @@ test("ask → task --thread → reply → task --thread: sandbox and resume argu
     assert.match(fresh.out, / · round 1\/9 · edited 1 · /);
     assert.deepEqual(h.calls().at(-1).argv.slice(4, 8), ["-C", h.cwd, "-s", "workspace-write"]);
     assert.ok(existsSync(join(h.repo, "new.txt")));
+  } finally { h.done(); }
+});
+
+test("review from a subdirectory runs at the repository root, MCP discovery included; the job keeps the caller's directory", async () => {
+  const h = harness();
+  try {
+    const sub = join(h.repo, "sub");
+    mkdirSync(sub);
+    writeFileSync(join(h.repo, "extra.js"), "export const x = 1;\n");
+    const r = await h.call(["review", "--to", "codex", "--uncommitted"], { at: sub, env: { COUNCIL_FAKE_SCENARIO: "review-findings", COUNCIL_CODEX_MCP: "off" } });
+    assert.equal(r.code, 10, r.err + r.out);
+    const calls = h.calls();
+    assert.deepEqual(calls.map((c) => c.argv.slice(0, 2)).at(-1), ["exec", "review"]);
+    assert.ok(calls.some((c) => c.argv[0] === "mcp"), "COUNCIL_CODEX_MCP=off made a discovery call");
+    for (const c of calls) assert.equal(canonical(c.cwd), canonical(h.repo), c.argv.slice(0, 2).join(" "));
+    const job = JSON.parse(readFileSync(join(canonical(h.home), "jobs", h.jobOf(r.err), "meta.json"), "utf8"));
+    assert.equal(job.cwd, canonical(sub), "wait and cancel still find it from where it was called");
   } finally { h.done(); }
 });
 

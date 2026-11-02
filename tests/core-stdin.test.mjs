@@ -56,6 +56,14 @@ test("readControlArgs: scalar options and ids on stdin or argv, never both", asy
   await usage(() => readControlArgs({}, [], { stream: ended("--bogus"), idleMs: 100 }), /Unknown option/);
 });
 
+test("a short flag right after the reply's thread is refused unless argv had --", async () => {
+  const plain = await readText({}, ["k3f9", "-v"], false, { stream: open(), idleMs: 60 });
+  assert.equal(plain.literal, false);
+  assert.throws(() => splitReply("reply", {}, plain.text, plain.literal), (e) => e instanceof UsageError && /Unknown option -v/.test(e.message));
+  const literal = await readText({}, ["k3f9", "-v"], true, { stream: open(), idleMs: 60 });
+  assert.deepEqual(splitReply("reply", {}, literal.text, literal.literal), { o: { thread: "k3f9" }, text: "-v" });
+});
+
 test("splitReply: the first word names the thread unless --thread or --last does", () => {
   assert.deepEqual(splitReply("reply", {}, "k3f9abcd12345678 more text", false), { o: { thread: "k3f9abcd12345678" }, text: "more text" });
   assert.deepEqual(splitReply("reply", {}, "k3f9 --effort low more", false), { o: { effort: "low", thread: "k3f9" }, text: "more" });

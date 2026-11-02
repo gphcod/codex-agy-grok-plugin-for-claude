@@ -13,6 +13,18 @@ test("SKILL.md stays at or under 3,000 bytes", () => {
   assert.match(text, /^---\nname: council\ndescription: .+\n---\n/);
 });
 
+test("the skill's example is a foreground call by its own rule, and the rule names a consult tier that is not", () => {
+  const text = readFileSync(skillPath, "utf8");
+  const tiers = JSON.parse(readFileSync(join(root, "plugins", "council", "tiers.json"), "utf8"));
+  const heavy = ["xhigh", "max", "ultra"];
+  const [, example] = /ask --to (\w+) .*--tier consult -- <<'COUNCIL_EOF'/.exec(text);
+  assert.ok(!heavy.includes(tiers[example].consult.effort), `the example runs ${example} in the foreground at ${tiers[example].consult.effort}`);
+  assert.ok(!/ --request-id /.test(/```bash\n(.*)\n/.exec(text)[1]), "a foreground example needs no request id");
+  for (const [provider, table] of Object.entries(tiers)) {
+    if (heavy.includes(table.consult.effort)) assert.match(text, new RegExp(`\`run_in_background: true\` for every [^.]*${table.consult.effort} \\(${provider} consult\\)`), provider);
+  }
+});
+
 test("with no model named the skill rules out a task, even for a fix, and says how to get one (S7.1 C1)", () => {
   const text = readFileSync(skillPath, "utf8");
   assert.match(text, /User named no model \(a provider is no model\): ask\/reply\/review only/);

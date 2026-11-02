@@ -1,10 +1,6 @@
 # Changelog
 
-## Unreleased
-
-- Default consultations use Codex 6.1 Sol/xhigh, Gemini 4 Argon/medium and Grok 4.7/high. Command guidance accounts for Codex's default background execution; explicit model, effort and tier overrides remain available.
-
-## 1.0.0 (unreleased; 1.0.0-rc.4 candidate)
+## 1.0.0 (unreleased; 1.0.0-rc.5 candidate)
 
 First release of `council`. A single plugin now provides the following, through one companion process and one provider CLI child per call:
 
@@ -14,6 +10,20 @@ First release of `council`. A single plugin now provides the following, through 
 - authorized delegated edits
 
 The release check is S7 of `PLAN.md`: a macOS matrix, a Windows session and the tag.
+
+### 1.0.0-rc.5 (2026-11-02)
+
+- Default consultations use Codex 6.1 Sol/xhigh, Gemini 4 Argon/medium and Grok 4.7/high. Command guidance accounts for Codex's default background execution; explicit model, effort and tier overrides remain available.
+- A leading short flag (`-v`, `-m gpt-5`) exits 2. It used to become the prompt and start a turn, with any model it named ignored. Put `--` first for text that starts with a dash; a bullet (`- item`) and a number (`-5`) stay text.
+- A job record locked past 2 s stops `reply --last`, bare `wait`, bare `cancel` and a reply with exit 1 and a retry message. It used to count as no job, so an older job and its thread could be selected.
+- A thread claim whose directory cannot be removed goes back to its job, so `cancel` can release it. It used to stay locked until someone repaired it by hand. The removal is also retried for 2 s, including the moment Windows still lists a just-deleted file.
+- A failed claim release after a finished turn no longer changes its result. The call used to exit 1 with `finalization failed` while the saved job, and `wait`, said exit 0. Both now report the same result with `cleanup pending; next: cancel <job>`.
+- A changed tracked binary file counts as not reviewed (`unreviewed N`, exit 10), as an untracked one already did. It used to count as reviewed, so an empty approval could exit 0.
+- `review` runs at the repository root on every provider. Codex and Gemini used to run in the calling subdirectory, where agy could not read the rest of the repository; Codex's MCP discovery now runs at the root too.
+- A focused Codex review now covers what its label says: `--base` through the working tree and untracked files, and a merge commit through its first-parent diff, which `git show` leaves out on a clean merge.
+- On a review, `attention:` names a denied action before the incomplete reason it can cause.
+- The skill's example is a call that may run in the foreground, and its rule says Codex's consult tier runs in the background.
+- On Windows the test runner's cleanup stops only `node.exe` processes that name its temp root.
 
 ### macOS (checked 2026-11-01, `docs/qualification/macos-check.md`)
 
@@ -54,7 +64,7 @@ The release check is S7 of `PLAN.md`: a macOS matrix, a Windows session and the 
 - Reviews of `--uncommitted`, `--base <ref>` or `--commit <sha>` on all three providers. `--adversarial` on Gemini and Grok.
 - Fan-out: the skill issues up to three background `ask` calls in one response, each with its own `--request-id`.
 - `--request-id` replay across providers. One binding per session, workspace and id means a retry never starts a second CLI, even when `--last` or the catalog would now resolve differently.
-- Four guard variables (`COUNCIL_DEPTH`, `CODEX_COMPANION_DEPTH`, `GROK_BUILD_DEPTH`, `CLAUDE_PLUGIN_CODEX_DEPTH`) on every child, probes included. council refuses to start when any of them is set.
+- Six guard variables (`COUNCIL_DEPTH`, `CODEX_COMPANION_DEPTH`, `GROK_BUILD_DEPTH`, `CLAUDE_PLUGIN_CODEX_DEPTH`, `GROK_CODEX_DEPTH`, `AGY_BRIDGE_DEPTH`) on every child, probes included. council refuses to start when any of them is set.
 - Eleven generated user-only slash commands with a drift check. The turn commands carry a fresh `--request-id` that Claude substitutes. One model-visible skill of 2,998 B.
 
 ### Intentional differences
@@ -99,10 +109,9 @@ These come from `docs/parity/*.md` and `docs/decisions.md`.
 - `print_timeout` exits 1 and keeps the partial answer.
 - Malformed review output is `incomplete` (exit 10).
 - The stop-review gate and hooks are dropped.
-- Windows is refused (exit 2, reported by `setup`) until it is qualified.
 
 ### Known limits
 
-- Windows qualification for Codex and Grok, and the Gemini decision on Windows, are S7.2.
+- On Windows the npm `grok` shim, and `allowed-tools` under default permissions, are not checked yet (`docs/qualification/windows.md`).
 - Linux is optional and not qualified.
 - `COUNCIL_CODEX_MCP=off` saves 19–29 % input tokens per ask. It costs one or two `codex mcp list` calls before each ask, reply and review. The default stays `inherit`.

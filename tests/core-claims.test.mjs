@@ -53,10 +53,12 @@ test("releaseThread: only the owner unlinks; a replacement owner's directory sur
     claimThread(home, "codex", "t1", a);
     assert.equal(releaseThread(home, "codex", "t1", b), false, "not the owner");
     assert.equal(inspectClaim(home, "codex", "t1").job, "joba");
-    // rmdir racing a replacement owner: ENOTEMPTY is tolerated
+    // A file another process held open at the unlink keeps the directory "not empty" for a moment.
+    let tries = 0;
     const io = Object.create(fs);
-    io.rmdirSync = () => { throw Object.assign(new Error("ENOTEMPTY"), { code: "ENOTEMPTY" }); };
+    io.rmdirSync = (dir) => { if (tries++ < 2) throw Object.assign(new Error("ENOTEMPTY"), { code: "ENOTEMPTY" }); return fs.rmdirSync(dir); };
     assert.equal(releaseThread(home, "codex", "t1", a, io), true);
+    assert.equal(inspectClaim(home, "codex", "t1").state, "absent", "the retry removed it");
     claimThread(home, "codex", "t2", a);
     const broken = Object.create(fs);
     broken.unlinkSync = () => { throw Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" }); };
@@ -64,6 +66,29 @@ test("releaseThread: only the owner unlinks; a replacement owner's directory sur
     const rmdirBroken = Object.create(fs);
     rmdirBroken.rmdirSync = () => { throw Object.assign(new Error("EIO"), { code: "EIO" }); };
     assert.throws(() => releaseThread(home, "codex", "t2", a, rmdirBroken), /EIO/);
+    assert.equal(inspectClaim(home, "codex", "t2").job, "joba", "the owner came back");
+  } finally { rmSync(home, { recursive: true, force: true }); }
+});
+
+test("an rmdir that keeps failing gives the claim back, so recovery can release it and the thread is usable again", () => {
+  const home = tmp();
+  try {
+    const a = { ...job("joba", T1), threadIds: ["t1"] }, b = job("jobb", T2);
+    claimThread(home, "codex", "t1", a);
+    const stuck = Object.create(fs);
+    stuck.rmdirSync = () => { throw Object.assign(new Error("EBUSY: resource busy"), { code: "EBUSY" }); };
+    // Delete-pending on Windows: the same name cannot be created again for a moment.
+    let refused = 0;
+    stuck.writeFileSync = (...args) => { if (refused++ < 2) throw Object.assign(new Error("EACCES: delete pending"), { code: "EACCES" }); return fs.writeFileSync(...args); };
+    assert.throws(() => releaseClaims(home, a, stuck), /EBUSY/);
+    assert.deepEqual([inspectClaim(home, "codex", "t1").state, inspectClaim(home, "codex", "t1").job], ["owned", "joba"]);
+    assert.equal(claimHeld(home, a), true);
+    assert.throws(() => claimThread(home, "codex", "t1", b), (e) => e instanceof BusyError && e.job === "joba", "still busy, and with a job that names what to cancel");
+    releaseClaims(home, a);
+    assert.equal(inspectClaim(home, "codex", "t1").state, "absent");
+    assert.equal(claimHeld(home, a), false);
+    claimThread(home, "codex", "t1", b);
+    assert.equal(inspectClaim(home, "codex", "t1").job, "jobb");
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 
