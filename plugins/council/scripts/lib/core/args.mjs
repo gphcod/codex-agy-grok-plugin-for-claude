@@ -8,7 +8,7 @@ import { UsageError } from "./catalog.mjs";
 export { UsageError };
 
 export const SPEC = {
-  value: ["session", "to", "tier", "model", "effort", "thread", "base", "commit", "timeout", "inactivity-timeout", "deadline", "rounds", "request-id"],
+  value: ["session", "to", "tier", "model", "effort", "thread", "base", "commit", "timeout", "inactivity-timeout", "deadline", "rounds", "request-id", "input-file"],
   bool: ["last", "json", "web", "uncommitted", "adversarial", "refresh"],
 };
 

@@ -374,7 +374,10 @@ export async function main(argv, env = process.env, io = {}, hooks = {}) {
     if (!VERBS.includes(verb)) throw new UsageError(USAGE);
     let positionals, literal, text = "";
     ({ options, positionals, literal } = parseArgv(rest));
-    const stdinIo = { stream: io.stdin ?? process.stdin, idleMs: stdinIdleMs(env) };
+    // Not part of the request: a retry may name another file with the same text.
+    const { "input-file": inputFile = null, ...withoutInputFile } = options;
+    options = withoutInputFile;
+    const stdinIo = { stream: io.stdin ?? process.stdin, idleMs: stdinIdleMs(env), inputFile };
     if (TURN_VERBS.includes(verb)) ({ options, text, literal } = await readText(options, positionals, literal, stdinIo));
     else ({ options, positionals } = await readControlArgs(options, positionals, stdinIo));
     // After stdin, so the refusal follows its --json too; nothing has run yet (A5.1 depth guard).

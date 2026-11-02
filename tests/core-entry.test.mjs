@@ -173,6 +173,25 @@ test("model, effort and tier resolution through the catalog: aliases, clamps, un
   } finally { h.done(); }
 });
 
+test("--input-file stands in for stdin on argv only: read with its flags, no part of the request, refused inside the input", async () => {
+  const h = harness();
+  try {
+    const file = join(h.root, "input.txt");
+    writeFileSync(file, "\uFEFF--to null --request-id same1 hello from a file\n");
+    const first = await h.call(["ask", "--session", "s1", `--input-file=${file}`], { stdin: "ignored" });
+    assert.equal(first.code, 0, first.err + first.out);
+    assert.match(first.out, /fake|hello|pong/i);
+    const other = join(h.root, "other.txt");
+    writeFileSync(other, "--to null --request-id same1 hello from a file\n");
+    const replay = await h.call(["ask", "--session", "s1", "--input-file", other]);
+    assert.equal(replay.out, first.out, "another file with the same text is the same request");
+    writeFileSync(file, `--to null --input-file ${other} hi`);
+    assert.equal((await h.call(["ask", "--session", "s1", "--input-file", file])).code, 2, "inside the input");
+    assert.equal((await h.call(["cancel", "--session", "s1"], { stdin: `--input-file ${other}` })).code, 2, "inside a control verb's input");
+    assert.equal((await h.call(["ask", "--session", "s1", "--input-file", join(h.root, "missing.txt")])).code, 2);
+  } finally { h.done(); }
+});
+
 test("reply: by first word, --thread and --last; rounds count, inheritance, explicit overrides persist", async () => {
   const h = harness();
   try {

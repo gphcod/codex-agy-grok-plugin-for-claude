@@ -3,7 +3,7 @@
 // --live: tests/live/**/*.live.test.mjs only. --ratio: core test density check.
 // Spawns `node --test <files>` itself, so no shell globbing is needed on Windows.
 import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { availableParallelism, tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -95,7 +95,9 @@ function main(argv) {
   if (mode === "live") return spawnSync(process.execPath, ["--test", ...files], { stdio: "inherit", cwd: repoRoot, env }).status ?? 1;
   // One temp root per default run, removed afterwards: the tests make thousands of directories under os.tmpdir().
   const scratch = realpathSync.native(mkdtempSync(join(tmpdir(), "council-run-")));
-  const status = spawnSync(process.execPath, ["--test", ...files], { stdio: "inherit", cwd: repoRoot, env: { ...env, TMPDIR: scratch, TMP: scratch, TEMP: scratch } }).status ?? 1;
+  // Windows process queries and antivirus scans of new files cost seconds when every test file runs at once.
+  const concurrency = process.platform === "win32" ? [`--test-concurrency=${Math.max(2, Math.floor(availableParallelism() / 2))}`] : [];
+  const status = spawnSync(process.execPath, ["--test", ...concurrency, ...files], { stdio: "inherit", cwd: repoRoot, env: { ...env, TMPDIR: scratch, TMP: scratch, TEMP: scratch } }).status ?? 1;
   return removeScratch(scratch) ? status : status || 1;
 }
 

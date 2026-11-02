@@ -1,7 +1,8 @@
 // Ported from grok-build-plugin-cc 1.1.5 grok.mjs:46-105 (readStdin, readText, splitReply) and
 // grok.mjs:308-317 (control-verb stdin tokens). Unchanged 10 s idle deadline, shortened through
 // COUNCIL_STDIN_DEADLINE_MS; literal mode only when argv had `--`.
-import { UsageError, parseArgv, splitLeading } from "./args.mjs";
+import fs from "node:fs";
+import { SPEC, UsageError, parseArgv, splitLeading } from "./args.mjs";
 
 /** Seconds stdin may stay open without a byte or its end before a call stops reading it. */
 export const STDIN_IDLE_S = 10;
@@ -44,8 +45,21 @@ export function readStdin(stream = process.stdin, idleMs = stdinIdleMs()) {
   });
 }
 
+/** `--input-file` names the input, so inside the input it is refused like any other unknown option. */
+const INPUT_SPEC = { ...SPEC, value: SPEC.value.filter((key) => key !== "input-file") };
+
+/**
+ * `--input-file`: a UTF-8 file that stands in for stdin. PowerShell has no heredoc, and text placed in one of its
+ * here-strings can end the string and run as a command, so a PowerShell call never carries the text itself.
+ */
+function readInputFile(file) {
+  try { return fs.readFileSync(file, "utf8").replace(/^\uFEFF/, ""); }
+  catch (error) { throw new UsageError(`cannot read --input-file ${file}: ${error.code ?? error.message}`); }
+}
+
 /** Stdin's text. A pipe left open with nothing sent is no input when arguments carry it, and refused otherwise. */
-export async function stdinText(positionals, { stream = process.stdin, idleMs = stdinIdleMs() } = {}) {
+export async function stdinText(positionals, { stream = process.stdin, idleMs = stdinIdleMs(), inputFile = null } = {}) {
+  if (inputFile !== null) return readInputFile(inputFile);
   const raw = await readStdin(stream, idleMs);
   if (raw !== null) return raw;
   if (positionals.length) return "";
@@ -61,7 +75,7 @@ export async function readText(options, positionals, literal, io = {}) {
   if (raw.trim() && positionals.length) throw new UsageError("give the text on stdin or as arguments, not both");
   if (positionals.length) return { options, text: positionals.join(" "), literal: true };
   if (literal) return { options, text: raw, literal };
-  const split = splitLeading(raw);
+  const split = splitLeading(raw, INPUT_SPEC);
   return { options: { ...options, ...split.options }, text: split.text, literal: split.literal };
 }
 
@@ -70,7 +84,7 @@ export async function readControlArgs(options, positionals, io = {}) {
   const raw = (await stdinText(positionals, io)).trim();
   if (raw && positionals.length) throw new UsageError("give control arguments on stdin or argv, not both");
   if (!raw) return { options, positionals };
-  const supplied = parseArgv(raw.split(/\s+/));
+  const supplied = parseArgv(raw.split(/\s+/), INPUT_SPEC);
   return { options: { ...options, ...supplied.options }, positionals: supplied.positionals };
 }
 
@@ -79,6 +93,6 @@ export function splitReply(verb, o, text, literal) {
   if (verb !== "reply" || o.thread || o.last) return { o, text };
   const first = /^\s*(\S+)\s*/.exec(text);
   if (!first) throw new UsageError("reply needs a job or thread id, or --last");
-  const rest = literal ? { options: {}, text: text.slice(first[0].length) } : splitLeading(text.slice(first[0].length));
+  const rest = literal ? { options: {}, text: text.slice(first[0].length) } : splitLeading(text.slice(first[0].length), INPUT_SPEC);
   return { o: { ...o, ...rest.options, thread: first[1] }, text: rest.text };
 }

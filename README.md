@@ -160,6 +160,8 @@ Environment variables: `COUNCIL_HOME`, `COUNCIL_CODEX_BIN`, `COUNCIL_AGY_BIN`, `
 | Windows | checked: the npm `codex.cmd` shim, run through its native executable | checked: native `grok.exe`; the npm shim is not yet checked | checked: native `agy.exe` (`docs/qualification/windows.md`) |
 | Linux | optional, not qualified | optional, not qualified | optional, not qualified |
 
+Claude Code sessions with no Bash tool (`CLAUDE_CODE_USE_POWERSHELL_TOOL`) use the PowerShell form in each command: the text goes in a UTF-8 file named by `--input-file`, never in the command.
+
 On Windows council never launches through `cmd.exe`. An npm `.cmd` shim runs its JS entry with node. Process queries run inline in PowerShell with `PSModulePath` set.
 
 ## Known trade-offs
