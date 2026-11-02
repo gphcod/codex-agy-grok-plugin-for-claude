@@ -16,7 +16,7 @@ import { inspectClaim } from "../plugins/council/scripts/lib/core/claims.mjs";
 import { canonical } from "../plugins/council/scripts/lib/core/fs.mjs";
 import { main } from "../plugins/council/scripts/council.mjs";
 
-const FAST = { drainMs: 150, shutdownMs: 4000, retryMs: 300, graceMs: 150, pipeWaitMs: 500 };
+const FAST = { drainMs: 150, shutdownMs: process.platform === "win32" ? 20000 : 4000, retryMs: 300, graceMs: 150, pipeWaitMs: 500 };
 function setup(extra = {}) {
   const root = mkdtempSync(join(tmpdir(), "council-incr-"));
   const home = homeDir({ COUNCIL_HOME: join(root, "home") });

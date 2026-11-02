@@ -4,10 +4,10 @@
 // PATH holds only trap `codex`, `agy` and `grok` scripts (which log and exit 97) before the system
 // directories, so a call that falls through to PATH is recorded, and `done()` fails on it.
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { GUARD_VARS } from "../../plugins/council/scripts/lib/core/execution.mjs";
 import { loadJob } from "../../plugins/council/scripts/lib/core/jobs.mjs";
@@ -19,6 +19,14 @@ export const ENTRY = fileURLToPath(new URL("../../plugins/council/scripts/counci
 export const PLUGIN_DIR = fileURLToPath(new URL("../../plugins/council", import.meta.url));
 const FIXTURES = fileURLToPath(new URL("./", import.meta.url));
 export const CONTRACT = readFileSync(new URL("../../plugins/council/contract.md", import.meta.url), "utf8").replace(/\r\n?/g, "\n").trim();
+const WINDOWS = process.platform === "win32";
+/** Git for Windows puts only git.exe on PATH outside Git Bash; its bash.exe sits at a fixed place below that. */
+const windowsBash = () => {
+  const bundled = resolve(spawnSync("git", ["--exec-path"], { encoding: "utf8" }).stdout.trim(), "..", "..", "..", "bin", "bash.exe");
+  return existsSync(bundled) ? bundled : "bash.exe";
+};
+/** The trap directory first, then what the turn needs: the host's own PATH on Windows, the POSIX system directories elsewhere. */
+const searchPath = (...first) => [...first, ...(WINDOWS ? [process.env.PATH ?? process.env.Path ?? ""] : ["/usr/bin", "/bin"])].join(delimiter);
 export const PROVIDERS = ["codex", "gemini", "grok"];
 const FAKES = { codex: "fake-codex.mjs", gemini: "fake-agy.mjs", grok: "fake-grok.mjs" };
 export const SESSION = "int-session";
@@ -51,6 +59,7 @@ export function harness() {
   for (const bin of ["codex", "agy", "grok"]) {
     writeFileSync(join(trapDir, bin), `#!/bin/sh\necho "${bin} $*" >> "${traps}"\nexit 97\n`);
     chmodSync(join(trapDir, bin), 0o755);
+    if (WINDOWS) writeFileSync(join(trapDir, `${bin}.cmd`), `@echo ${bin} %* >> "${traps}"\r\n@exit /b 97\r\n`);
   }
   const bins = {};
   for (const p of PROVIDERS) {
@@ -69,7 +78,7 @@ export function harness() {
     base[k] = v;
   }
   Object.assign(base, GIT_ENV, {
-    HOME: userHome, PATH: `${trapDir}:/usr/bin:/bin`, COUNCIL_HOME: home, COUNCIL_STDIN_DEADLINE_MS: "300", COUNCIL_FAKE_JOB_DIR: join(home, "jobs"),
+    HOME: userHome, ...(WINDOWS ? { USERPROFILE: userHome } : {}), PATH: searchPath(trapDir), COUNCIL_HOME: home, COUNCIL_STDIN_DEADLINE_MS: "300", COUNCIL_FAKE_JOB_DIR: join(home, "jobs"),
     COUNCIL_CODEX_BIN: bins.codex, COUNCIL_AGY_BIN: bins.gemini, COUNCIL_GROK_BIN: bins.grok,
   });
   const collect = (child) => {
@@ -81,7 +90,7 @@ export function harness() {
   /** One companion process (`node council.mjs <argv>`, stdin closed); resolves when it exits. */
   const run = (argv, env = {}) => collect(spawn(process.execPath, [ENTRY, ...argv], { cwd: repo, env: { ...base, ...env }, stdio: ["ignore", "pipe", "pipe"] }));
   /** A shell body run by bash, as Claude's Bash tool runs a command's block; `node` resolves on PATH. */
-  const sh = (body, env = {}) => collect(spawn("/bin/bash", ["-c", body], { cwd: repo, env: { ...base, PATH: `${trapDir}:${dirname(process.execPath)}:/usr/bin:/bin`, ...env }, stdio: ["ignore", "pipe", "pipe"] }));
+  const sh = (body, env = {}) => collect(spawn(WINDOWS ? windowsBash() : "/bin/bash", ["-c", body], { cwd: repo, env: { ...base, PATH: searchPath(trapDir, dirname(process.execPath)), ...env }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true }));
   /** A threaded turn of `provider` with the fake's content markers. */
   const turn = (provider, argv, text, env = {}) => run([...argv, "--session", SESSION, "--", text], { ...markers(provider, text), ...env });
   const job = (id) => loadJob(canonical(home), id);
@@ -90,7 +99,11 @@ export function harness() {
   const trapped = () => readFileSync(traps, "utf8");
   const done = () => {
     assert.equal(trapped(), "", "no call reached a codex, agy or grok on PATH");
-    rmSync(root, { recursive: true, force: true });
+    // A detached helper keeps its cwd locked on Windows until it ends, and fs.rmSync retries only its root.
+    for (const end = Date.now() + (WINDOWS ? 25000 : 0); ;) {
+      try { rmSync(root, { recursive: true, force: true }); break; }
+      catch (error) { if (Date.now() >= end) throw error; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250); }
+    }
   };
   return { root, home, repo, cwd, base, run, sh, turn, job, jobIds, invocations, trapped, done };
 }

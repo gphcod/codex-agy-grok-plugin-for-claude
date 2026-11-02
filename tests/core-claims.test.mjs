@@ -98,6 +98,7 @@ function procEntry(proc, pid, { ppid, pgrp = pid, state = "S", flags = 0, start 
 }
 
 test("Linux snapshot from /proc: argv, group, boot id, zombies skipped, exiting flag, scoped query", () => {
+  process.getuid ??= () => 0; // Windows has none; the /proc reader compares with it, and a stat there reports uid 0.
   const proc = tmp();
   try {
     mkdirSync(join(proc, "sys", "kernel", "random"), { recursive: true });

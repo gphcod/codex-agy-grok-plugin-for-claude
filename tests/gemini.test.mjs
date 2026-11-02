@@ -5,7 +5,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import gemini, { WEB_NOTE, tierWarnings, BINARIES, MAX_FRAME_BYTES, WINDOWS_UNSUPPORTED, checkGeminiRequest, globalSettingsPath, modelArgs, printTimeout, probeAgy, readGlobalPolicy, sessionSettings, settingsPathOf, firstJsonObject, describeToolStep, describeStepError, isDenialStep, stepCounters } from "../plugins/council/scripts/lib/providers/gemini.mjs";
+import gemini, { WEB_NOTE, tierWarnings, BINARIES, MAX_FRAME_BYTES, WINDOWS_QUALIFIED, checkGeminiRequest, globalSettingsPath, modelArgs, printTimeout, probeAgy, readGlobalPolicy, sessionSettings, settingsPathOf, firstJsonObject, describeToolStep, describeStepError, isDenialStep, stepCounters } from "../plugins/council/scripts/lib/providers/gemini.mjs";
 import { DEADLINE_S } from "../plugins/council/scripts/lib/core/lifecycle.mjs";
 import { createReader } from "../plugins/council/scripts/lib/core/reader.mjs";
 import { finalizeReviewTurn } from "../plugins/council/scripts/lib/core/review.mjs";
@@ -51,7 +51,7 @@ function sandbox({ global = null } = {}) {
   mkdirSync(cwd);
   mkdirSync(join(userHome, ".gemini", "antigravity-cli"), { recursive: true });
   if (global !== null) writeFileSync(join(userHome, ".gemini", "antigravity-cli", "settings.json"), typeof global === "string" ? global : JSON.stringify(global));
-  const env = { ...process.env, COUNCIL_HOME: home, HOME: userHome, COUNCIL_AGY_BIN: FAKE_AGY, COUNCIL_STDIN_DEADLINE_MS: "300", COUNCIL_FAKE_JOB_DIR: join(home, "jobs"), COUNCIL_FAKE_EXPECT_CONTRACT: CONTRACT };
+  const env = { ...process.env, COUNCIL_HOME: home, HOME: userHome, USERPROFILE: userHome, COUNCIL_AGY_BIN: FAKE_AGY, COUNCIL_STDIN_DEADLINE_MS: "300", COUNCIL_FAKE_JOB_DIR: join(home, "jobs"), COUNCIL_FAKE_EXPECT_CONTRACT: CONTRACT };
   for (const g of GUARD_VARS) delete env[g];
   for (const k of Object.keys(env)) if (k.startsWith("COUNCIL_FAKE_") && !["COUNCIL_FAKE_JOB_DIR", "COUNCIL_FAKE_EXPECT_CONTRACT"].includes(k)) delete env[k];
   const call = async (argv, { text = "", prompt, scenario = "ok", extra = {}, hooks = {}, json: asJson = true } = {}) => {
@@ -87,7 +87,7 @@ test("resolveLauncher: COUNCIL_AGY_BIN, PATH, missing", () => withTmp((dir) => {
   mkdirSync(bin);
   writeFileSync(join(bin, "agy"), "#!/bin/sh\n");
   chmodSync(join(bin, "agy"), 0o755);
-  assert.deepEqual(gemini.resolveLauncher({ PATH: bin }, "darwin"), { command: join(bin, "agy"), args: [], path: join(bin, "agy"), kind: "native" });
+  if (process.platform !== "win32") assert.deepEqual(gemini.resolveLauncher({ PATH: bin }, "darwin"), { command: join(bin, "agy"), args: [], path: join(bin, "agy"), kind: "native" }); // A POSIX PATH splits on the colon of a Windows drive.
   assert.equal(gemini.resolveLauncher({ PATH: join(dir, "none") }, "darwin"), null);
 }));
 
@@ -124,12 +124,13 @@ test("probe: a failed listing throws with the reason instead of writing an empty
   assert.throws(() => probeAgy({}, {}, "darwin", spawnFail), /agy --version failed: spawn agy ENOENT/);
   const versionFail = () => ({ status: 3, stdout: "", stderr: "boom" });
   assert.throws(() => probeAgy({}, {}, "darwin", versionFail), /agy --version exited 3: boom/);
-  assert.throws(() => probeAgy({}, {}, "win32", run), (e) => e instanceof UsageError && e.message === WINDOWS_UNSUPPORTED, "setup reports Gemini unsupported on Windows (A8)");
+  assert.throws(() => probeAgy({}, {}, "win32", run), /not logged in or listing failed/, "Windows is qualified (A8): the probe runs there too");
 });
 
-test("checkRequest: win32 refuses every turn verb with the A8 message; --web exits 2", () => {
+test("checkRequest: every turn verb runs on a qualified Windows (A8); --web exits 2", () => {
+  assert.equal(WINDOWS_QUALIFIED, true, "docs/qualification/windows.md records the session");
   for (const verb of ["ask", "reply", "review", "task"]) {
-    assert.throws(() => checkGeminiRequest({ verb, web: false }, {}, "win32"), (e) => e instanceof UsageError && e.message === WINDOWS_UNSUPPORTED, verb);
+    assert.doesNotThrow(() => checkGeminiRequest({ verb, web: false }, {}, "win32"), verb);
     assert.doesNotThrow(() => checkGeminiRequest({ verb, web: false }, {}, "darwin"), verb);
     assert.doesNotThrow(() => checkGeminiRequest({ verb, web: false }, {}, "linux"), verb);
   }
@@ -212,7 +213,8 @@ test("model arguments: a suffixed id alone, a family with its clamped effort, an
 });
 
 test("global settings: absent file, HOME from the call's env, invalid content refused", () => withTmp((dir) => {
-  assert.equal(globalSettingsPath({ HOME: "/u" }), join("/u", ".gemini", "antigravity-cli", "settings.json"));
+  assert.equal(globalSettingsPath({ HOME: "/u", USERPROFILE: "/u" }), join("/u", ".gemini", "antigravity-cli", "settings.json"));
+  if (process.platform === "win32") assert.equal(globalSettingsPath({ HOME: "/git-bash", USERPROFILE: "/u" }), join("/u", ".gemini", "antigravity-cli", "settings.json"), "agy.exe follows USERPROFILE");
   assert.equal(globalSettingsPath({ USERPROFILE: "C:/u" }), join("C:/u", ".gemini", "antigravity-cli", "settings.json"));
   const absent = turnFixture(join(dir, "a"), { global: null });
   gemini.buildTurn(absent.request);
@@ -232,7 +234,7 @@ test("global settings: absent file, HOME from the call's env, invalid content re
   }
   const big = turnFixture(join(dir, "big"), { global: JSON.stringify({ pad: "x".repeat(2 * 1024 * 1024) }) });
   assert.throws(() => gemini.buildTurn(big.request), /exceeds 2 MiB/);
-  assert.deepEqual(readGlobalPolicy({ HOME: join(dir, "nowhere") }), { permissions: { allow: [], ask: [], deny: [] }, toolPermission: null });
+  assert.deepEqual(readGlobalPolicy({ HOME: join(dir, "nowhere"), USERPROFILE: join(dir, "nowhere") }), { permissions: { allow: [], ask: [], deny: [] }, toolPermission: null });
 }));
 
 // --- S5.3 parseEvent and finalizeReview -------------------------------------------------------------------
@@ -490,7 +492,7 @@ test("ask → task --thread → reply → task --thread: settings, --sandbox, --
       assert.equal(args(spawn, "--mode"), want.readOnly ? undefined : "accept-edits", `turn ${i + 1}: --mode only on tasks`);
       assert.equal(args(spawn, "--conversation"), want.conversation, `turn ${i + 1}: --conversation`);
       assert.deepEqual(spawn.settings, want.readOnly ? readOnlySettings : taskSettings, `turn ${i + 1}: settings`);
-      assert.match(args(spawn, "--settings"), new RegExp(`/jobs/[a-z0-9]{16}/settings\\.json$`));
+      assert.match(args(spawn, "--settings"), new RegExp(`[\\\\/]jobs[\\\\/][a-z0-9]{16}[\\\\/]settings\\.json$`));
       assert.equal(args(spawn, "--print-timeout"), `${DEADLINE_S}s`, "the execution deadline (A3.3)");
       assert.ok(spawn.content.startsWith(CONTRACT));
     }

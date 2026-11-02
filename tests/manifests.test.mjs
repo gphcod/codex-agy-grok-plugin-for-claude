@@ -29,7 +29,7 @@ test("package.json has no dependencies and the required scripts", () => {
   assert.equal(pkg.private, true);
   assert.equal(pkg.dependencies, undefined);
   assert.equal(pkg.devDependencies, undefined);
-  assert.equal(pkg.engines.node, ">=18.20.8 <19 || >=22.19.0");
+  assert.equal(pkg.engines.node, ">=22.19.0");
   for (const s of ["test", "test:live", "gen", "gen:check", "measure"]) assert.ok(pkg.scripts[s], s);
 });
 

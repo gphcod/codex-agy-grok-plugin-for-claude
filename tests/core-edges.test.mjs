@@ -75,7 +75,7 @@ test("held pipes whose identified holder is stopped: the turn fails with the sur
 const { spawn } = await import("node:child_process");
 process.stdout.write(JSON.stringify({ type: "started", thread: process.argv[i + 1] }) + "\\n");
 process.stdout.write(JSON.stringify({ type: "text", data: "answer" }) + "\\n" + JSON.stringify({ type: "done" }) + "\\n");
-spawn(process.execPath, ["-e", "setTimeout(() => {}, 20000)", "--", "--job", process.argv[j + 1]], { stdio: ["ignore", "inherit", "inherit"], detached: true }).unref();
+spawn(process.execPath, ["-e", "setTimeout(() => {}, 20000)", "--", "--job", process.argv[j + 1], process.env.TEMP ?? ""], { stdio: ["ignore", "inherit", "inherit"], detached: true }).unref();
 process.exit(0);`;
     writeFileSync(join(s.root, "holder.mjs"), holder);
     const env = { ...s.env, COUNCIL_NULL_BIN: join(s.root, "holder.mjs") };
@@ -87,24 +87,39 @@ process.exit(0);`;
   } finally { s.done(); }
 });
 
+test("a name with a space is reported without the tab Git ends its diff header with", () => {
+  const base = tmp();
+  try {
+    const dir = initRepo(join(base, "repo"));
+    writeFileSync(join(dir, "space name.txt"), "a\n");
+    writeFileSync(join(dir, "gone name.txt"), "a\n");
+    commitAll(dir, "base");
+    writeFileSync(join(dir, "space name.txt"), "b\n");
+    git(dir, ["rm", "-q", "gone name.txt"]);
+    assert.deepEqual(collectReview(reviewTarget(dir, { uncommitted: true })).reviewed.sort(), ["gone name.txt", "space name.txt"]);
+  } finally { rmSync(base, { recursive: true, force: true }); }
+});
+
 test("collection: deletions are named by their old path, binary diffs stay whole, odd names are decoded", () => {
   const base = tmp();
   try {
     const dir = initRepo(join(base, "repo"));
     writeFileSync(join(dir, "gone.txt"), "bye\n");
     writeFileSync(join(dir, "image.bin"), Buffer.from([0, 1, 2]));
-    writeFileSync(join(dir, "tab\tname.txt"), "t\n");
-    writeFileSync(join(dir, "quote\"name.txt"), "q\n");
+    const tab = process.platform === "win32" ? "tab name.txt" : "tab\tname.txt"; // Windows forbids a tab in a name.
+    writeFileSync(join(dir, tab), "t\n");
+    const quote = process.platform === "win32" ? "quote name.txt" : "quote\"name.txt"; // Windows forbids a quote in a name.
+    writeFileSync(join(dir, quote), "q\n");
     commitAll(dir, "base");
     git(dir, ["rm", "-q", "gone.txt"]);
     writeFileSync(join(dir, "image.bin"), Buffer.from([0, 9, 9, 9]));
-    writeFileSync(join(dir, "tab\tname.txt"), "t2\n");
-    writeFileSync(join(dir, "quote\"name.txt"), "q2\n");
+    writeFileSync(join(dir, tab), "t2\n");
+    writeFileSync(join(dir, quote), "q2\n");
     const c = collectReview(reviewTarget(dir, { uncommitted: true }));
-    assert.deepEqual(c.reviewed.sort(), ["gone.txt", "image.bin", "quote\"name.txt", "tab\tname.txt"].sort());
+    assert.deepEqual(c.reviewed.sort(), ["gone.txt", "image.bin", quote, tab].sort());
     assert.match(c.diff, /^Binary files a\/image\.bin and b\/image\.bin differ$/m);
     assert.match(c.diff, /^deleted file mode 100644$/m);
-    assert.match(c.diff, /^\+\+\+ "b\/tab\\tname\.txt"$/m, "Git C-quotes the header; the name is decoded for coverage");
+    if (process.platform !== "win32") assert.match(c.diff, /^\+\+\+ "b\/tab\\tname\.txt"$/m, "Git C-quotes the header; the name is decoded for coverage");
   } finally { rmSync(base, { recursive: true, force: true }); }
 });
 

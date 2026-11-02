@@ -12,7 +12,7 @@ export const spikeDir = join(repoRoot, "docs", "spike");
 export const streamsDir = join(fixturesDir, "streams");
 
 export const SCENARIOS = ["ok", "resume", "denied", "effort-error", "review-findings", "review-malformed", "slow", "hold-pipes"];
-export const GUARD_VARS = ["COUNCIL_DEPTH", "CODEX_COMPANION_DEPTH", "GROK_BUILD_DEPTH", "CLAUDE_PLUGIN_CODEX_DEPTH"];
+export const GUARD_VARS = ["COUNCIL_DEPTH", "CODEX_COMPANION_DEPTH", "GROK_BUILD_DEPTH", "CLAUDE_PLUGIN_CODEX_DEPTH", "GROK_CODEX_DEPTH", "AGY_BRIDGE_DEPTH"];
 export const SHARED_ENUM = ["low", "medium", "high", "xhigh", "max"];
 
 export function fail(message) {
@@ -55,7 +55,7 @@ export function expectContract(actual, what, env = process.env) {
 export function expectInJobDir(file, what, env = process.env) {
   const dir = env.COUNCIL_FAKE_JOB_DIR;
   if (!dir) fail(`no COUNCIL_FAKE_JOB_DIR marker to check the ${what} path against`);
-  const real = (p) => { try { return realpathSync(p); } catch { return resolve(p); } };
+  const real = (p) => { try { return realpathSync.native(p); } catch { return resolve(p); } };
   const inside = real(dirname(file)) === real(dir) || real(dirname(file)).startsWith(real(dir) + sep);
   if (!inside) fail(`${what} ${file} is outside the job directory ${dir}`);
 }
@@ -131,7 +131,7 @@ export function slowMs(env = process.env) {
  */
 export function holdPipes(env = process.env) {
   const ms = Number(env.COUNCIL_FAKE_HOLD_MS ?? 15000);
-  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "--hold", String(ms)], {
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "--hold", String(ms), env.TEMP ?? ""], {
     detached: true, stdio: ["ignore", "inherit", "inherit"],
   });
   child.unref();

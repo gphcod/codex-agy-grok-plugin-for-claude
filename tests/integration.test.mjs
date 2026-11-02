@@ -44,7 +44,7 @@ test("(a) three concurrent background asks: ownership is per job, prune and a po
   const h = harness();
   try {
     seedFinished(h, 102);
-    const slow = { codex: "1200", gemini: "5000", grok: "5000" };
+    const slow = process.platform === "win32" ? { codex: "4000", gemini: "12000", grok: "12000" } : { codex: "1200", gemini: "5000", grok: "5000" }; // A Windows process query costs a second or more under load.
     const pending = Object.fromEntries(PROVIDERS.map((p) => [p, h.turn(p, ["ask", "--to", p], `brief for ${p}`, { COUNCIL_FAKE_SCENARIO: "slow", COUNCIL_FAKE_SLOW_MS: slow[p] })]));
     const jobs = await runningJobs(h, PROVIDERS);
     // Ownership: each provider's evidence matches its own child and no other provider's.
@@ -145,7 +145,7 @@ test("(e) models --refresh and setup across all three; every probe child carries
     for (const p of PROVIDERS) assert.ok(existsSync(join(h.home, "catalog", `${p}.json`)), `${p} catalog cached`);
     const setup = await h.run(["setup"]);
     assert.equal(setup.code, 0, setup.err + setup.out);
-    for (const p of PROVIDERS) assert.match(setup.out, new RegExp(`^${p}: ready · ${h.root}/wrap-${p}\\.mjs \\(node-script\\) · .* · logged in$`, "m"), setup.out);
+    for (const p of PROVIDERS) assert.match(setup.out, new RegExp(`^${p}: ready · ${h.root.replace(/\\/g, "\\\\")}[\\\\/]wrap-${p}\\.mjs \\(node-script\\) · .* · logged in$`, "m"), setup.out);
     assert.match(setup.out, /note: mcp: inherit \(default\)/, "codex states its MCP trade-off");
     assert.match(setup.out, /note: .*search_web/i, "gemini states the web-search trade-off");
     const probes = h.invocations();
@@ -160,7 +160,7 @@ test("(f) replay and cancellation of one provider's job leave the others untouch
   try {
     const rid = { codex: "intC0001", gemini: "intG0001", grok: "intK0001" };
     const argv = (p) => ["ask", "--to", p, "--request-id", rid[p]];
-    const env = { COUNCIL_FAKE_SCENARIO: "slow", COUNCIL_FAKE_SLOW_MS: "4000" };
+    const env = { COUNCIL_FAKE_SCENARIO: "slow", COUNCIL_FAKE_SLOW_MS: process.platform === "win32" ? "15000" : "4000" }; // A Windows cancel takes seconds under load.
     const pending = Object.fromEntries(PROVIDERS.map((p) => [p, h.turn(p, argv(p), `fan-out brief`, env)]));
     const jobs = await runningJobs(h, PROVIDERS);
     const cancel = await h.run(["cancel", jobs.grok.id, "--session", SESSION]);

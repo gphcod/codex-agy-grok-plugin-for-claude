@@ -20,15 +20,17 @@ const norm = (s, platform) => platform === "win32" ? String(s).replace(/\\/g, "/
 const decodeHex = (s) => /^(?:[0-9a-f]{4})*$/.test(s) ? (s.match(/.{4}/g) ?? []).map((c) => String.fromCharCode(parseInt(c, 16))).join("") : null;
 /** A text field of the Windows query: "=" and printable ASCII as is, or "x" and UTF-16 code units in hex. */
 export const decodeText = (s) => s[0] === "=" ? (/^[\x20-\x7e]*$/.test(s.slice(1)) ? s.slice(1) : null) : s[0] === "x" ? decodeHex(s.slice(1)) : null;
-const psRun = (script, env, timeout = QUERY_MS) => spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+/** Windows PowerShell by its system path, so a narrow or planted PATH cannot break or hijack the identity-checked query and kill. */
+const powershellExe = () => { const file = process.env.SystemRoot ? path.join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe") : null; return file && fs.existsSync(file) ? file : "powershell.exe"; };
+const psRun = (script, env, timeout = QUERY_MS) => spawnSync(powershellExe(), ["-NoProfile", "-NonInteractive", "-Command", script], {
   env: { ...process.env, ...env }, encoding: "utf8", shell: false, windowsHide: true, timeout,
   maxBuffer: 16 * 1024 * 1024,
 });
 
 // --- depth guard (A5.1) ------------------------------------------------------------------------------
 
-/** The replaced plugins read the last three; every council child receives all four. */
-export const GUARD_VARS = ["COUNCIL_DEPTH", "CODEX_COMPANION_DEPTH", "GROK_BUILD_DEPTH", "CLAUDE_PLUGIN_CODEX_DEPTH"];
+/** The replaced plugins read all but the first; every council child receives all of them. */
+export const GUARD_VARS = ["COUNCIL_DEPTH", "CODEX_COMPANION_DEPTH", "GROK_BUILD_DEPTH", "CLAUDE_PLUGIN_CODEX_DEPTH", "GROK_CODEX_DEPTH", "AGY_BRIDGE_DEPTH"];
 /** The guard variable that marks this process as nested, or null. Read on admission. */
 export function nestedBy(env = process.env) {
   return GUARD_VARS.find((name) => typeof env[name] === "string" && env[name] !== "") ?? null;
@@ -38,7 +40,7 @@ export function assertNotNested(env = process.env) {
   if (by) throw new UsageError(`refusing a nested call: this process runs inside a provider turn started by a plugin (${by} is set)`);
 }
 /**
- * The child environment: the caller's, the adapter's additions, then all four guard variables. The
+ * The child environment: the caller's, the adapter's additions, then all the guard variables. The
  * host's session id stays behind: whatever a provider starts is not that session.
  */
 export function childEnv(base, extra = {}) {
@@ -386,7 +388,7 @@ if ($p.HasExited) { 'gone'; exit };
 $q=Get-CimInstance Win32_Process -Filter "ProcessId=$env:CC_KILL_PID";
 if (-not $q -or -not $q.CommandLine) { 'unknown'; exit };
 if ("$($q.CreationDate.ToUniversalTime().Ticks)" -ne $env:CC_KILL_STAMP -or $q.CommandLine -cne $env:CC_KILL_RAW) { 'mismatch'; exit };
-taskkill /T /F /PID $env:CC_KILL_PID | Out-Null;
+& "$env:SystemRoot\\System32\\taskkill.exe" /T /F /PID $env:CC_KILL_PID | Out-Null;
 if ($LASTEXITCODE -eq 0 -or $p.HasExited) { 'sent' } else { 'unknown' }`;
 
 /**

@@ -16,7 +16,7 @@ import nullAdapter from "./fixtures/null-adapter.mjs";
 const JOB = "abcdefghij123456";
 
 test("depth guard: any of the four A5.1 variables refuses admission; every child carries all four", () => {
-  assert.deepEqual(GUARD_VARS, ["COUNCIL_DEPTH", "CODEX_COMPANION_DEPTH", "GROK_BUILD_DEPTH", "CLAUDE_PLUGIN_CODEX_DEPTH"]);
+  assert.deepEqual(GUARD_VARS, ["COUNCIL_DEPTH", "CODEX_COMPANION_DEPTH", "GROK_BUILD_DEPTH", "CLAUDE_PLUGIN_CODEX_DEPTH", "GROK_CODEX_DEPTH", "AGY_BRIDGE_DEPTH"]);
   assert.equal(nestedBy({}), null);
   assert.equal(nestedBy({ COUNCIL_DEPTH: "" }), null, "an empty value is not set");
   for (const name of GUARD_VARS) {
@@ -172,10 +172,11 @@ test("Windows snapshot through a fake PowerShell runner: PSModulePath, ThreadCou
   assert.equal(failed.state, "unknown"); assert.equal(failed.error, "process query failed: Get-CimInstance : boom");
   const timedOut = processSnapshot({ platform: "win32", powershell: () => ({ error: { code: "ETIMEDOUT" } }), timeout: 5000 });
   assert.equal(timedOut.error, "process query timed out after 5 s");
-  assert.ok(WINDOWS_LIST.includes("ThreadCount") && WINDOWS_KILL.includes("taskkill /T /F"));
+  assert.ok(WINDOWS_LIST.includes("ThreadCount") && WINDOWS_KILL.includes("taskkill.exe\" /T /F"));
 });
 
 test("darwin snapshot parses pid, ppid, pgid, uid, stat, lstart and args", () => {
+  process.getuid ??= () => 501; // Windows has none; the darwin parser compares with it.
   const uid = process.getuid();
   const run = () => ({ status: 0, stdout: [
     `  100     1   100 ${uid} Ss   Sat Oct 31 12:00:00 2026 /sbin/launchd`,

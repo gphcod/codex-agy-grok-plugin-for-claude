@@ -483,6 +483,9 @@ export async function cancelManaged(ctx, job, { timeoutMs = 30000, control = exe
     let snapshot, unsure = null;
     try { snapshot = control.snapshot(); }
     catch (e) { snapshot = { state: "unknown", rows: [], error: `process query failed: ${e.message}` }; }
+    // The query can outlast the owner (most of a second on Windows): a job it finished meanwhile is not a recovery.
+    job = loadJob(ctx.home, job.id) ?? job;
+    if ((job.done || job.stopped) && !cleanupNeeded(job) && !claimHeld(ctx.home, job)) return { status: label(job), code: 0, job: view() };
     const owner = companionState(job, snapshot);
     if (owner === "gone") {
       let found;

@@ -44,8 +44,10 @@ test("resolveLauncher: COUNCIL_CODEX_BIN, PATH, missing binary; the platform rid
     assert.deepEqual([viaEnv.command, viaEnv.args, viaEnv.kind, viaEnv.platform], [process.execPath, [FAKE], "node-script", "darwin"]);
     const bin = join(dir, "codex");
     writeFileSync(bin, "#!/bin/sh\nexit 0\n"); chmodSync(bin, 0o755);
-    const onPath = adapter.resolveLauncher({ PATH: dir }, "linux");
-    assert.deepEqual([onPath.command, onPath.args, onPath.kind, onPath.platform], [bin, [], "native", "linux"]);
+    if (process.platform !== "win32") { // A POSIX PATH splits on the colon of a Windows drive.
+      const onPath = adapter.resolveLauncher({ PATH: dir }, "linux");
+      assert.deepEqual([onPath.command, onPath.args, onPath.kind, onPath.platform], [bin, [], "native", "linux"]);
+    }
     assert.equal(adapter.resolveLauncher({ PATH: join(dir, "nowhere") }, "darwin"), null);
     assert.equal(adapter.resolveLauncher({ COUNCIL_CODEX_BIN: join(dir, "missing") }, "darwin"), null);
   } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -221,7 +223,7 @@ test("buildTurn with COUNCIL_CODEX_MCP=off: ask, reply and review drop plugins, 
     assert.deepEqual(ask.args.slice(11, 18), ["model_reasoning_effort=high", "--disable", "plugins", "--disable", "apps", "-c", servers]);
     assert.equal(calls().length, 2, "two discovery calls with servers configured (S1.1)");
     assert.deepEqual(calls().map((c) => c.argv.slice(0, 3)), [["mcp", "list", "--json"], ["mcp", "list", "--json"]]);
-    assert.ok(calls().every((c) => c.guards.length === 4), "discovery calls carry the guard variables");
+    assert.ok(calls().every((c) => c.guards.length === 6), "discovery calls carry the guard variables");
     writeFileSync(log, "");
     adapter.buildTurn(request(dir, { verb: "task", readOnly: false, env }));
     assert.equal(calls().length, 0, "task keeps the user's tools: no discovery");

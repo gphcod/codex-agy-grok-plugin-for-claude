@@ -40,7 +40,7 @@
 /**
  * @typedef {object} Turn  buildTurn's return.
  * @property {string[]} args
- * @property {Record<string,string>} env  additions; the core adds the four guard variables
+ * @property {Record<string,string>} env  additions; the core adds the guard variables
  * @property {string} [stdin]
  * @property {string} [promptFile]  with promptText, written by the core before the spawn
  * @property {string} [settingsPath]  a job-specific settings file the adapter wrote (Gemini)

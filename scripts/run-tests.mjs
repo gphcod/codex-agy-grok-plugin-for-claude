@@ -2,7 +2,7 @@
 // Test runner. Default: tests/**/*.test.mjs minus tests/live/** and *.live.test.mjs.
 // --live: tests/live/**/*.live.test.mjs only. --ratio: core test density check.
 // Spawns `node --test <files>` itself, so no shell globbing is needed on Windows.
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -94,11 +94,27 @@ function main(argv) {
   const { CLAUDE_CODE_SESSION_ID: _host, ...env } = process.env;
   if (mode === "live") return spawnSync(process.execPath, ["--test", ...files], { stdio: "inherit", cwd: repoRoot, env }).status ?? 1;
   // One temp root per default run, removed afterwards: the tests make thousands of directories under os.tmpdir().
-  const scratch = mkdtempSync(join(tmpdir(), "council-run-"));
-  try {
-    return spawnSync(process.execPath, ["--test", ...files], { stdio: "inherit", cwd: repoRoot, env: { ...env, TMPDIR: scratch, TMP: scratch, TEMP: scratch } }).status ?? 1;
-  } finally {
-    rmSync(scratch, { recursive: true, force: true, maxRetries: 3 });
+  const scratch = realpathSync.native(mkdtempSync(join(tmpdir(), "council-run-")));
+  const status = spawnSync(process.execPath, ["--test", ...files], { stdio: "inherit", cwd: repoRoot, env: { ...env, TMPDIR: scratch, TMP: scratch, TEMP: scratch } }).status ?? 1;
+  return removeScratch(scratch) ? status : status || 1;
+}
+
+/**
+ * Removes the run's temp root. On Windows a directory stays locked while a process has it as its cwd, so the fixtures'
+ * leftover holders go first: each names the root on its command line. A root that cannot go fails the run.
+ */
+function removeScratch(scratch) {
+  if (process.platform === "win32") {
+    const stop = "$env:PSModulePath=\"$PSHOME\\Modules\"; CimCmdlets\\Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine.IndexOf($env:COUNCIL_RUN_SCRATCH, [StringComparison]::OrdinalIgnoreCase) -ge 0 } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
+    const powershell = process.env.SystemRoot ? join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe") : "powershell.exe";
+    spawnSync(powershell, ["-NoProfile", "-NonInteractive", "-Command", stop], { env: { ...process.env, COUNCIL_RUN_SCRATCH: scratch }, stdio: "ignore", windowsHide: true, timeout: 30000 });
+  }
+  for (const end = Date.now() + (process.platform === "win32" ? 30000 : 0); ;) {
+    try { rmSync(scratch, { recursive: true, force: true, maxRetries: 3 }); return true; }
+    catch (error) {
+      if (Date.now() >= end) { console.error(`run-tests: could not remove ${scratch}: ${error.message}`); return false; }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500); // fs.rmSync retries only its root, not a locked directory inside it.
+    }
   }
 }
 

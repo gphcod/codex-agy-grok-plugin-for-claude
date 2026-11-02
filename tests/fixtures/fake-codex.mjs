@@ -15,7 +15,7 @@ const argv = process.argv.slice(2);
 // processes a call starts (model turn plus MCP discovery); a separate name from the null child's
 // COUNCIL_FAKE_SPAWN_LOG keeps core spawn counts unaffected when the core probes this fake.
 if (process.env.COUNCIL_FAKE_CODEX_LOG) {
-  appendFileSync(process.env.COUNCIL_FAKE_CODEX_LOG, JSON.stringify({ argv, cwd: process.cwd(), guards: ["COUNCIL_DEPTH", "CODEX_COMPANION_DEPTH", "GROK_BUILD_DEPTH", "CLAUDE_PLUGIN_CODEX_DEPTH"].filter((g) => process.env[g]) }) + "\n");
+  appendFileSync(process.env.COUNCIL_FAKE_CODEX_LOG, JSON.stringify({ argv, cwd: process.cwd(), guards: ["COUNCIL_DEPTH", "CODEX_COMPANION_DEPTH", "GROK_BUILD_DEPTH", "CLAUDE_PLUGIN_CODEX_DEPTH", "GROK_CODEX_DEPTH", "AGY_BRIDGE_DEPTH"].filter((g) => process.env[g]) }) + "\n");
 }
 const SANDBOXES = ["read-only", "workspace-write", "danger-full-access"];
 const EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultra"];

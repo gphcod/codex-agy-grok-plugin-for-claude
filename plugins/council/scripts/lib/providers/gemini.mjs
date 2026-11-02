@@ -21,8 +21,8 @@ import { resolveLauncher as resolveBinary, runSync } from "../core/launcher.mjs"
 export const MAX_FRAME_BYTES = 32 * 1024 * 1024;
 export const MAX_PARTIAL_BYTES = 32 * 1024 * 1024;
 export const BINARIES = ["agy", "agy.exe"];
-/** S7.2 sets this when the Windows session qualifies the agy path (A8). */
-export const WINDOWS_QUALIFIED = false;
+/** S7.2 qualified the agy path on Windows (A8, docs/qualification/windows.md); false restores the refusal below. */
+export const WINDOWS_QUALIFIED = true;
 export const WINDOWS_UNSUPPORTED = "Gemini (agy) is not supported on Windows in council 1.0: the agy path is not qualified there (PLAN.md A8); use --to codex or --to grok";
 
 /** A2 read-only deny list: the union of gemini-plugin-cc's and gemini-plugin-for-codex's rules. */
@@ -35,7 +35,8 @@ export const SCHEMA_PATH = path.join(PLUGIN_ROOT, "schemas", "review-output.sche
 
 /** The user's global agy settings file, under the HOME of the call's environment (never process.env). */
 export function globalSettingsPath(env = {}) {
-  return path.join(env.HOME || env.USERPROFILE || os.homedir(), ".gemini", "antigravity-cli", "settings.json");
+  // Windows agy finds its home through USERPROFILE and ignores HOME, which Git Bash also sets.
+  return path.join((process.platform === "win32" ? env.USERPROFILE || env.HOME : env.HOME || env.USERPROFILE) || os.homedir(), ".gemini", "antigravity-cli", "settings.json");
 }
 
 function permissionLists(data, where) {

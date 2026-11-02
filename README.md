@@ -6,7 +6,7 @@ council 1.0 replaces three plugins: codex-plugin-cc 2.3.2, gemini-plugin-cc 2.1.
 
 ## Install
 
-Requirements: Node `>=18.20.8 <19` or `>=22.19.0` (Node 20 is excluded). Install whichever of `codex`, `agy` and `grok` you want to use, put them on `PATH`, and log in to each once.
+Requirements: Node `>=22.19.0`. Install whichever of `codex`, `agy` and `grok` you want to use, put them on `PATH`, and log in to each once.
 
 ```text
 /plugin marketplace add gphcod/codex-agy-grok-plugin-for-claude
@@ -157,7 +157,7 @@ Environment variables: `COUNCIL_HOME`, `COUNCIL_CODEX_BIN`, `COUNCIL_AGY_BIN`, `
 | | Codex | Grok | Gemini |
 |---|---|---|---|
 | macOS | live contract tests passed (S3.5); matrix in S7.1 | live contract tests passed (S4.6); matrix in S7.1 | live contract tests passed (S5.6); matrix in S7.1 |
-| Windows | to be qualified (S7.2): native `codex.exe` and the npm shim | to be qualified (S7.2): native `grok.exe` and the npm shim | **unsupported** until S7.2 qualifies agy: turn verbs exit 2 on `win32`, and `setup` reports it |
+| Windows | checked: the npm `codex.cmd` shim, run through its native executable | checked: native `grok.exe`; the npm shim is not yet checked | checked: native `agy.exe` (`docs/qualification/windows.md`) |
 | Linux | optional, not qualified | optional, not qualified | optional, not qualified |
 
 On Windows council never launches through `cmd.exe`. An npm `.cmd` shim runs its JS entry with node. Process queries run inline in PowerShell with `PSModulePath` set.
@@ -168,7 +168,7 @@ On Windows council never launches through `cmd.exe`. An npm `.cmd` shim runs its
 - **A clean Codex review reports `incomplete` (exit 10).** `codex exec review` writes the same explanation-only text for a clean review as for output it could not parse. council therefore cannot prove a clean review and reports `codex reported no findings; its output cannot prove a clean review` with Codex's text. Read it; it is not an approval.
 - **Codex needs a Git repository or a trusted directory.** Elsewhere, `codex exec` exits 1 with its own message. council does not add `--skip-git-repo-check`.
 - **Gemini web search cannot be blocked.** agy's `search_web` tool ignores a `search_web(*)` deny rule, so read-only Gemini turns may search the web, and `--web --to gemini` exits 2 instead of pretending to switch it. `setup` says so.
-- **Gemini on Windows** is unsupported in 1.0 until S7.2 (see Platforms).
+- **A hard-killed companion on Windows** takes its provider child with it, unlike POSIX; `cancel` still recovers the job.
 - **Gemini settings.** Every turn passes a job-specific `--settings` file. It starts from the `allow`/`ask`/`deny` lists in your `~/.gemini/antigravity-cli/settings.json`, because a session list replaces the global one. On read-only turns it keeps only `read_file`/`read_url` allow rules and adds a deny list: `write_file(*)`, `edit_file(*)`, `command(*)`, `unsandboxed(*)`, `mcp(*)`, `execute_url(*)`. On tasks it keeps your lists unchanged. `--sandbox` is always on, and `--mode accept-edits` is passed only on tasks.
 - **Grok** runs read-only turns on the explore agent, or with the RESUME_DENY tool list once a task ran on the thread. It denies MCP tools, disables Claude skills, agents, hooks and MCP servers through its environment variables (and Claude rules on read-only turns), and turns web search off unless `--web`. Reviews run with `--cwd` at the repository root, because Grok sessions refuse `--add-dir`. Every Grok turn ends with a process scan for leftovers.
 
@@ -193,7 +193,6 @@ The full lists are in `docs/parity/codex.md`, `docs/parity/gemini.md` and `docs/
   - `result` and `status` become `wait`, and `rescue --plan` becomes `ask`.
   - `--timeout` becomes `--deadline`, which also sets agy's `--print-timeout`.
   - Malformed review output is `incomplete` (10).
-  - Windows is refused until it is qualified.
 
 ## Per-CLI-release checklist
 

@@ -28,7 +28,13 @@ function harness() {
     const code = await main(argv, { ...env, ...extra }, { stdout: { write: (s) => { out += s; } }, stderr: { write: (s) => { err += s; } }, stdin, cwd });
     return { code, out, err };
   };
-  return { root, cwd, env, call, home: () => canonical(join(root, "home")), done: () => rmSync(root, { recursive: true, force: true }) };
+  return { root, cwd, env, call, home: () => canonical(join(root, "home")), done: () => {
+    // Windows holds a killed child's cwd for a moment, and fs.rmSync retries only its root.
+    for (const end = Date.now() + (process.platform === "win32" ? 10000 : 0); ;) {
+      try { rmSync(root, { recursive: true, force: true }); return; }
+      catch (error) { if (Date.now() >= end) throw error; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100); }
+    }
+  } };
 }
 
 test("a native thread id two providers share is ambiguous without --to and resolves with it", async () => {

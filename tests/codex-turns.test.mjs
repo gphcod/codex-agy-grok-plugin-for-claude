@@ -62,7 +62,7 @@ test("ask: fresh read-only exec, prompt on stdin, answer from -o, footer and sta
     const [c] = h.calls();
     assert.equal(h.calls().length, 1, "one model process, nothing else");
     assert.deepEqual(c.argv, ["exec", "--json", "-o", h.answerOf(job), "-C", h.cwd, "-s", "read-only", "-m", "gpt-6.1-sol", "-c", "model_reasoning_effort=low", "-c", devInstructions, "-"]);
-    assert.equal(c.guards.length, 4, "all four guard variables reach the child");
+    assert.equal(c.guards.length, GUARD_VARS.length, "all the guard variables reach the child");
     const json = JSON.parse((await h.turn(["ask", "--to", "codex", "--json"], "Reply with pong")).out);
     assert.deepEqual([json.provider, json.model, json.effort, json.tier, json.exit, json.answer, json.round], ["codex", "gpt-6.1-sol", "high", "consult", 0, "pong", 1]);
     assert.equal(json.thread.length, 36);
