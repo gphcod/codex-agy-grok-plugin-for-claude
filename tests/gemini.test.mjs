@@ -517,7 +517,7 @@ test("denial exits 10: signature with the key absent, signature with an empty ar
     }
     const quiet = await s.call(["ask", "--to", "gemini"], { text: "x", extra: { COUNCIL_FAKE_AGY_RESULT: "denied-empty-response" }, json: false });
     assert.match(quiet.out, /^agy denied 1 tool call\(s\) by a deny rule: write_file /m);
-    assert.match(quiet.out, /^council gemini needs attention · job [a-z0-9]{16} · gemini-4-argon\/high · /m);
+    assert.match(quiet.out, /^council gemini needs attention · job [a-z0-9]{16} · gemini-4-argon\/medium · /m);
   } finally { s.done(); }
 });
 
@@ -650,7 +650,7 @@ test("setup and models --refresh through the fake: ready, notes, tier ids checke
     assert.deepEqual([row.ready, row.version, row.loggedIn, row.launcher.kind], [true, "1.4.12", true, "node-script"]);
     assert.deepEqual(row.notes, [WEB_NOTE]);
     assert.deepEqual(row.warnings, []);
-    assert.deepEqual(row.tiers, { consult: "gemini-4-argon/high", exec: "gemini-3.8-flash/high", deep: "gemini-4-argon/high" });
+    assert.deepEqual(row.tiers, { consult: "gemini-4-argon/medium", exec: "gemini-3.8-flash/high", deep: "gemini-4-argon/high" });
     const text = await s.call(["setup", "--to", "gemini"], { json: false });
     assert.match(text.out, /^gemini: ready · .*fake-agy\.mjs \(node-script\) · 1\.4\.12 · logged in$/m);
     assert.match(text.out, /^  note: web search stays available/m);

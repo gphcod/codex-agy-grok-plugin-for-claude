@@ -64,11 +64,11 @@ Tiers (`tiers.json`, family and effort stored separately):
 
 | Provider | consult | exec | deep |
 |---|---|---|---|
-| codex | gpt-6.1-sol / high | gpt-6-luna / max | gpt-6.1-sol / xhigh |
+| codex | gpt-6.1-sol / xhigh | gpt-6-luna / max | gpt-6.1-sol / xhigh |
 | grok | grok-4.7 / high | grok-4.7-build-fast / xhigh | grok-4.7 / xhigh |
-| gemini | gemini-4-argon / high | gemini-3.8-flash / high | gemini-4-argon / high |
+| gemini | gemini-4-argon / medium | gemini-3.8-flash / high | gemini-4-argon / high |
 
-Gemini has no effort above high, so its consult and deep tiers coincide; the skill says so.
+The owner set consultation defaults on 2026-11-02 to Codex 6.1 Sol/xhigh, Grok 4.7/high and Gemini 4 Argon/medium. Codex's default consultation therefore follows the background-call rule; Gemini's deep tier remains Argon/high.
 
 ## A3. Call surface
 
@@ -130,7 +130,7 @@ Slash commands (user-only, `disable-model-invocation: true`, generated from one 
 
 ### A3.5 Skill policy
 
-When the user did not name a model: `ask`/`reply`/`review` only, `--tier consult` passed explicitly, ask once before higher effort (not for Gemini), never `task`, even when the user asks for a fix or edit (2026-11-01, S7.1 fix C1: a provider name is not a model; do the `ask` or `review`, then point to `/council:task` or naming a model). When the user named a model or family: tier by complexity. Discussion protocol: F1/F2 findings tagged BLOCKER/MAJOR/MINOR with file:line; replies carry only `AGREE`, `CHANGE: …`, `REJECT: …` and new facts; 9-reply budget per thread in the footer; unresolved REJECT is reported as disagreement. Fan-out recipe per A6.
+When the user did not name a model: `ask`/`reply`/`review` only, `--tier consult` passed explicitly, ask once before higher effort, never `task`, even when the user asks for a fix or edit (2026-11-01, S7.1 fix C1: a provider name is not a model; do the `ask` or `review`, then point to `/council:task` or naming a model). When the user named a model or family: tier by complexity. Discussion protocol: F1/F2 findings tagged BLOCKER/MAJOR/MINOR with file:line; replies carry only `AGREE`, `CHANGE: …`, `REJECT: …` and new facts; 9-reply budget per thread in the footer; unresolved REJECT is reported as disagreement. Fan-out recipe per A6.
 
 ## A4. Repository layout
 

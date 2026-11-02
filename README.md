@@ -76,11 +76,11 @@ Any flag that a provider has no tested mapping for exits 2 before a job is recor
 
 | Provider | consult | exec | deep |
 |---|---|---|---|
-| codex | gpt-6.1-sol / high | gpt-6-luna / max | gpt-6.1-sol / xhigh |
+| codex | gpt-6.1-sol / xhigh | gpt-6-luna / max | gpt-6.1-sol / xhigh |
 | grok | grok-4.7 / high | grok-4.7-build-fast / xhigh | grok-4.7 / xhigh |
-| gemini | gemini-4-argon / high | gemini-3.8-flash / high | gemini-4-argon / high |
+| gemini | gemini-4-argon / medium | gemini-3.8-flash / high | gemini-4-argon / high |
 
-Gemini has no effort above high, so its consult and deep tiers are the same. Tiers live in `plugins/council/tiers.json`.
+The default consult tier uses Codex 6.1 Sol/xhigh, Grok 4.7/high and Gemini 4 Argon/medium. Codex consultations run in the background at their default effort; an explicit effort below xhigh may run in the foreground. Tiers live in `plugins/council/tiers.json`.
 
 ### Effort clamp rules
 
@@ -133,7 +133,7 @@ The skill tells Claude to open with Goal, Known, Files, Constraints and Done whe
 
 For a fan-out, Claude issues one background `ask` per provider in a single response. Each call carries the same brief, its own `--request-id` and the `consult` tier, unless you chose otherwise. Claude then compares the answers side by side. Follow-ups use `reply --thread <job>`, never `--last`. 1.0 has no coordinating `panel` process.
 
-When you did not name a model, the skill uses `ask`, `reply` and `review` only, passes `--tier consult`, asks you once before a higher effort (except for Gemini, whose consult tier is already its highest) and never starts a `task`, even when you ask for a fix or an edit. A provider name is not a model: it does the `ask` or `review`, then tells you to run `/council:task` or name a model if you want the provider to edit. When you named one, it picks the tier by complexity. Reviews, tasks and deep, xhigh, max or ultra calls run in the background with a `--request-id`.
+When you did not name a model, the skill uses `ask`, `reply` and `review` only, passes `--tier consult`, asks you once before effort above the default and never starts a `task`, even when you ask for a fix or an edit. A provider name is not a model: it does the `ask` or `review`, then tells you to run `/council:task` or name a model if you want the provider to edit. When you named one, it picks the tier by complexity. Reviews, tasks and deep, xhigh, max or ultra calls run in the background with a `--request-id`.
 
 ## State and recovery
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Default consultations use Codex 6.1 Sol/xhigh, Gemini 4 Argon/medium and Grok 4.7/high. Command guidance accounts for Codex's default background execution; explicit model, effort and tier overrides remain available.
+
 ## 1.0.0 (unreleased; 1.0.0-rc.4 candidate)
 
 First release of `council`. A single plugin now provides the following, through one companion process and one provider CLI child per call:

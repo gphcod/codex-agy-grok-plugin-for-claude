@@ -64,7 +64,7 @@ test("ask: fresh read-only exec, prompt on stdin, answer from -o, footer and sta
     assert.deepEqual(c.argv, ["exec", "--json", "-o", h.answerOf(job), "-C", h.cwd, "-s", "read-only", "-m", "gpt-6.1-sol", "-c", "model_reasoning_effort=low", "-c", devInstructions, "-"]);
     assert.equal(c.guards.length, GUARD_VARS.length, "all the guard variables reach the child");
     const json = JSON.parse((await h.turn(["ask", "--to", "codex", "--json"], "Reply with pong")).out);
-    assert.deepEqual([json.provider, json.model, json.effort, json.tier, json.exit, json.answer, json.round], ["codex", "gpt-6.1-sol", "high", "consult", 0, "pong", 1]);
+    assert.deepEqual([json.provider, json.model, json.effort, json.tier, json.exit, json.answer, json.round], ["codex", "gpt-6.1-sol", "xhigh", "consult", 0, "pong", 1]);
     assert.equal(json.thread.length, 36);
   } finally { h.done(); }
 });
@@ -133,7 +133,7 @@ test("review, both routes, every target: flags without focus; sentence plus focu
       assert.match(unfocused.err, / target=/);
       assert.match(unfocused.out, /^Verdict: changes requested\. /);
       assert.match(unfocused.out, /\nF1 MAJOR <scratch>\/codex\/review-repo\/calc\.js:3: Stop iteration before the array length\n/);
-      assert.match(unfocused.out, footer("needs attention", "gpt-6\\.1-sol", "high"));
+      assert.match(unfocused.out, footer("needs attention", "gpt-6\\.1-sol", "xhigh"));
       const [u] = h.calls();
       assert.deepEqual(u.argv.slice(0, 2 + c.expect.length), ["exec", "review", ...c.expect], c.name);
       assert.notEqual(u.argv.at(-1), "-");
@@ -233,7 +233,7 @@ test("failed commands, a turn error, a deadline stop: exit codes and --json fiel
     assert.match(plain.out, /^council codex needs attention · /m);
     const effort = await h.turn(["ask", "--to", "codex"], "x", { COUNCIL_FAKE_SCENARIO: "effort-error" });
     assert.equal(effort.code, 1);
-    assert.match(effort.out, /^council codex failed · .* · error: unsupported reasoning effort high for gpt-6\.1-sol/m);
+    assert.match(effort.out, /^council codex failed · .* · error: unsupported reasoning effort xhigh for gpt-6\.1-sol/m);
     const slow = await h.turn(["ask", "--to", "codex", "--deadline", "1"], "take long", { COUNCIL_FAKE_SCENARIO: "slow", COUNCIL_FAKE_SLOW_MS: "20000" });
     assert.equal(slow.code, 1);
     assert.match(slow.out, /error: wall-clock deadline passed/);
@@ -247,7 +247,7 @@ test("setup and models --refresh through the fake: launcher, version, login, MCP
     const setup = await h.call(["setup", "--to", "codex"]);
     assert.equal(setup.code, 0, setup.out);
     assert.match(setup.out, new RegExp(`^codex: ready · ${FAKE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\(node-script\\) · codex-cli 0\\.163\\.0 · logged in\\n`));
-    assert.match(setup.out, /\n {2}tiers: consult gpt-6\.1-sol\/high · exec gpt-6-luna\/max · deep gpt-6\.1-sol\/xhigh\n/);
+    assert.match(setup.out, /\n {2}tiers: consult gpt-6\.1-sol\/xhigh · exec gpt-6-luna\/max · deep gpt-6\.1-sol\/xhigh\n/);
     assert.match(setup.out, /\n {2}note: mcp: inherit \(default\): .* 19-29% fewer input tokens/);
     const off = await h.call(["setup", "--to", "codex", "--json"], { env: { COUNCIL_CODEX_MCP: "off" } });
     assert.match(JSON.parse(off.out)[0].notes[0], /^mcp: off for ask, reply and review/);

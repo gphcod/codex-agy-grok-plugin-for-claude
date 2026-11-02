@@ -55,7 +55,7 @@ test("ask, codex, gemini, grok: leading flags, a literal --, text with -- inside
     // Text without leading options is untouched, including a ` -- ` inside it.
     r = await h.sh(command("codex", "compare a -- b --effort max"), { ...env, ...markers("codex", "compare a -- b --effort max") });
     assert.equal(r.code, 0, r.err + r.out);
-    assert.match(footer(r.out), /^council codex ok · .* · gpt-6\.1-sol\/high · /, "no option was taken from inside the text");
+    assert.match(footer(r.out), /^council codex ok · .* · gpt-6\.1-sol\/xhigh · /, "no option was taken from inside the text");
 
     // Multiline text, quotes, $, backticks: the quoted heredoc passes them unexpanded.
     const multi = "First line\n\n  second line with 'quotes', \"double\", $HOME, $$, $& and $' and `ticks`\nlast";
@@ -73,7 +73,7 @@ test("ask, codex, gemini, grok: leading flags, a literal --, text with -- inside
     const direct = block(join("skills", "council", "SKILL.md")).replace("<text>", "skill form\n-- not an option");
     r = await h.sh(direct, { ...env, ...markers("codex", "skill form\n-- not an option") });
     assert.equal(r.code, 0, r.err + r.out);
-    assert.match(footer(r.out), /^council codex ok · .* · gpt-6\.1-sol\/high · /);
+    assert.match(footer(r.out), /^council codex ok · .* · gpt-6\.1-sol\/xhigh · /);
     assert.equal(h.job(r.job).tier, "consult");
   } finally { h.done(); }
 });
@@ -178,6 +178,9 @@ test("each command says how to run its Bash call: background for review, task, d
   assert.match(text("grok"), /`--tier exec` and no `--effort` below xhigh \(grok's exec tier runs at xhigh\)/);
   assert.doesNotMatch(text("gemini"), /--tier exec/, "gemini's exec tier runs at high: foreground");
   assert.match(text("reply"), /`--tier exec` on a codex or grok thread with no `--effort` below xhigh, or they set neither and the thread already runs at deep or at xhigh or above\. When you cannot tell, run it in the background\./);
+  for (const name of ["ask", "codex"]) assert.match(text(name), /Default consult calls for `codex` also run in the background when `--tier` is omitted or consult, unless `--effort` is below xhigh\./);
+  assert.match(text("reply"), /On `codex` threads, `--tier consult` also runs in the background unless `--effort` is below xhigh\./);
+  for (const name of ["gemini", "grok"]) assert.doesNotMatch(text(name), /Default consult calls/, "lower-effort defaults may run in the foreground");
   for (const name of ["review", "task"]) assert.match(text(name), /^Make one Bash tool call with `run_in_background: true`\./m);
   for (const name of ["wait", "cancel"]) assert.match(text(name), /^Make one Bash tool call in the foreground\. It starts no provider CLI\./m);
   for (const name of ["models", "setup"]) assert.match(text(name), /^Make one Bash tool call in the foreground\. It (starts no provider CLI unless|runs each provider's version)/m);
