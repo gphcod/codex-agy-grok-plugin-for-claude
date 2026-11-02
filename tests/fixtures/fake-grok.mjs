@@ -7,6 +7,7 @@
 // json-schema), review-malformed (synthetic), slow, hold-pipes. Grok-only knobs (synthetic):
 // COUNCIL_FAKE_GROK_ADVERTISE, COUNCIL_FAKE_GROK_EDIT, COUNCIL_FAKE_GROK_CWD (expected --cwd).
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { sep } from "node:path";
 import {
   deepEqual, emit, expectContract, expectInJobDir, expectPrompt, fail, holdPipes, parseArgs, printAndExit, readRepoSchema, readSpike, readStdin, readStreamFixture, requireGuards, scenario, sleep, slowMs, wantsWeb,
 } from "./fake-common.mjs";
@@ -40,9 +41,9 @@ if (readStdin().length) fail("grok receives no stdin");
 if (args.has("--session-id") === args.has("-r")) fail("exactly one of --session-id and -r");
 const sessionId = args.one("--session-id") ?? args.one("-r");
 if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) fail(`session id ${sessionId} is not a uuid`);
-const samePath = (a, b) => { try { return realpathSync(a) === realpathSync(b); } catch { return false; } };
+const samePath = (a, b) => { try { return realpathSync.native(a) === realpathSync.native(b); } catch { return false; } };
 // A review may run at the repository root above the spawn cwd (grok refuses --add-dir); any other turn runs where it was spawned.
-const within = (dir, inner) => { try { const d = realpathSync(dir), i = realpathSync(inner); return i === d || i.startsWith(d.endsWith("/") ? d : `${d}/`); } catch { return false; } };
+const within = (dir, inner) => { try { const d = realpathSync.native(dir), i = realpathSync.native(inner); return i === d || i.startsWith(d.endsWith(sep) ? d : `${d}${sep}`); } catch { return false; } };
 if (args.has("--cwd") && !samePath(args.one("--cwd"), process.cwd()) && !(args.has("--json-schema") && within(args.one("--cwd"), process.cwd()))) fail("--cwd differs from the spawn cwd");
 if (process.env.COUNCIL_FAKE_GROK_CWD && !samePath(args.one("--cwd"), process.env.COUNCIL_FAKE_GROK_CWD)) fail(`--cwd ${args.one("--cwd")} is not COUNCIL_FAKE_GROK_CWD`);
 if (args.one("--output-format") !== "streaming-json") fail("--output-format streaming-json missing");

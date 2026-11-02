@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (unreleased; 1.0.0-rc.1 on branch `s6`)
+## 1.0.0 (unreleased; 1.0.0-rc.2 candidate)
 
 First release of `council`. A single plugin now provides the following, through one companion process and one provider CLI child per call:
 
@@ -10,6 +10,18 @@ First release of `council`. A single plugin now provides the following, through 
 - authorized delegated edits
 
 The release check is S7 of `PLAN.md`: a macOS matrix, a Windows session and the tag.
+
+### Windows (checked 2026-11-01, `docs/qualification/windows.md`)
+
+- Gemini (agy) runs on Windows; the refusal stays behind `WINDOWS_QUALIFIED`.
+- Requires Node 22.19.0 or later; Node 18 is no longer supported.
+- `git rev-parse --show-toplevel` output is made native, so repository roots compare equal to other paths.
+- PowerShell and taskkill run from their system paths, so a narrow or planted PATH cannot break cleanup.
+- `cancel` no longer records a recovery on a job its owner finished during a slow process query.
+- Guard variables are the union of every replaced plugin's, so a call inside a council child cannot start one of them.
+- The test runner stops leftover fixture processes, retries removing its temp root and fails the run if it cannot.
+- `.gitattributes` keeps every text file LF, so a Windows checkout sends the same contract and templates.
+- A file name with a space no longer carries the tab Git ends its diff header with.
 
 ### Replaces
 

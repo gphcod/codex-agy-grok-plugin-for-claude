@@ -55,7 +55,7 @@ unconfirming.parseEvent = (line, state) => {
   return ev?.completed ? { ...ev, unconfirmed: HINT } : ev;
 };
 const request = (s, over = {}) => ({ verb: "ask", provider: "null", cwd: s.cwd, session: "s", tier: "consult", model: "null-model", effort: "high", requestedEffort: "high", modelVerified: true, thread: null, readOnly: true, text: "hello", contract: "<c/>", web: false, rounds: 9, round: 1, ...over });
-const FAST = { drainMs: 150, shutdownMs: 4000, retryMs: 300, graceMs: 150, pipeWaitMs: 500 };
+const FAST = { drainMs: 150, shutdownMs: process.platform === "win32" ? 20000 : 4000, retryMs: 300, graceMs: 150, pipeWaitMs: 500 };
 
 test("fresh turn: answer kept, exit 0, hint in the footer, no thread record; reply on the job exits 2 with the hint", async () => {
   const s = setup();

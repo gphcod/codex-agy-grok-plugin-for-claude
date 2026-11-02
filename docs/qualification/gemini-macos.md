@@ -37,7 +37,7 @@ council gemini ok · job 7ndoguytwdjj1lsn · gemini-4-argon/low · 6s · round 1
 ## Not covered here
 
 - `task` was not run live here, because PLAN.md marks every `task` that edits a working tree as **[user]**. It ran on 2026-11-01, see below; S7.1's matrix still covers it through the installed plugin.
-- Windows is S7.2. Until S7.2 runs, `checkRequest` refuses every Gemini turn verb on `win32` with the A8 message.
+- Windows is S7.2, recorded in `docs/qualification/windows.md`.
 
 ## S7.1 live task (2026-11-01)
 

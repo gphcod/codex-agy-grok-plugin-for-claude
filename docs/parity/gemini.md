@@ -79,5 +79,5 @@ Status values: **same**; **renamed** (the same capability under another name); *
 |---|---|---|
 | agy prints `print timeout` and exits 0 with a partial response | same | Exit 1, incomplete |
 | SIGTERM makes agy exit 1 with an `interrupted` result | same | Shown as `cancelled` when council cancelled the turn |
-| Windows | intentionally different | gemini-plugin-cc never ran on Windows; council refuses Gemini turn verbs on `win32` with the A8 message, and `setup` reports Gemini not ready there, until S7.2 qualifies agy |
+| Windows | intentionally different | gemini-plugin-cc had not run on Windows when this was written; council runs Gemini turn verbs on `win32`, checked in `docs/qualification/windows.md` |
 | Web search cannot be denied | intentionally different (new, recorded) | S1.2; `setup` note |

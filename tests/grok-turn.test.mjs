@@ -48,7 +48,7 @@ test("ask: fresh session, explore recipe, --rules contract on one line, prompt f
   const t = grok.buildTurn(req());
   assert.match(t.threadId, UUID);
   assert.deepEqual(t.args, [
-    "--prompt-file", "/h/jobs/abcdefghij123456/prompt.md", "--session-id", t.threadId, "--cwd", "/w", "--output-format", "streaming-json",
+    "--prompt-file", join("/h/jobs/abcdefghij123456", "prompt.md"), "--session-id", t.threadId, "--cwd", "/w", "--output-format", "streaming-json",
     "--model", "grok-4.7", "--effort", "low", "--no-auto-update", ...recipe("read-only").args, "--rules", oneLineContract(CONTRACT),
   ]);
   assert.equal(t.promptFile, join("/h/jobs/abcdefghij123456", "prompt.md"));

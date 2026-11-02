@@ -21,7 +21,7 @@ import { bound } from "../plugins/council/scripts/lib/core/git.mjs";
 import { resultJson } from "../plugins/council/scripts/lib/core/output.mjs";
 import { spawnChild } from "../plugins/council/scripts/lib/core/launcher.mjs";
 
-const FAST = { drainMs: 150, shutdownMs: 3000, retryMs: 300, graceMs: 100, pipeWaitMs: 400 };
+const FAST = { drainMs: 150, shutdownMs: process.platform === "win32" ? 20000 : 3000, retryMs: 300, graceMs: 100, pipeWaitMs: 400 };
 function setup(childScript = null) {
   const root = mkdtempSync(join(tmpdir(), "council-br-"));
   const home = homeDir({ COUNCIL_HOME: join(root, "home") });
@@ -191,7 +191,7 @@ test("state and catalog corner cases", () => {
     claimThread(home, "codex", "fine", job);
     assert.equal(claimHeld(home, job), true);
     writeFileSync(join(home, "claims-file"), "");
-    assert.throws(() => claimedProviders(join(home, "claims-file")), /ENOTDIR/);
+    if (process.platform !== "win32") assert.throws(() => claimedProviders(join(home, "claims-file")), /ENOTDIR/); // Windows says ENOENT below a file, which reads as no claims.
     const cat = loadCatalog(null, "codex");
     assert.deepEqual(resolveEffort("codex", "gpt-6.1-sol", null, cat), { effort: null, requested: null, clamped: false, suffixed: false }, "no request, no effort");
     const odd = { models: { m: ["medium", "high"] }, families: {}, aliases: {}, passThrough: [] };

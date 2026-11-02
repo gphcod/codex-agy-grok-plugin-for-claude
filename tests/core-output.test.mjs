@@ -64,7 +64,7 @@ test("footer: round only on threaded verbs, edited only on task, unreviewed only
 
 test("footer: model unverified, full file, error and recovery hints", () => {
   assert.match(footer(base({ modelVerified: false }), false), / · model unverified · /);
-  assert.match(footer(base(), true), new RegExp(` · full: /tmp/jobs/${ID}/answer.md`));
+  assert.match(footer(base(), true), new RegExp(` · full: [\\\\/]tmp[\\\\/]jobs[\\\\/]${ID}[\\\\/]answer.md`));
   assert.match(footer(base({ answerClipped: true }), false), / · full: /);
   assert.match(footer(base({ error: "multi\nline   error" }), false), / · error: multi line error/);
   assert.match(footer(base({ cleanupPending: true, stopped: false }), false), new RegExp(` · cleanup pending; next: cancel ${ID}; do not resume$`));
@@ -75,7 +75,7 @@ test("footer: model unverified, full file, error and recovery hints", () => {
   assert.equal(recoveryHint(base({ admitted: false })), null);
   // order of optional fields: round, edited, unreviewed, unverified, full, error, hint
   const all = footer(base({ verb: "task", edited: ["x"], modelVerified: false, answerClipped: true, error: "e", cleanupPending: true }), false);
-  assert.equal(all, `council codex ok · job ${ID} · gpt-6.1-sol/high · 12s · round 1/9 · edited 1 · model unverified · full: /tmp/jobs/${ID}/answer.md · error: e · cleanup pending; next: cancel ${ID}; do not resume`);
+  assert.equal(all, `council codex ok · job ${ID} · gpt-6.1-sol/high · 12s · round 1/9 · edited 1 · model unverified · full: ${join("/tmp", "jobs", ID, "answer.md")} · error: e · cleanup pending; next: cancel ${ID}; do not resume`);
 });
 
 test("renderResult: body then footer; the cap adds full: <file>", () => {
@@ -83,7 +83,7 @@ test("renderResult: body then footer; the cap adds full: <file>", () => {
   assert.equal(out, `The answer.\ncouncil codex ok · job ${ID} · gpt-6.1-sol/high · 12s · round 1/9 · next: reply ${ID}\n`);
   const capped = renderResult(base(), "y".repeat(ANSWER_CAP + 1));
   assert.ok(capped.startsWith("y".repeat(ANSWER_CAP) + "\n"));
-  assert.match(capped, / · full: \/tmp\/jobs\/[a-z0-9]{16}\/answer\.md/);
+  assert.match(capped, / · full: [\\/]tmp[\\/]jobs[\\/][a-z0-9]{16}[\\/]answer\.md/);
   assert.equal(renderResult(base(), ""), `council codex ok · job ${ID} · gpt-6.1-sol/high · 12s · round 1/9 · next: reply ${ID}\n`);
 });
 
@@ -94,7 +94,7 @@ test("--json carries every A3.4 field", () => {
   assert.equal(j.verdict, "changes"); assert.equal(j.findings.length, 1); assert.deepEqual(j.coverage.unreviewed, ["big.bin"]);
   assert.equal(j.round, null, "no round on a review");
   assert.deepEqual(j.failedCommands, [{ cmd: "npm test", exit: 1 }]);
-  assert.equal(j.costUsd, 0.01); assert.equal(j.exit, 0); assert.equal(j.answerFile, `/tmp/jobs/${ID}/answer.md`);
+  assert.equal(j.costUsd, 0.01); assert.equal(j.exit, 0); assert.equal(j.answerFile, join("/tmp", "jobs", ID, "answer.md"));
   assert.equal(j.answer, "answer text"); assert.equal(j.clipped, false); assert.equal(j.status, "ok");
   const ask = resultJson(base(), "x".repeat(ANSWER_CAP + 5));
   assert.equal(ask.round, 1); assert.equal(ask.rounds, 9); assert.equal(ask.clipped, true); assert.equal(ask.answer.length, ANSWER_CAP);

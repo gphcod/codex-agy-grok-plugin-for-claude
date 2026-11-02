@@ -43,7 +43,7 @@ const adapter = {
     // COUNCIL_NULL_PROBE_NOTE: the provider-specific setup lines a real probe may add (notes, warnings).
     const extra = env.COUNCIL_NULL_PROBE_NOTE ? { notes: [env.COUNCIL_NULL_PROBE_NOTE, ""], warnings: ["null probe warning", 7] } : {};
     // Test seam: report which guard variables the probe received (A5.1: every provider child gets all four).
-    if (env.COUNCIL_NULL_PROBE_GUARDS) extra.notes = [`guards ${["COUNCIL_DEPTH", "CODEX_COMPANION_DEPTH", "GROK_BUILD_DEPTH", "CLAUDE_PLUGIN_CODEX_DEPTH"].filter((g) => env[g] === "1").join(",")}`];
+    if (env.COUNCIL_NULL_PROBE_GUARDS) extra.notes = [`guards ${["COUNCIL_DEPTH", "CODEX_COMPANION_DEPTH", "GROK_BUILD_DEPTH", "CLAUDE_PLUGIN_CODEX_DEPTH", "GROK_CODEX_DEPTH", "AGY_BRIDGE_DEPTH"].filter((g) => env[g] === "1").join(",")}`];
     return { version: "null 0.0.0", loggedIn: true, models: [{ id: "null-model", efforts: EFFORTS }, { id: "null-fast", efforts: ["low", "medium"] }], ...extra };
   },
   catalog: { models: { "null-model": EFFORTS, "null-fast": ["low", "medium"] }, aliases: { fast: "null-fast" }, sharedEnum: EFFORTS, passThrough: [] },

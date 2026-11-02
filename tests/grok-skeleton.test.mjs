@@ -35,8 +35,10 @@ test("resolveLauncher: COUNCIL_GROK_BIN, PATH, Windows native install fallback, 
     mkdirSync(bin);
     writeFileSync(join(bin, "grok"), "#!/bin/sh\n");
     chmodSync(join(bin, "grok"), 0o755);
-    const viaPath = grok.resolveLauncher({ PATH: bin }, "darwin");
-    assert.deepEqual([viaPath.kind, viaPath.path], ["native", join(bin, "grok")]);
+    if (process.platform !== "win32") { // A POSIX PATH splits on the colon of a Windows drive.
+      const viaPath = grok.resolveLauncher({ PATH: bin }, "darwin");
+      assert.deepEqual([viaPath.kind, viaPath.path], ["native", join(bin, "grok")]);
+    }
     assert.equal(grok.resolveLauncher({ PATH: "", HOME: dir }, "darwin"), null, "no fallback outside Windows");
     const profile = join(dir, "profile");
     mkdirSync(join(profile, ".grok", "bin"), { recursive: true });

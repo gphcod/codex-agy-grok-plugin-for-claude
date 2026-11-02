@@ -14,7 +14,7 @@ import { PIPE_WAIT_MS, cancelManaged, runManagedTurn, waitFor } from "../plugins
 import { footer } from "../plugins/council/scripts/lib/core/output.mjs";
 
 const tmp = () => mkdtempSync(join(tmpdir(), "council-lc-"));
-const FAST = { drainMs: 150, shutdownMs: 4000, retryMs: 300, graceMs: 150, pipeWaitMs: 500 };
+const FAST = { drainMs: 150, shutdownMs: process.platform === "win32" ? 20000 : 4000, retryMs: 300, graceMs: 150, pipeWaitMs: 500 };
 
 function setup(profile = {}, env = {}) {
   const root = tmp();

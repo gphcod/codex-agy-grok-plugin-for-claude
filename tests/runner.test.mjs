@@ -29,7 +29,7 @@ test("default and live selections are disjoint and cover the right files", () =>
   const dir = fixtureTree();
   try {
     const def = discover(dir, "default").map((f) => f.slice(dir.length + 1));
-    const live = discover(dir, "live").map((f) => f.slice(dir.length + 1));
+    const live = discover(dir, "live").map((f) => f.slice(dir.length + 1).replaceAll("\\", "/"));
     assert.deepEqual(def, ["catalog.test.mjs", "core-args.test.mjs"]);
     assert.deepEqual(live, ["live/codex.live.test.mjs", "live/nested/agy.live.test.mjs"]);
     assert.equal(def.filter((f) => live.includes(f)).length, 0);

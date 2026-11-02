@@ -14,7 +14,7 @@ import { homeDir, loadJob, loadThread } from "../plugins/council/scripts/lib/cor
 import { runManagedTurn } from "../plugins/council/scripts/lib/core/lifecycle.mjs";
 import { footer } from "../plugins/council/scripts/lib/core/output.mjs";
 
-const FAST = { drainMs: 150, shutdownMs: 3000, retryMs: 300, graceMs: 100, pipeWaitMs: 400 };
+const FAST = { drainMs: 150, shutdownMs: process.platform === "win32" ? 20000 : 3000, retryMs: 300, graceMs: 100, pipeWaitMs: 400 };
 
 function setup() {
   const root = mkdtempSync(join(tmpdir(), "council-fail-"));

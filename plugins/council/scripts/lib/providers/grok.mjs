@@ -53,7 +53,7 @@ export function recipe(kind, { web = false, defaultAgent = false } = {}) {
  * Child environment additions. Claude skills, agents (which also keeps ~/.claude/CLAUDE.md out), hooks
  * and MCP stay off inside Grok (hook recursion). Read-only turns also skip Claude's rules directories;
  * a task drops an inherited setting (undefined: the spawn leaves the variable out) so Grok's default
- * applies. The four guard variables come from the core (A5.1), replacing grok-build's GROK_BUILD_DEPTH.
+ * applies. The guard variables come from the core (A5.1), replacing grok-build's GROK_BUILD_DEPTH.
  */
 export function compatEnv(readOnly) {
   return {

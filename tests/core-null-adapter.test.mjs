@@ -139,7 +139,7 @@ test("fake child: every other scenario behaves as documented", async () => {
     assert.equal(slow.code, 0); assert.ok(slow.ms >= 250);
     assert.deepEqual(slow.lines.map((l) => JSON.parse(l).type), ["started", "progress", "text", "done"]);
     const killed = await run("slow", { COUNCIL_FAKE_SLOW_MS: "5000" }, { signalAfterMs: 200 });
-    assert.equal(killed.code, 143);
+    assert.equal(killed.code, process.platform === "win32" ? null : 143, "Windows ends the process without running a handler");
     const hold = await run("hold-pipes", { COUNCIL_FAKE_HOLD_MS: "1200" });
     assert.equal(hold.code, 0); assert.ok(hold.holdMs >= 900, `stdout stayed open ${hold.holdMs} ms after exit`);
     const nonzero = await run("exit-nonzero");

@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { catalogPath, loadCatalog, refreshCatalog, resolveEffort, resolveModel } from "../plugins/council/scripts/lib/core/catalog.mjs";
 import { resolveTier } from "../plugins/council/scripts/lib/core/tiers.mjs";
 import { claimRequest, createJob, homeDir, lastEvent, listJobs, loadJob, markDone, markStopped, requestJobId, saveJob, stateOf } from "../plugins/council/scripts/lib/core/jobs.mjs";
@@ -22,7 +22,7 @@ test("request claims raced by eight processes: exactly one is fresh, every loser
   const root = tmp();
   try {
     const home = homeDir({ COUNCIL_HOME: join(root, "home") });
-    const script = `import { claimRequest } from ${JSON.stringify(JOBS)};
+    const script = `import { claimRequest } from ${JSON.stringify(pathToFileURL(JOBS).href)};
 const r = claimRequest(process.argv[1], "null", "race-1", { session: "s", cwd: "/w" }, { fingerprint: "fp" });
 process.stdout.write(JSON.stringify({ id: r.id, fresh: r.fresh }));`;
     const runs = await Promise.all(Array.from({ length: 8 }, () => new Promise((resolve, reject) => {
@@ -144,7 +144,7 @@ test("A3.4 footer over every combination of verb, outcome and optional field", (
       ...(verb === "task" ? [`edited ${on("edited") ? 2 : 0}`] : []),
       ...(verb === "review" && on("unreviewed") ? ["unreviewed 1"] : []),
       ...(on("unverified") ? ["model unverified"] : []),
-      ...(on("clipped") ? ["full: /j/answer.md"] : []),
+      ...(on("clipped") ? [`full: ${join("/j", "answer.md")}`] : []),
       ...(on("error") ? ["error: boom"] : []),
       ...(on("pending") ? ["cleanup pending; next: cancel abcdefghij123456; do not resume"] : verb !== "review" ? ["next: reply abcdefghij123456"] : []),
     ];

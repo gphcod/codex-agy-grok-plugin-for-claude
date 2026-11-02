@@ -223,7 +223,7 @@ for (const sc of SCENARIOS) {
   });
 }
 
-test("slow scenarios stop on SIGTERM the way the probes recorded", async () => {
+test("slow scenarios stop on SIGTERM the way the probes recorded", { skip: process.platform === "win32" && "Windows ends the process without running a handler" }, async () => {
   const dir = tmp();
   try {
     const env = { ...guards, COUNCIL_FAKE_SCENARIO: "slow", COUNCIL_FAKE_SLOW_MS: "10000" };

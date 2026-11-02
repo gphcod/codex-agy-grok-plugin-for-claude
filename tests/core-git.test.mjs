@@ -1,9 +1,10 @@
 // S2.5: git.mjs — review targets and diff collection over the fixtures of tests/fixtures/build-repos.mjs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import fs, { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
+import { canonical } from "../plugins/council/scripts/lib/core/fs.mjs";
 import { UsageError } from "../plugins/council/scripts/lib/core/args.mjs";
 import {
   INLINE_CAP, bound, buildCollectionGuidance, collectReview, commitParents, defaultBranch, diffFileName, git as coreGit, gitPaths, oidOf, readRegular, repoRoot, reviewTarget, unquotePath,
@@ -16,6 +17,8 @@ isolateGit();
 const usage = (fn, re) => assert.throws(fn, (e) => e instanceof UsageError && (!re || re.test(e.message)));
 const cleanup = (dir) => rmSync(dir, { recursive: true, force: true });
 
+const canSymlink = process.platform !== "win32" || (() => { const dir = tempDir(); try { symlinkSync("x", join(dir, "link")); return true; } catch { return false; } finally { cleanup(dir); } })();
+
 test("repoRoot and the lazy root: outside a repository is a usage error", () => {
   const base = tempDir();
   try {
@@ -23,7 +26,7 @@ test("repoRoot and the lazy root: outside a repository is a usage error", () => 
     usage(() => reviewTarget(base, { uncommitted: true }), /inside a Git repository/);
     const { dir } = rootCommitRepo(base);
     mkdirSync(join(dir, "sub"));
-    assert.equal(repoRoot(join(dir, "sub")), git(dir, ["rev-parse", "--show-toplevel"]));
+    assert.equal(repoRoot(join(dir, "sub")), canonical(dir));
   } finally { cleanup(base); }
 });
 
@@ -110,7 +113,8 @@ test("--base includes committed branch changes, the working tree and untracked f
     writeFileSync(join(dir, "app.js"), "export const a = 3;\n");
     writeFileSync(join(dir, "notes with space.md"), "untracked note\n");
     mkdirSync(join(dir, "dir"));
-    writeFileSync(join(dir, "dir", "tab\there.txt"), "odd name\n");
+    const odd = process.platform === "win32" ? "dir/odd here.txt" : "dir/tab\there.txt"; // Windows forbids a tab in a name.
+    writeFileSync(join(dir, odd), "odd name\n");
     writeFileSync(join(dir, "ünïcode.txt"), "unicode name\n");
     const target = reviewTarget(dir, { base: "main" });
     assert.equal(target.kind, "base");
@@ -121,9 +125,9 @@ test("--base includes committed branch changes, the working tree and untracked f
     assert.match(c.diff, /^-export const a = 1;$/m, "compared against the merge base, not HEAD");
     assert.match(c.diff, /^\+export const a = 3;$/m, "working tree included");
     assert.match(c.diff, /^new untracked file notes with space.md\nuntracked note$/m);
-    assert.match(c.diff, /^new untracked file dir\/tab\there.txt\nodd name$/m, "-z keeps a tab in a path");
+    assert.ok(c.diff.includes(`new untracked file ${odd}\nodd name\n`) || c.diff.endsWith(`new untracked file ${odd}\nodd name`), "-z keeps a tab in a path");
     assert.match(c.diff, /^new untracked file ünïcode.txt$/m);
-    assert.deepEqual(c.reviewed.sort(), ["app.js", "dir/tab\there.txt", "notes with space.md", "ünïcode.txt"].sort());
+    assert.deepEqual(c.reviewed.sort(), ["app.js", odd, "notes with space.md", "ünïcode.txt"].sort());
     // ignored files are not untracked changes
     writeFileSync(join(dir, ".gitignore"), "*.log\n");
     writeFileSync(join(dir, "debug.log"), "noise\n");
@@ -144,7 +148,7 @@ test("--base with no common ancestor exits 2", () => {
   } finally { cleanup(base); }
 });
 
-test("a tracked symlink change contributes link text", () => {
+test("a tracked symlink change contributes link text", { skip: !canSymlink && "creating a symlink needs Developer Mode or elevation here" }, () => {
   const base = tempDir();
   try {
     const { dir, after, before } = symlinkChangeRepo(base);
@@ -162,7 +166,7 @@ test("a tracked symlink change contributes link text", () => {
   } finally { cleanup(base); }
 });
 
-test("an untracked symlink to an outside file contributes its link text and never the target's contents", () => {
+test("an untracked symlink to an outside file contributes its link text and never the target's contents", { skip: !canSymlink && "creating a symlink needs Developer Mode or elevation here" }, () => {
   const base = tempDir();
   try {
     const { dir, secret } = outsideSymlinkRepo(base);
@@ -273,7 +277,7 @@ test("size limit: whole files over the cap are omitted and named; binary and spe
     assert.ok(c.omitted.includes("blob.bin (untracked, binary)"));
     assert.ok(Buffer.byteLength(c.diff) <= 2048);
     assert.doesNotMatch(c.diff, /yyyy/);
-    if (c.omitted.some((o) => o.startsWith("pipe"))) assert.ok(c.omitted.includes("pipe (untracked, unsupported file type)"));
+    if (process.platform !== "win32" && c.omitted.some((o) => o.startsWith("pipe"))) assert.ok(c.omitted.includes("pipe (untracked, unsupported file type)"));
     assert.equal(INLINE_CAP, 256 * 1024);
     // a tracked file's diff over the cap is omitted whole, never cut
     writeFileSync(join(dir, "a.txt"), "z".repeat(3000) + "\n");
@@ -296,16 +300,19 @@ test("bound(): unreadable and changed-while-read untracked files are omitted, ne
     chmodSync(join(base, "locked.txt"), 0o000);
     mkdirSync(join(base, "adir"));
     const r = bound(base, "", ["ok.txt", "locked.txt", "adir", "missing.txt"], 4096);
-    assert.deepEqual(r.reviewed, ["ok.txt"]);
+    const modes = process.platform !== "win32"; // A Windows chmod cannot take read access away.
+    assert.deepEqual(r.reviewed, modes ? ["ok.txt"] : ["ok.txt", "locked.txt"]);
     assert.ok(r.omitted.includes("adir (untracked, unsupported file type)"));
     assert.ok(r.omitted.includes("missing.txt (untracked, unreadable)"));
-    if (process.getuid?.() !== 0) assert.ok(r.omitted.includes("locked.txt (untracked, unreadable)"));
+    if (modes && process.getuid?.() !== 0) assert.ok(r.omitted.includes("locked.txt (untracked, unreadable)"));
     assert.equal(r.empty, false);
     chmodSync(join(base, "locked.txt"), 0o600);
     assert.equal(readRegular(join(base, "ok.txt"), 999), null, "size changed since the stat");
     assert.equal(readRegular(join(base, "ok.txt"), 5).toString(), "fine\n");
-    symlinkSync(join(base, "ok.txt"), join(base, "via-link"));
-    assert.throws(() => readRegular(join(base, "via-link"), 5), /ELOOP|EMLINK|symbolic/i, "O_NOFOLLOW refuses a symlink");
+    if (canSymlink && fs.constants.O_NOFOLLOW) { // Windows has no O_NOFOLLOW.
+      symlinkSync(join(base, "ok.txt"), join(base, "via-link"));
+      assert.throws(() => readRegular(join(base, "via-link"), 5), /ELOOP|EMLINK|symbolic/i, "O_NOFOLLOW refuses a symlink");
+    }
     assert.deepEqual(bound(base, "", [], 10), { diff: "", omitted: [], reviewed: [], empty: true });
   } finally { cleanup(base); }
 });
@@ -329,8 +336,9 @@ test("gitPaths returns -z paths; the core runner reports failures", () => {
   const base = tempDir();
   try {
     const { dir } = rootCommitRepo(base);
-    writeFileSync(join(dir, "line\nbreak.txt"), "x\n");
-    assert.deepEqual(gitPaths(dir, ["ls-files", "--others", "--exclude-standard"]), ["line\nbreak.txt"]);
+    const odd = process.platform === "win32" ? "line break.txt" : "line\nbreak.txt"; // Windows forbids a newline in a name.
+    writeFileSync(join(dir, odd), "x\n");
+    assert.deepEqual(gitPaths(dir, ["ls-files", "--others", "--exclude-standard"]), [odd]);
     assert.throws(() => gitPaths(dir, ["no-such-command"]), /git no-such-command failed/);
     const r = coreGit(dir, ["rev-parse", "HEAD"]);
     assert.equal(r.status, 0);

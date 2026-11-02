@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { UsageError } from "./catalog.mjs";
+import { canonical } from "./fs.mjs";
 
 /** Diff text carried inline; beyond it whole per-file diffs and untracked files are listed as omitted. */
 export const INLINE_CAP = 256 * 1024;
@@ -34,7 +35,7 @@ export function gitPaths(cwd, args) {
 export function repoRoot(cwd) {
   const top = git(cwd, ["rev-parse", "--show-toplevel"]);
   if (top.error || top.status !== 0) throw new UsageError("review must run inside a Git repository");
-  return top.stdout.trim();
+  return canonical(top.stdout.trim()); // Git prints C:/x/y on Windows; every other path here is native
 }
 function checkRef(ref, flag) {
   if (typeof ref !== "string" || !ref || ref.startsWith("-") || /[\r\n\0]/.test(ref)) throw new UsageError(`invalid ${flag} ref ${JSON.stringify(ref)}`);
@@ -162,7 +163,7 @@ export function worktreeSnapshot(cwd, options) {
   try {
     const top = call(cwd, ["rev-parse", "--show-toplevel"]);
     if (!top || top.status !== 0) return null;
-    const root = strictUtf8(top.stdout).replace(/\r?\n$/, "");
+    const root = canonical(strictUtf8(top.stdout).replace(/\r?\n$/, ""));
     const head = call(root, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
     if (!head || (head.status !== 0 && head.status !== 1)) return null;
     const status = call(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
@@ -208,10 +209,10 @@ export function unionEdited(cwd, events, changed, platform = process.platform) {
   // On POSIX a backslash is an ordinary file name character: `a\\b` and `a/b` are two files.
   const slashes = (p) => (platform === "win32" ? p.replace(/\\/g, "/") : p);
   let base = cwd;
-  try { base = fs.realpathSync(cwd); } catch { /* as spelled */ }
+  try { base = fs.realpathSync.native(cwd); } catch { /* as spelled */ }
   const shown = (p) => {
     let abs = path.resolve(base, p);
-    try { abs = path.join(fs.realpathSync(path.dirname(abs)), path.basename(abs)); } catch { /* a directory the turn removed: as spelled */ }
+    try { abs = path.join(fs.realpathSync.native(path.dirname(abs)), path.basename(abs)); } catch { /* a directory the turn removed: as spelled */ }
     const rel = path.relative(base, abs);
     return slashes(rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? rel : abs);
   };
@@ -267,16 +268,16 @@ export function unquotePath(quoted) {
     : ESCAPES[t[1]] !== undefined ? Buffer.from([ESCAPES[t[1]]]) : Buffer.from(t.slice(1)));
   return Buffer.concat(parts).toString("utf8");
 }
-/** The path one per-file diff is about: the new side, or the old side of a deletion. */
+/** The path one per-file diff is about: the new side, or the old side of a deletion. Git ends a +++/--- name holding whitespace with a tab. */
 export function diffFileName(file) {
   const side = (re) => {
     const m = re.exec(file);
     if (!m) return null;
     return m[1] !== undefined ? unquotePath(m[1]) : m[2];
   };
-  return side(/^\+\+\+ (?:"b\/((?:[^"\\]|\\.)*)"|b\/(.*))$/m)
+  return side(/^\+\+\+ (?:"b\/((?:[^"\\]|\\.)*)"|b\/(.*?)\t?)$/m)
     ?? side(/^rename to (?:"((?:[^"\\]|\\.)*)"|(.*))$/m)
-    ?? side(/^--- (?:"a\/((?:[^"\\]|\\.)*)"|a\/(.*))$/m)
+    ?? side(/^--- (?:"a\/((?:[^"\\]|\\.)*)"|a\/(.*?)\t?)$/m)
     ?? side(/^diff --git (?:"a\/((?:[^"\\]|\\.)*)"|a\/(.*?)) "?b\//)
     ?? "unknown file";
 }

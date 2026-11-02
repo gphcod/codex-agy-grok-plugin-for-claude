@@ -13,7 +13,7 @@ test("KINDS is the A5 enum", () => {
   assert.deepEqual(KINDS, ["native", "node-script", "shim-native", "shim-node"]);
 });
 
-test("PATH resolution on POSIX: first executable wins, non-executables are skipped", () => {
+test("PATH resolution on POSIX: first executable wins, non-executables are skipped", { skip: process.platform === "win32" && "a POSIX PATH splits on the colon of a Windows drive" }, () => {
   const dir = tmp();
   try {
     const a = join(dir, "a"), b = join(dir, "b"), c = join(dir, "c");

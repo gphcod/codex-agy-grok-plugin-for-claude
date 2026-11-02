@@ -18,7 +18,7 @@ import { homeDir, loadJob, loadThread } from "../plugins/council/scripts/lib/cor
 import { runManagedTurn } from "../plugins/council/scripts/lib/core/lifecycle.mjs";
 
 isolateGit();
-const FAST = { drainMs: 150, shutdownMs: 4000, retryMs: 300, graceMs: 100, pipeWaitMs: 400 };
+const FAST = { drainMs: 150, shutdownMs: process.platform === "win32" ? 20000 : 4000, retryMs: 300, graceMs: 100, pipeWaitMs: 400 };
 const variant = (over) => Object.assign(Object.create(Object.getPrototypeOf(nullAdapter)), nullAdapter, over);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -195,6 +195,7 @@ test("F12: on win32 the first stop is the identity-checked taskkill at once; on 
     assert.equal(job.error, "wall-clock deadline passed");
     assert.equal(groups, 0, "no group signal on Windows");
     assert.ok(stops.length >= 1 && stops[0][1] === "SIGKILL" && stops[0][0] - started < 3000, "stopped at once, not after the 5 s grace");
+    if (process.platform === "win32") return; // No process groups to signal here.
     // POSIX: a stubborn group gets SIGTERM from stopGroup and nothing more
     const child = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"], { detached: true, stdio: "ignore" });
     await sleep(300);
