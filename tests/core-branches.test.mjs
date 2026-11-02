@@ -204,3 +204,36 @@ test("state and catalog corner cases", () => {
     assert.equal(j.requestedEffort, null);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+// A real child that exits clean, with a group member no identity covers for the first scans.
+const unverifiedControl = (scans) => {
+  const real = executionController({ adapter: nullAdapter });
+  const row = { pid: 999999, ppid: 1, stamp: "1", raw: "helper", name: "helper" };
+  const calls = { n: 0 };
+  return { calls, control: { ...real, inspect: (job, snap) => {
+    const found = real.inspect(job, snap);
+    calls.n += 1;
+    return calls.n <= scans ? { state: "unknown", rows: [], unverified: [row], error: "unverified: 1 process(es) in the job's process group (999999) match no identity recorded while it ran; not signalled" } : found;
+  } } };
+};
+
+test("a clean exit waits out group members that are still exiting, and signals none of them", async () => {
+  const s = setup();
+  try {
+    const { calls, control } = unverifiedControl(2);
+    const { job } = await run(s, { hooks: { ...FAST, control, unverifiedWaitMs: 3000 } });
+    assert.equal(calls.n, 3);
+    assert.deepEqual([job.code, job.outcome, job.cleanupPending], [0, "ok", false]);
+  } finally { s.done(); }
+});
+
+test("group members that outlast the wait still leave cleanup pending", async () => {
+  const s = setup();
+  try {
+    const { calls, control } = unverifiedControl(Infinity);
+    const { job } = await run(s, { hooks: { ...FAST, control, unverifiedWaitMs: 250 } });
+    assert.ok(calls.n > 1);
+    assert.deepEqual([job.code, job.outcome, job.cleanupPending], [1, "failed", true]);
+    assert.match(job.error, /cleanup pending.*unverified: 1 process/);
+  } finally { s.done(); }
+});

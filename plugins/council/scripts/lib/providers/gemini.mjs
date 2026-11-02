@@ -83,6 +83,10 @@ export function sessionSettings(policy, readOnly) {
   return { permissions, ...(policy.toolPermission === "strict" ? { toolPermission: "strict" } : {}) };
 }
 
+// agy takes its workspace root from PWD as spelled; reached through a symlink (/tmp on macOS), every
+// resolved path falls outside it and headless agy denies the tool. request.cwd is the realpath.
+const agyWorkspaceEnv = (cwd, platform = process.platform) => (platform === "win32" || !cwd ? {} : { PWD: cwd });
+
 /** `--print-timeout` operand: plain decimal seconds, never grouped or in exponent form. */
 export function printTimeout(seconds) {
   return `${Number(seconds).toLocaleString("en-US", { useGrouping: false, maximumFractionDigits: 20 })}s`;
@@ -315,7 +319,7 @@ const adapter = {
     if (review) args.push("--json-schema", SCHEMA_PATH);
     const content = review ? request.reviewPrompt : `${request.contract}\n\n${request.text}`;
     return {
-      args, env: {}, stdin: `${JSON.stringify({ event: "user", message: { content } })}\n`, settingsPath,
+      args, env: agyWorkspaceEnv(request.cwd), stdin: `${JSON.stringify({ event: "user", message: { content } })}\n`, settingsPath,
       answerFile: null, readOnly, contractCarrier: review ? "none" : "stdin-prefix", threadId: null,
     };
   },
