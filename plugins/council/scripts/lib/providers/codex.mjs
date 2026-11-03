@@ -117,6 +117,7 @@ const FINDING_LINE = /^\s*[-*]\s+\[P(\d)\]\s+(.+?)\s+—\s+(.+):(\d+)(?:-(\d+))?
 export const PRIORITY = { 0: "BLOCKER", 1: "MAJOR", 2: "MINOR", 3: "MINOR" };
 export const NO_FINDINGS = "codex reported no findings; its output cannot prove a clean review";
 const MARKER = /\[P\d\]/;
+const BULLETED_MARKER = /^\s*[-*]\s+\[P\d\]/;
 const HEADER = /^\s*(?:Review comment|Full review comments):\s*$/;
 
 /**
@@ -143,8 +144,9 @@ export function parseNativeReview(answerText = "") {
         continue;
       }
     }
+    // Inside a finding an indented line is its body whatever it mentions; only a bullet can be another finding.
+    if (current && /^\s+\S/.test(line) && !BULLETED_MARKER.test(line)) { current.text = current.text ? `${current.text}\n${line.trim()}` : line.trim(); continue; }
     if (MARKER.test(line)) { unrecognized.push(line.trim()); current = null; inBlock = true; continue; }
-    if (current && /^\s+\S/.test(line)) { current.text = current.text ? `${current.text}\n${line.trim()}` : line.trim(); continue; }
     if (line.trim()) current = null;
     if (!inBlock) summary.push(line);
   }

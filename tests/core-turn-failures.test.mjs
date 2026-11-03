@@ -237,6 +237,34 @@ test("a resumed turn inherits nothing from a rejected attempt and records rounds
   } finally { s.done(); }
 });
 
+test("a resumed turn whose provider never started leaves the thread record as it was", async () => {
+  const s = setup();
+  try {
+    const tid = (await run(s)).job.threadId;
+    const before = loadThread(s.home, "null", tid);
+    const unchanged = () => {
+      const { updatedAt: _a, ...now } = loadThread(s.home, "null", tid), { updatedAt: _b, ...then } = before;
+      assert.deepEqual(now, then);
+    };
+    const resumed = { verb: "reply", thread: { threadId: tid }, round: 2, effort: "low", requestedEffort: "low", model: "other-model" };
+    const refusedSpawn = await run(s, { over: resumed, hooks: { spawn: () => { throw Object.assign(new Error("spawn ENOENT"), { code: "ENOENT" }); } } });
+    assert.equal(refusedSpawn.job.error, "could not start null: spawn ENOENT");
+    unchanged();
+    const beforeTurn = await run(s, { over: resumed, adapter: variant({ beforeTurn() { throw new Error("no turn"); } }) });
+    assert.equal(beforeTurn.job.code, 1);
+    unchanged();
+    const task = { verb: "task", readOnly: false, thread: { threadId: tid }, round: 2 };
+    const cancelled = await run(s, { over: task, hooks: { beforeSpawn: (job) => writeFileSync(join(job.dir, "cancel"), "") } });
+    assert.equal(cancelled.job.outcome, "cancelled");
+    unchanged();
+    // A turn that started and failed still counts: the provider saw it.
+    const started = await run(s, { over: resumed, env: { COUNCIL_FAKE_SCENARIO: "exit-nonzero" } });
+    assert.notEqual(started.job.code, 0);
+    assert.equal(loadThread(s.home, "null", tid).round, 2);
+    assert.equal(started.job.claimHeld, false);
+  } finally { s.done(); }
+});
+
 test("A5 beforeTurn/afterTurn: once each around the spawn; afterTurn only after verified cleanup; a beforeTurn throw starts nothing", async () => {
   const s = setup();
   try {

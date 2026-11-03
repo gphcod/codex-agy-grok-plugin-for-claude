@@ -113,6 +113,9 @@ async function awaitScope(ctx, o, scope, fp, control, sleepMs = 50) {
 
 // --- provider and thread resolution ----------------------------------------------------------------------
 
+/** A job with no terminal marker: running, or lost until cancel recovers it. */
+const isOpen = (job) => !job.done && !job.stopped;
+
 /**
  * ask/review/fresh task: `--to` names the provider. reply and `task --thread`: the job or thread
  * record names it (a conflicting `--to` exits 2); `reply --last` is this session's latest threaded
@@ -130,8 +133,9 @@ export function resolveTarget(ctx, verb, o) {
   let job = null, provider = null, threadId = null;
   if (o.last) {
     // A fresh turn whose provider never confirmed its thread has no thread id; it is still the latest
-    // thread-starting job, so it is selected and refused below with its hint, never skipped.
-    job = candidates(ctx.home, ctx).find((j) => j.admitted !== false && (j.threadId || j.unconfirmed) && j.verb !== "review");
+    // thread-starting job, so it is selected and refused below with its hint, never skipped. So is one
+    // still open, whose id may come only when it ends (Grok): an older thread is never taken in its place.
+    job = candidates(ctx.home, ctx).find((j) => j.verb !== "review" && (isOpen(j) || (j.admitted !== false && (j.threadId || j.unconfirmed))));
     if (!job) throw new UsageError(`no earlier thread in this ${ctx.session ? "session and " : ""}workspace; start one with ask`);
   } else {
     const ref = o.thread;
@@ -147,11 +151,11 @@ export function resolveTarget(ctx, verb, o) {
     }
   }
   if (job) {
-    if (job.admitted === false) throw new UsageError(`job ${job.id} was not admitted; use the original thread`);
+    if (job.admitted === false && !isOpen(job)) throw new UsageError(`job ${job.id} was not admitted; use the original thread`);
     if (job.verb === "review") throw new UsageError(`job ${job.id} is a review; reviews start no thread to reply to`);
     if (job.unconfirmed) throw new UsageError(`job ${job.id}: ${job.unconfirmed}`);
     if (!job.threadId) {
-      if (!job.done && !job.stopped) throw new UsageError(`job ${job.id}: native thread not confirmed yet; wait or cancel ${job.id}`);
+      if (isOpen(job)) throw new UsageError(`job ${job.id}: native thread not confirmed yet; wait or cancel ${job.id}`);
       throw new UsageError(`job ${job.id} has no ${job.provider} thread (it failed before one started)`);
     }
     provider = job.provider;
@@ -408,6 +412,8 @@ export async function main(argv, env = process.env, io = {}, hooks = {}) {
 
 // Node loads a symlinked entry point from its real path, so both sides are compared resolved.
 if (process.argv[1] && canonical(process.argv[1]) === canonical(fileURLToPath(import.meta.url))) {
-  process.stdout.on("error", () => {}); // A departed caller must not bypass durable finalization.
+  // A departed caller must not bypass durable finalization: an unhandled write error would kill this process and leave the provider running.
+  process.stdout.on("error", () => {});
+  process.stderr.on("error", () => {});
   main(process.argv.slice(2), process.env).then((code) => { process.exitCode = code; });
 }

@@ -613,3 +613,7 @@ A1 and A3.1 retain one provider CLI child per companion call. The narrow recover
 ## Windows request publication amendment (2026-11-02 Pacific)
 
 A7’s logical request lifecycle and identifiers are unchanged. New request-format-2 roots remain immutable, with generation-specific binding/prepared publications and an unlink ownership gate. The physical envelope fails closed for older clients; current readers still understand completed legacy inline requests. Failed preparation only frees an owned, unprepared generation. Legacy unfinished requests require explicit reconciliation. See docs/qualification/windows-request-lock.md and the recorded review decisions.
+
+## rc.9 review amendment (2026-11-03 Pacific)
+
+A7.2: `reply --last` also selects the latest thread-starting job that is still open and refuses it, rather than passing over it to an older thread. A7.6: the thread record follows only a turn whose provider started; a resumed turn that never started leaves the record alone. A5.2's collector forces canonical diff headers whatever the user's Git configuration says. The reasons are in `docs/decisions.md`.

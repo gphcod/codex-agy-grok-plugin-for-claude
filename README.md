@@ -61,7 +61,7 @@ Slash commands: `/council:ask`, `/council:reply`, `/council:review`, `/council:t
 - `--model <id|alias>`: an exact CLI id, or an alias inside that provider's catalog. Codex: `sol`, `terra`, `luna`, `astra`. Gemini: `argon`, `flash`. Grok: `4.7`, `4.6`, `4.5`, `build-fast`. An unknown id is passed through unchanged, and the footer then says `model unverified`.
 - `--effort low|medium|high|xhigh|max`: see the clamp rules below. `ultra` is accepted for Codex only.
 - `--tier consult|exec|deep`: default `consult`; `task` defaults to `exec`. An explicit `--model` or `--effort` overrides the tier's value.
-- `--thread`, `--last`: select the thread for `reply` and `task --thread`. `--last` is the latest threaded job of this session in this workspace.
+- `--thread`, `--last`: select the thread for `reply` and `task --thread`. `--last` is the latest threaded job of this session in this workspace. While that job is still open and has not confirmed its thread, it exits 2 and says to wait or cancel; it never replies on an older thread instead.
 - `--base`, `--commit`, `--uncommitted`, `--adversarial`: review only. `--adversarial` applies to Gemini and Grok, which review a collected diff with `prompts/adversarial-review.md`. Codex's native review has no adversarial mode, so `review --to codex --adversarial` exits 2; give focus text instead.
 - `--web`: Grok only, off by default; `reply` inherits it. Codex has no tested mapping and Gemini cannot switch web search off (see Known trade-offs), so both exit 2. `review --web` exits 2 for every provider.
 - `--rounds <n>`: the reply budget of a thread (default 9, or `COUNCIL_ROUNDS`). The thread keeps it. Refused on `review`.
@@ -244,4 +244,8 @@ The [final Windows qualification](docs/qualification/efficiency-rc7-windows.md) 
 
 Request binding now publishes an immutable sidecar without replacing the reservation held open by a Windows reader. Actual file-lock tests cover the old failure, the corrected full entry and identical replay without another provider submission. Legacy inline requests remain readable; older clients fail closed on the new format. [Qualification](docs/qualification/windows-request-lock.md). This remains a release candidate pending macOS and interactive qualification.
 
-The [final rc.8 efficiency qualification](docs/qualification/efficiency-rc8-windows.md) includes the immutable-publication costs in a fresh 240-call rc.6/rc.8 benchmark. Latest Windows regression: 502 pass, 23 platform skips, zero failures.
+The [final rc.8 efficiency qualification](docs/qualification/efficiency-rc8-windows.md) includes the immutable-publication costs in a fresh 240-call rc.6/rc.8 benchmark.
+
+## rc.9 review fixes
+
+A whole-code review by Codex, Gemini, Grok and Claude led to eight fixes; see the [changelog](CHANGELOG.md) and [decisions](docs/decisions.md). The [rc.9 qualification](docs/qualification/review-fixes-rc9-windows.md) records the matched rc.8/rc.9 benchmark and the Windows regression. It remains a release candidate pending macOS and interactive qualification.

@@ -59,6 +59,7 @@ export const MESSAGES = {
   requestNeverRan: (name, job) => `a new request id is safe: ${name} names job ${job}, whose call ended before the provider started; nothing ran`,
   requestMissing: (name, job) => `use a new request id: ${name} names job ${job}, whose records were deleted or cannot be read; nothing was started again, and whether the provider ran for it is unknown`,
   jobUnreadable: (job, why) => `retry: job ${job} cannot be read right now (${why}), so nothing was selected or started`,
+  threadUnreadable: (thread, why) => `retry: thread ${thread} cannot be read right now (${why}), so nothing was selected or started`,
 };
 export const pendingCleanup = (job) => Boolean((job.cleanupPending && !job.stopped) || job.claimHeld);
 
