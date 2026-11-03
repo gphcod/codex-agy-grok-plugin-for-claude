@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (unreleased; 1.0.0-rc.6 candidate)
+## 1.0.0 (unreleased; 1.0.0-rc.7 candidate)
 
 First release of `council`. A single plugin now provides the following, through one companion process and one provider CLI child per call:
 
@@ -10,6 +10,15 @@ First release of `council`. A single plugin now provides the following, through 
 - authorized delegated edits
 
 The release check is S7 of `PLAN.md`: a macOS matrix, a Windows session and the tag.
+
+### 1.0.0-rc.7 (2026-11-02 Pacific)
+
+- Compact startup retains provider, recovery job and review target; native ids stay in JSON/state/wait. Announce a durable spawned job before native init; an early reply must wait or cancel until confirmation.
+- Omit redundant healthy `next: reply` hints; keep cleanup, unconfirmed, failed and attention hints. Shorten contract/skill prose, retaining per-turn protocol, authorization and Claude background notifications.
+- Reuse the just-resolved thread for initial preparation, refreshing under the claim. Scope reservation-owner liveness queries to that pid, retaining unknown on error and full cleanup snapshots.
+- Separate wait/cancel/replay and recovery from turn execution, retaining the public lifecycle API. Add native `usage` to JSON; existing `costUsd` mapping is unchanged.
+- Add a matched Windows benchmark and regression checks; report bytes, state operations, latency and native counters separately.
+- Remains a candidate pending final macOS and interactive qualification.
 
 ### 1.0.0-rc.6 (2026-11-02)
 

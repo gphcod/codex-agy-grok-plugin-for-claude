@@ -102,7 +102,7 @@ async function awaitScope(ctx, o, scope, fp, control, sleepMs = 50) {
     if (record && Date.now() - checkedAt >= 1000) {
       checkedAt = Date.now();
       let snapshot;
-      try { snapshot = control.snapshot(); } catch { snapshot = { state: "unknown", rows: [] }; }
+      try { snapshot = control.snapshot(undefined, record.companionPid); } catch { snapshot = { state: "unknown", rows: [] }; }
       if (companionState(record, snapshot) === "gone" && !loadScope(scope.file)?.job) {
         throw new UsageError(MESSAGES.requestGone(name));
       }
@@ -150,7 +150,10 @@ export function resolveTarget(ctx, verb, o) {
     if (job.admitted === false) throw new UsageError(`job ${job.id} was not admitted; use the original thread`);
     if (job.verb === "review") throw new UsageError(`job ${job.id} is a review; reviews start no thread to reply to`);
     if (job.unconfirmed) throw new UsageError(`job ${job.id}: ${job.unconfirmed}`);
-    if (!job.threadId) throw new UsageError(`job ${job.id} has no ${job.provider} thread (it failed before one started)`);
+    if (!job.threadId) {
+      if (!job.done && !job.stopped) throw new UsageError(`job ${job.id}: native thread not confirmed yet; wait or cancel ${job.id}`);
+      throw new UsageError(`job ${job.id} has no ${job.provider} thread (it failed before one started)`);
+    }
     provider = job.provider;
     threadId = job.threadId;
   }
@@ -168,10 +171,11 @@ export function resolveTarget(ctx, verb, o) {
  * thread claim, so a turn that finished meanwhile is inherited; the review target and collection are
  * computed once.
  */
-export function prepareRequest(ctx, adapter, verb, o, text, target, memo) {
+export function prepareRequest(ctx, adapter, verb, o, text, target, memo, refreshThread = true) {
   if (verb !== "review" && !text.trim()) throw new UsageError(`${verb} needs text on stdin or after --`);
   const provider = adapter.id;
-  const thread = target.thread ? { ...(loadThread(ctx.home, provider, target.thread.threadId) ?? target.thread), provider, threadId: target.thread.threadId } : null;
+  const history = refreshThread && target.thread ? loadThread(ctx.home, provider, target.thread.threadId) : null;
+  const thread = target.thread ? { ...(history ?? target.thread), provider, threadId: target.thread.threadId } : null;
   const catalog = catalogFor(ctx.home, adapter);
   const tier = o.tier ?? (verb === "task" ? "exec" : undefined);
   if (tier !== undefined && !TIERS.includes(tier)) throw new UsageError(`--tier must be one of ${TIERS.join(", ")}`);
@@ -250,7 +254,8 @@ async function runTurn(ctx, io, verb, o, text, literal, hooks) {
       if (!claimed.fresh) { const prior = claimed; claimed = null; bindScope(scope.file, adapter.id, prior.id); return replayRequest(ctx, o, prior, fp, io.out, { control }); }
       bindScope(scope.file, adapter.id, claimed.id);
     }
-    initial = prepareRequest(ctx, adapter, verb, o, text, target, memo); // runs adapter.checkRequest first
+    // resolveTarget just read this history; the under-claim prepare below still refreshes it.
+    initial = prepareRequest(ctx, adapter, verb, o, text, target, memo, false); // runs adapter.checkRequest first
     if (claimed) markRequestPrepared(ctx.home, claimed.id, { provider: adapter.id, requestId, fingerprint: fp, session: ctx.session, cwd: ctx.cwd, verb });
   } catch (error) {
     // Nothing ran: a retry may. The job claim and the binding go together.

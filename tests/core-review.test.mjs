@@ -175,8 +175,8 @@ test("contract.md: provider-neutral outer tag, the discussion protocol, no place
   const contract = readFileSync(join(PLUGIN_ROOT, "contract.md"), "utf8");
   assert.match(contract, /^<council_contract version="1">\n/);
   assert.match(contract, /<\/council_contract>\n$/);
-  assert.match(contract, /F1, F2, tagged BLOCKER, MAJOR or MINOR, with file:line/);
-  assert.match(contract, /AGREE, CHANGE: <text> or REJECT: <evidence>/);
+  assert.match(contract, /F1, F2 findings, BLOCKER\/MAJOR\/MINOR, file:line/);
+  assert.match(contract, /AGREE, CHANGE: <text>, REJECT: <evidence>/);
   assert.match(contract, /`Open questions:`/);
   assert.doesNotMatch(contract, /codex_companion|\{\{/);
   assert.ok(existsSync(join(PLUGIN_ROOT, "prompts", "review.md")));

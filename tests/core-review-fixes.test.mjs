@@ -154,7 +154,7 @@ test("F10: reply inherits --web from the thread unless given explicitly", async 
     const ask = await entry(s, ["ask", "--to", "null", "--web", "--", "search"]);
     assert.equal(ask.code, 0, ask.err);
     assert.ok(s.spawns().at(-1).argv.includes("--web"));
-    const thread = /thread=([0-9a-f-]{36})/.exec(ask.err)[1];
+    const thread = JSON.parse((await entry(s, ["wait", /job[= ]([a-z0-9]{16})/.exec(ask.err)[1], "--json"])).out).thread;
     assert.equal(loadThread(s.home, "null", thread).web, true);
     const reply = await entry(s, ["reply", "--last", "--", "more"]);
     assert.equal(reply.code, 0, reply.err);

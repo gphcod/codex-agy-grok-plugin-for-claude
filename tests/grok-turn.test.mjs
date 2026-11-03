@@ -57,7 +57,7 @@ test("ask: fresh session, explore recipe, --rules contract on one line, prompt f
   assert.deepEqual(t.forbidden, FORBIDDEN);
   assert.deepEqual(t.env, compatEnv(true));
   assert.ok(!oneLineContract(CONTRACT).includes("\n"));
-  assert.ok(oneLineContract(CONTRACT).startsWith('<council_contract version="1"> Claude, a coding agent'));
+    assert.ok(oneLineContract(CONTRACT).startsWith('<council_contract version="1"> Claude calls you;'));
   assert.notEqual(grok.buildTurn(req()).threadId, t.threadId, "a new session id per fresh turn");
 });
 

@@ -27,15 +27,15 @@ test("utf8Prefix, capAnswer and elapsed", () => {
 });
 
 test("start line per A3.4", () => {
-  assert.equal(startLine(base()), `[council] provider=codex job=${ID} thread=th-1`);
-  assert.equal(startLine(base({ threadId: null, requestedThreadId: null })), `[council] provider=codex job=${ID} thread=?`);
-  assert.equal(startLine(base({ threadId: null, requestedThreadId: "req-7" })), `[council] provider=codex job=${ID} thread=req-7`);
-  assert.equal(startLine(base({ verb: "review", target: "--uncommitted" })), `[council] provider=codex job=${ID} thread=th-1 target=--uncommitted`);
-  assert.equal(startLine(base({ provider: "grok", target: "branch  against\nmain" })), `[council] provider=grok job=${ID} thread=th-1 target=branch against main`);
+  assert.equal(startLine(base()), `[council] provider=codex job=${ID}`);
+  assert.equal(startLine(base({ threadId: null, requestedThreadId: null })), `[council] provider=codex job=${ID}`);
+  assert.equal(startLine(base({ threadId: null, requestedThreadId: "req-7" })), `[council] provider=codex job=${ID}`);
+  assert.equal(startLine(base({ verb: "review", target: "--uncommitted" })), `[council] provider=codex job=${ID} target=--uncommitted`);
+  assert.equal(startLine(base({ provider: "grok", target: "branch  against\nmain" })), `[council] provider=grok job=${ID} target=branch against main`);
 });
 
 test("footer: mandatory fields and the effort clamp token", () => {
-  assert.equal(footer(base(), false), `council codex ok · job ${ID} · gpt-6.1-sol/high · 12s · round 1/9 · next: reply ${ID}`);
+  assert.equal(footer(base(), false), `council codex ok · job ${ID} · gpt-6.1-sol/high · 12s · round 1/9`);
   assert.equal(effortToken({ model: "gemini-4-argon", effort: "high", requestedEffort: "xhigh" }), "gemini-4-argon/high<=xhigh");
   assert.equal(effortToken({ model: "grok-4.7", effort: "xhigh", requestedEffort: "xhigh" }), "grok-4.7/xhigh");
   assert.equal(effortToken({ model: "m", effort: "low" }), "m/low");
@@ -63,7 +63,7 @@ test("footer: round only on threaded verbs, edited only on task, unreviewed only
 });
 
 test("footer: model unverified, full file, error and recovery hints", () => {
-  assert.match(footer(base({ modelVerified: false }), false), / · model unverified · /);
+  assert.match(footer(base({ modelVerified: false }), false), / · model unverified(?: · |\n|$)/);
   assert.match(footer(base(), true), new RegExp(` · full: [\\\\/]tmp[\\\\/]jobs[\\\\/]${ID}[\\\\/]answer.md`));
   assert.match(footer(base({ answerClipped: true }), false), / · full: /);
   assert.match(footer(base({ error: "multi\nline   error" }), false), / · error: multi line error/);
@@ -80,11 +80,11 @@ test("footer: model unverified, full file, error and recovery hints", () => {
 
 test("renderResult: body then footer; the cap adds full: <file>", () => {
   const out = renderResult(base(), "The answer.\n\n");
-  assert.equal(out, `The answer.\ncouncil codex ok · job ${ID} · gpt-6.1-sol/high · 12s · round 1/9 · next: reply ${ID}\n`);
+  assert.equal(out, `The answer.\ncouncil codex ok · job ${ID} · gpt-6.1-sol/high · 12s · round 1/9\n`);
   const capped = renderResult(base(), "y".repeat(ANSWER_CAP + 1));
   assert.ok(capped.startsWith("y".repeat(ANSWER_CAP) + "\n"));
   assert.match(capped, / · full: [\\/]tmp[\\/]jobs[\\/][a-z0-9]{16}[\\/]answer\.md/);
-  assert.equal(renderResult(base(), ""), `council codex ok · job ${ID} · gpt-6.1-sol/high · 12s · round 1/9 · next: reply ${ID}\n`);
+  assert.equal(renderResult(base(), ""), `council codex ok · job ${ID} · gpt-6.1-sol/high · 12s · round 1/9\n`);
 });
 
 test("--json carries every A3.4 field", () => {

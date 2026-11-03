@@ -67,7 +67,7 @@ Slash commands: `/council:ask`, `/council:reply`, `/council:review`, `/council:t
 - `--rounds <n>`: the reply budget of a thread (default 9, or `COUNCIL_ROUNDS`). The thread keeps it. Refused on `review`.
 - `--request-id <id>`: 1–128 characters, `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`. Retrying an identical call with the same id replays or awaits the first result and never starts a second CLI. The same id with different input exits 2.
 - `--deadline <s>` (default 14400) and `--inactivity-timeout <s>` (default 1200) stop a turn and clean up, exit 1. `wait --timeout` only stops waiting.
-- `--json`: one JSON object instead of the text output: `provider, job, thread, session, model, modelVerified, effort, requestedEffort, tier, round, rounds, verdict, findings, coverage, edited, failedCommands, costUsd, exit, answerFile`, plus `verb, status, elapsedMs, error, attention, cleanupPending, answer, clipped`. `attention` is the footer's reason, or null.
+- `--json`: one JSON object instead of the text output: `provider, job, thread, session, model, modelVerified, effort, requestedEffort, tier, round, rounds, verdict, findings, coverage, edited, failedCommands, costUsd, usage, exit, answerFile`, plus `verb, status, elapsedMs, error, attention, cleanupPending, answer, clipped`. `attention` is the footer's reason, or null. `usage` retains native counters (or null); provider schemas and cache counters differ.
 - `--session <id>`: the Claude session that scopes `--last`, bare `wait` and bare `cancel`. When it is absent, empty or still the literal `${CLAUDE_SESSION_ID}`, council uses `CLAUDE_CODE_SESSION_ID` from the environment if that is UUID-like, and otherwise runs with no session. Provider children never receive that variable.
 
 Any flag that a provider has no tested mapping for exits 2 before a job is recorded and before any process starts.
@@ -98,13 +98,13 @@ The static catalog is `plugins/council/models.json`. `models --refresh` merges e
 A start line on stderr (left out under `--json`):
 
 ```text
-[council] provider=grok job=0j52lxy97fhtkbom thread=6f1c2d3e-…
+[council] provider=grok job=0j52lxy97fhtkbom
 ```
 
 The answer, then a one-line footer on stdout:
 
 ```text
-council grok ok · job 0j52lxy97fhtkbom · grok-4.7/low · 3s · round 1/9 · next: reply 0j52lxy97fhtkbom
+council grok ok · job 0j52lxy97fhtkbom · grok-4.7/low · 3s · round 1/9
 ```
 
 Grammar: `council <provider> <ok|needs attention|failed|cancelled> · job <16 chars> · <model>/<effort>[<=requested] · <duration>[ · round N/M][ · edited N][ · unreviewed N][ · model unverified][ · full: <file>][ · error: <msg> | · attention: <reason>][ · <recovery hint>]`. `round` appears on `ask`, `reply` and `task`; `edited` on `task` only; `unreviewed` on `review` only. `attention:` says why a turn needs attention, in one line of at most 200 B: `denied <action>` (with ` (+N more)` for several), `open questions in the answer`, or why a review is incomplete or malformed. Plain review findings add no token; they are the answer. `edited N` is the union of the provider's edit events and the working-tree changes between the start and the end of the turn (a Git snapshot of HEAD and the dirty paths' contents). So an edit made through a shell counts, and so does anything else that changes the tree during the turn, such as you or another job. Outside a Git repository, on a Git failure or timeout, over 5,000 dirty paths, or past 10 s it is the provider's edit events alone. At most 4 MiB is hashed in total; a file past that is compared by size and mtime. A submodule counts as one path when its dirty state changes, so edits inside an already dirty one count only through the provider's events. The starting snapshot and the event count live in the companion's memory, so a job whose companion died prints `edited 0` whatever it changed. An answer over 24 KiB is clipped, and `full:` names the file that holds all of it.

@@ -573,8 +573,8 @@ test("refusals exit 2 before any spawn: --web, suffix conflict; suffixed id alon
     assert.deepEqual(logLines(log)[0].argv.slice(logLines(log)[0].argv.indexOf("--model")), ["--model", "gemini-3.8-flash-medium"], "the id alone, no --effort");
     const clamped = await s.call(["ask", "--to", "gemini", "--effort", "xhigh"], { text: "x", extra, json: false });
     assert.equal(clamped.code, 0, clamped.out + clamped.err);
-    assert.match(clamped.out, /^council gemini ok · job [a-z0-9]{16} · gemini-4-argon\/high<=xhigh · .* · round 1\/9 · next: reply [a-z0-9]{16}$/m);
-    assert.match(clamped.err, /^\[council\] provider=gemini job=[a-z0-9]{16} thread=[0-9a-f-]{36}$/m);
+    assert.match(clamped.out, /^council gemini ok · job [a-z0-9]{16} · gemini-4-argon\/high<=xhigh · .* · round 1\/9$/m);
+    assert.match(clamped.err, /^\[council\] provider=gemini job=[a-z0-9]{16}$/m);
     assert.equal(args(logLines(log)[1], "--effort"), "high");
   } finally { s.done(); }
 });

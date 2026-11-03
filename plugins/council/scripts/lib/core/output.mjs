@@ -74,7 +74,7 @@ export function capAnswer(text) {
 export const answerPath = (job) => path.join(job.dir, "answer.md");
 
 /** A3.4 start line (stderr, suppressed under --json). */
-export const startLine = (job) => `[council] provider=${job.provider} job=${job.id} thread=${job.threadId ?? job.requestedThreadId ?? "?"}${job.target ? ` target=${oneLine(job.target)}` : ""}`;
+export const startLine = (job) => `[council] provider=${job.provider} job=${job.id}${job.target ? ` target=${oneLine(job.target)}` : ""}`;
 
 /** `<model>/<effort>[<=requested]`: the clamp token of A3.3. */
 export function effortToken(job) {
@@ -92,7 +92,7 @@ export function recoveryHint(job) {
   if (pendingCleanup(job)) return `cleanup pending; next: cancel ${job.id}; do not resume`;
   // The provider finished without confirming its thread (grok `end` without a session id): not resumable.
   if (job.unconfirmed && job.verb !== "review") return oneLine(job.unconfirmed);
-  if (job.threadId && job.admitted !== false && job.verb !== "review") return `next: reply ${job.id}`;
+  if (job.outcome !== "ok" && job.threadId && job.admitted !== false && job.verb !== "review") return `next: reply ${job.id}`;
   return null;
 }
 
@@ -133,7 +133,7 @@ export function resultJson(job, answer) {
     tier: job.tier ?? null, round: THREADED.has(job.verb) ? job.round ?? null : null, rounds: THREADED.has(job.verb) ? job.rounds ?? null : null,
     verdict: review?.verdict ?? job.verdict ?? null, findings: review?.findings ?? [], coverage: review?.coverage ?? { reviewed: [], unreviewed: (job.unreviewed ?? []).map((u) => oneLine(u)) },
     edited: (job.edited ?? []).slice(0, 100).map((p) => oneLine(p)), failedCommands: (job.failedCommands ?? []).slice(0, 20).map((f) => (typeof f === "string" ? oneLine(f, 120) : { cmd: oneLine(f.cmd ?? "", 120), exit: f.exit ?? null })),
-    costUsd: job.costUsd ?? null, exit: job.code, answerFile: answerPath(job),
+    costUsd: job.costUsd ?? null, usage: job.usage ?? null, exit: job.code, answerFile: answerPath(job),
     verb: job.verb, status: job.outcome, elapsedMs: elapsedOf(job), error: job.error ? oneLine(job.error, 2000) : null,
     attention: !job.error && job.attention ? oneLine(job.attention, ATTENTION_MAX) : null,
     cleanupPending: pendingCleanup(job), answer: text, clipped: clipped || Boolean(job.answerClipped),

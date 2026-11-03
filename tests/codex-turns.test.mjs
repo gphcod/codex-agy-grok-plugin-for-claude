@@ -56,9 +56,9 @@ test("ask: fresh read-only exec, prompt on stdin, answer from -o, footer and sta
     const r = await h.turn(["ask", "--to", "codex", "--effort", "low"], "Reply with pong");
     assert.equal(r.code, 0, r.err + r.out);
     const job = h.jobOf(r.err);
-    assert.match(r.err, new RegExp(`^\\[council\\] provider=codex job=${job} thread=[0-9a-f-]{36}\\n$`));
+    assert.match(r.err, new RegExp(`^\\[council\\] provider=codex job=${job}\\n$`));
     assert.match(r.out, /^pong\n/);
-    assert.match(r.out, footer("ok", "gpt-6\\.1-sol", "low", ` · round 1/9 · next: reply ${job}$`));
+    assert.match(r.out, footer("ok", "gpt-6\\.1-sol", "low", ` · round 1/9$`));
     const [c] = h.calls();
     assert.equal(h.calls().length, 1, "one model process, nothing else");
     assert.deepEqual(c.argv, ["exec", "--json", "-o", h.answerOf(job), "-C", h.cwd, "-s", "read-only", "-m", "gpt-6.1-sol", "-c", "model_reasoning_effort=low", "-c", devInstructions, "-"]);
@@ -79,13 +79,13 @@ test("ask → task --thread → reply → task --thread: sandbox and resume argu
     const edit = { COUNCIL_FAKE_SCENARIO: "resume", COUNCIL_FAKE_CODEX_EDIT: "calc.js" };
     const task1 = await h.turn(["task", "--thread", job], "apply it", edit);
     assert.equal(task1.code, 0, task1.err + task1.out);
-    assert.match(task1.out, footer("ok", "gpt-6-luna", "max", " · round 2/9 · edited 1 · next: reply "));
+    assert.match(task1.out, footer("ok", "gpt-6-luna", "max", " · round 2/9 · edited 1"));
     const reply = await h.turn(["reply", "--thread", job], "explain it", edit);
     assert.equal(reply.code, 0, reply.err + reply.out);
-    assert.match(reply.out, footer("ok", "gpt-6-luna", "max", " · round 3/9 · next: reply "), "reply inherits the thread's model and effort");
+    assert.match(reply.out, footer("ok", "gpt-6-luna", "max", " · round 3/9"), "reply inherits the thread's model and effort");
     const task2 = await h.turn(["task", "--thread", job, "--effort", "high"], "fix the rest", edit);
     assert.equal(task2.code, 0, task2.err + task2.out);
-    assert.match(task2.out, footer("ok", "gpt-6-luna", "high", " · round 4/9 · edited 1 · "));
+    assert.match(task2.out, footer("ok", "gpt-6-luna", "high", " · round 4/9 · edited 1$"));
     const [a, t1, r, t2] = h.calls();
     assert.deepEqual(a.argv.slice(0, 2), ["exec", "--json"]);
     assert.deepEqual(a.argv.slice(4, 8), ["-C", h.cwd, "-s", "read-only"]);
@@ -102,7 +102,7 @@ test("ask → task --thread → reply → task --thread: sandbox and resume argu
     assert.deepEqual([record.round, record.lastVerb, record.readOnly, record.model], [4, "task", false, "gpt-6-luna"]);
     const fresh = await h.turn(["task", "--to", "codex"], "new work", { COUNCIL_FAKE_CODEX_EDIT: "new.txt" });
     assert.equal(fresh.code, 0, fresh.err + fresh.out);
-    assert.match(fresh.out, / · round 1\/9 · edited 1 · /);
+    assert.match(fresh.out, / · round 1\/9 · edited 1(?: · |\n|$)/);
     assert.deepEqual(h.calls().at(-1).argv.slice(4, 8), ["-C", h.cwd, "-s", "workspace-write"]);
     assert.ok(existsSync(join(h.repo, "new.txt")));
   } finally { h.done(); }

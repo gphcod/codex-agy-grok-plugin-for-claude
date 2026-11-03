@@ -13,7 +13,7 @@ test("npm run measure: three rows, framing within the frozen grammar's range, th
   assert.deepEqual(rows.map((r) => r.provider), ["codex", "gemini", "grok"]);
   for (const r of rows) {
     assert.equal(r.total, r.start + r.footer);
-    assert.ok(r.total > 150 && r.total < 260, `${r.provider}: ${r.total} B`);
+    assert.ok(r.total > 100 && r.total < 190, `${r.provider}: ${r.total} B`);
     assert.equal(r.withRequestId, r.total, "a request id adds nothing to a first call's framing");
     assert.match(r.footerText, new RegExp(`^council ${r.provider} ok · job [a-z0-9]{16} · `));
   }

@@ -57,7 +57,7 @@ test("ok turn in every transport profile: footer, answer, thread record, claim r
       assert.equal(inspectClaim(s.home, "null", job.threadId).state, "absent");
       assert.deepEqual(announced, [job.id], "announced once");
       assert.equal(footer(job, false).startsWith(`council null ok · job ${job.id} · null-model/high · `), true);
-      assert.match(footer(job, false), / · round 1\/9 · next: reply /);
+      assert.match(footer(job, false), / · round 1\/9$/);
       const thread = loadThread(s.home, "null", job.threadId);
       assert.equal(thread.model, "null-model"); assert.equal(thread.round, 1); assert.equal(thread.lastJob, job.id);
       assert.equal(s.spawns(), 1);
@@ -274,10 +274,16 @@ test("discovered-id profile: the claim is taken on discovery before the id is pu
   const s = setup({ id: "discovered" });
   try {
     const order = [];
-    const { job } = await run(s.ctx, {}, {}, { announce: (j) => order.push(`announce:${j.threadId}:${inspectClaim(s.home, "null", j.threadId).state}`) }, { COUNCIL_FAKE_THREAD: "disc-77" });
+    const { job } = await run(s.ctx, {}, {}, {
+      announce: (j) => order.push(`announce:${j.threadId}`),
+      saveJob: (j) => {
+        if (j.threadId && !order.some(v => v.startsWith('publish:'))) order.push(`publish:${j.threadId}:${inspectClaim(s.home, "null", j.threadId).state}`);
+        saveJob(j);
+      },
+    }, { COUNCIL_FAKE_THREAD: "disc-77" });
     assert.equal(job.code, 0, job.error);
     assert.equal(job.threadId, "disc-77");
-    assert.deepEqual(order, ["announce:disc-77:owned"], "announced once the id was claimed");
+    assert.deepEqual(order, ["announce:null", "publish:disc-77:owned"], "job announced early; native id published only after its claim");
     // another job already holds that thread
     const holder = createJob(s.home, { provider: "null", verb: "ask", status: "running", cwd: s.cwd, session: "sess-1", threadId: "disc-78", threadIds: ["disc-78"], admitted: true, companionPid: 1, execution: [], spawnedAt: new Date().toISOString() });
     claimThread(s.home, "null", "disc-78", holder);
@@ -290,7 +296,7 @@ test("discovered-id profile: the claim is taken on discovery before the id is pu
     const resumed = await run(s.ctx, { verb: "reply", thread: { threadId: "disc-77" }, round: 2 }, {}, {}, {});
     assert.equal(resumed.job.code, 0, resumed.job.error);
     assert.equal(resumed.job.threadId, "disc-77");
-    assert.match(footer(resumed.job, false), / · round 2\/9 · /);
+    assert.match(footer(resumed.job, false), / · round 2\/9(?: · |\n|$)/);
     assert.equal(loadThread(s.home, "null", "disc-77").round, 2);
   } finally { s.restore(); }
 });

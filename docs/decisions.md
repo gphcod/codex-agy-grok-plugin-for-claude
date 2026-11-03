@@ -2,6 +2,16 @@
 
 Every deviation from PLAN.md Part A or Part B, and every fact a step establishes that Part A did not have, is recorded here before the commit that depends on it. Format: date, step, what changed, why, which steps it touches.
 
+## 2026-11-02 Pacific: post-S7 efficiency pass, rc.7
+
+The owner requested the analogous script improvements and a complete handbook update for the Claude-hosted plugin. Codex performs this authorized follow-up; the original implementation procedure's executor and per-substep commit sequence do not restart. A3.4 changes explicitly: startup omits the repeated native UUID, and healthy footers omit the repeated continuation job. Provider, recovery job, model/effort, round, review target and exceptional recovery hints remain. JSON/state/wait retain native ids; a durable spawned job is announced before init, and no early resume is admitted without native confirmation.
+
+Contract/skill prose is shorter without weakening per-turn injection, grounding, discussion format, editing authorization or background notifications. Initial preparation reuses the just-resolved history; claimed preparation still reloads it. Reservation-only snapshots query the recorded owner pid; unknown stays unknown and cleanup uses unrestricted snapshots. The lifecycle facade preserves public exports while control/recovery moves to its own module. Native usage is exposed without changing the already-correct cost field.
+
+Codex's plan review found no blocker, asking that query errors stay unknown and warm replies be measured; both are covered. Gemini's two attempts returned service 503, not a review. Grok's first source review hit its deadline; its bounded plan review raised four hypotheses. F1/F3 are rejected: only finalized ok results omit the generic hint, unconfirmed hints take precedence, and the claimed re-read precedes build/spawn. F2 is rejected: replay returns saved native-review results without resuming or launching a provider; metadata is saved before spawn. F4 is addressed by uncertain-owner, delayed-init and unrestricted-cleanup tests; usage/cost remain distinct native data. Final review and test evidence will be recorded in qualification.
+
+This is a Windows-qualified release candidate, not final 1.0.0: A8's exact-payload macOS and interactive gates remain. Paid checks are bounded to the relevant provider workflows/host smoke, with fakes for timing. No hosted CI is used. The handbook will distinguish both hosts, retain regressions and use measured evidence for ranking.
+
 ## 2026-10-31 S0: scaffold
 
 - Licensing (S0.1): all three sources are Apache-2.0 at the repository root (`gh api repos/gphcod/<repo>/license`, spdx `Apache-2.0`, LICENSE blob `d0be6cd`). The installed cache copies of grok-build-plugin-cc 1.1.5 and gemini-plugin-cc 2.1.0 carry no LICENSE inside the plugin directory; the repository root does, so verbatim copying is permitted and `NOTICE` names each source with its tag commit. No source needs reimplementation on licensing grounds.

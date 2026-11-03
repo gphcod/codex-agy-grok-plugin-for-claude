@@ -75,7 +75,7 @@ test("(a) three concurrent background asks: ownership is per job, prune and a po
     for (const p of ["gemini", "grok"]) {
       const r = await pending[p];
       assert.equal(r.code, 0, `${p}: ${r.err}${r.out}`);
-      assert.match(footer(r.out), new RegExp(`^council ${p} ok · job ${jobs[p].id} · ${CONSULT[p]} · .* · round 1/9 · next: reply ${jobs[p].id}$`));
+      assert.match(footer(r.out), new RegExp(`^council ${p} ok · job ${jobs[p].id} · ${CONSULT[p]} · .* · round 1/9$`));
     }
     assert.equal(h.invocations().length, 3, "three model processes, nothing else");
     for (const call of h.invocations()) assert.deepEqual(call.guards, GUARD_VARS, `${call.provider} child carries the four guard variables`);
@@ -91,8 +91,8 @@ test("(a) three concurrent background asks: ownership is per job, prune and a po
     for (const p of PROVIDERS) {
       const reply = await h.turn(p, ["reply", "--thread", jobs[p].id], `follow up ${p}`, { COUNCIL_FAKE_SCENARIO: "resume" });
       assert.equal(reply.code, 0, `${p}: ${reply.err}${reply.out}`);
-      assert.match(reply.err, new RegExp(`^\\[council\\] provider=${p} job=${reply.job} thread=${h.job(jobs[p].id).threadId}`));
-      assert.match(footer(reply.out), new RegExp(`^council ${p} ok · job ${reply.job} · ${CONSULT[p]} · .* · round 2/9 · next: reply ${reply.job}$`));
+      assert.match(reply.err, new RegExp(`^\\[council\\] provider=${p} job=${reply.job}`));
+      assert.match(footer(reply.out), new RegExp(`^council ${p} ok · job ${reply.job} · ${CONSULT[p]} · .* · round 2/9$`));
       for (const other of PROVIDERS.filter((x) => x !== p)) {
         const before = h.invocations().length;
         const conflict = await h.turn(p, ["reply", "--thread", jobs[p].id, "--to", other], "x");

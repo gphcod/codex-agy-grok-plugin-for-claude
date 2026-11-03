@@ -48,9 +48,9 @@ test("ask: pong, footer grok-4.7/low, explore recipe, fresh session confirmed, t
   try {
     const r = await h.call(["ask", "--to", "grok", "--effort", "low", "--session", "s1"], { text: "Reply with pong" });
     assert.equal(r.code, 0, r.err + r.out);
-    assert.match(r.err, new RegExp(`^\\[council\\] provider=grok job=${r.job} thread=[0-9a-f-]{36}\\n$`));
+    assert.match(r.err, new RegExp(`^\\[council\\] provider=grok job=${r.job}\\n$`));
     assert.match(r.out, /^pong\n/);
-    assert.match(footer(r.out), new RegExp(`^council grok ok · job ${r.job} · grok-4\\.7/low · \\d+s · round 1/9 · next: reply ${r.job}$`));
+    assert.match(footer(r.out), new RegExp(`^council grok ok · job ${r.job} · grok-4\\.7/low · \\d+s · round 1/9$`));
     const job = h.job(r.job);
     assert.equal(flag(job.childArgs, "--agent"), "explore");
     assert.equal(flag(job.childArgs, "--session-id"), job.threadId);
@@ -77,7 +77,7 @@ test("ask → task --thread → reply → task --thread: recipe, -r and agent on
     assert.equal(a.includes("--agent"), false);
     assert.deepEqual(all(a, "--deny"), ["Bash(git push*)", "Bash(rm -rf *)"]);
     assert.equal(flag(a, "--disallowed-tools"), HOSTILE.join(","));
-    assert.match(footer(task1.out), / · round 2\/9 · edited 1 · next: reply /);
+    assert.match(footer(task1.out), / · round 2\/9 · edited 1$/);
     assert.deepEqual(h.job(task1.job).edited, ["src/a.js"]);
     assert.equal(loadThread(canonical(h.home), "grok", sid).agent, "default");
 
@@ -90,7 +90,7 @@ test("ask → task --thread → reply → task --thread: recipe, -r and agent on
     assert.deepEqual(all(a, "--deny"), ["MCPTool(*)"]);
     assert.equal(h.job(reply.job).readOnly, true);
     assert.match(reply.out, /^pong again\n/);
-    assert.match(footer(reply.out), / · round 3\/9 · next: reply /);
+    assert.match(footer(reply.out), / · round 3\/9$/);
     assert.equal(loadThread(canonical(h.home), "grok", sid).agent, "default");
 
     const task2 = await h.call(["task", "--thread", reply.job, "--effort", "low"], { text: "again", ...resume });
@@ -98,7 +98,7 @@ test("ask → task --thread → reply → task --thread: recipe, -r and agent on
     a = h.job(task2.job).childArgs;
     assert.equal(flag(a, "-r"), sid);
     assert.deepEqual(all(a, "--deny"), ["Bash(git push*)", "Bash(rm -rf *)"]);
-    assert.match(footer(task2.out), / · round 4\/9 · edited 0 · /);
+    assert.match(footer(task2.out), / · round 4\/9 · edited 0(?: · |\n|$)/);
     const thread = loadThread(canonical(h.home), "grok", sid);
     assert.deepEqual([thread.agent, thread.readOnly, thread.round], ["default", false, 4]);
 
@@ -148,7 +148,7 @@ test("a task may advertise and use writing tools", async () => {
     const r = await h.call(["task", "--to", "grok", "--effort", "low"], { text: "edit", env: { COUNCIL_FAKE_GROK_EDIT: join(h.cwd, "b.js") } });
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /^Editing\.\n\npong\n/);
-    assert.match(footer(r.out), /^council grok ok · .* · grok-4\.7-build-fast\/low · \d+s · round 1\/9 · edited 1 · next: reply /, "task defaults to the exec tier");
+    assert.match(footer(r.out), /^council grok ok · .* · grok-4\.7-build-fast\/low · \d+s · round 1\/9 · edited 1$/, "task defaults to the exec tier");
     assert.equal(h.job(r.job).readOnly, false);
   } finally { h.done(); }
 });

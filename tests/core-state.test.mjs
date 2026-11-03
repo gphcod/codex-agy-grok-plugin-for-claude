@@ -146,11 +146,11 @@ test("A3.4 footer over every combination of verb, outcome and optional field", (
       ...(on("unverified") ? ["model unverified"] : []),
       ...(on("clipped") ? [`full: ${join("/j", "answer.md")}`] : []),
       ...(on("error") ? ["error: boom"] : []),
-      ...(on("pending") ? ["cleanup pending; next: cancel abcdefghij123456; do not resume"] : verb !== "review" ? ["next: reply abcdefghij123456"] : []),
+      ...(on("pending") ? ["cleanup pending; next: cancel abcdefghij123456; do not resume"] : outcome !== "ok" && verb !== "review" ? ["next: reply abcdefghij123456"] : []),
     ];
     assert.deepEqual(rest, expected, `${verb} ${outcome} mask ${mask}`);
     checked += 1;
   }
   assert.equal(checked, 4 * 4 * 128);
-  assert.equal(startLine({ provider: "gemini", id: "x", threadId: null, requestedThreadId: null }), "[council] provider=gemini job=x thread=?");
+  assert.equal(startLine({ provider: "gemini", id: "x", threadId: null, requestedThreadId: null }), "[council] provider=gemini job=x");
 });

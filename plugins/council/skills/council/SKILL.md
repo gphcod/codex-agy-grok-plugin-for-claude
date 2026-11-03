@@ -1,6 +1,6 @@
 ---
 name: council
-description: Second opinions, reviews or delegated coding work from Codex, Gemini or Grok. Use when the user names one, or for a hard design or debugging question.
+description: Second opinions, reviews or authorized tasks via Codex, Gemini or Grok. Use when the user names one or needs another view.
 ---
 
 One Bash call per provider call. Options before `--`, text in a quoted heredoc:
@@ -27,7 +27,7 @@ User named no model (a provider is no model): ask/reply/review only, pass `--tie
 
 Fan-out: one background `ask` per provider in one response, same brief, each its own `--request-id`. Follow up with `reply --thread <job>`, never `--last`.
 
-Open with Goal, Known, Files, Constraints, Done when. F1/F2 findings, BLOCKER/MAJOR/MINOR, file:line. Replies send only `F1 AGREE`, `F2 CHANGE: …`, `F3 REJECT: …` and new facts. Stop when nothing changes or at the footer's `round N/N`. Unresolved REJECT is disagreement.
+Brief: Goal, Known, Files, Constraints, Done when. F1/F2 findings, BLOCKER/MAJOR/MINOR, file:line. Replies send only `F1 AGREE`, `F2 CHANGE: …`, `F3 REJECT: …` and new facts. Stop when nothing changes or at `round N/N`. Unresolved REJECT is disagreement.
 
 `run_in_background: true` for every review, task, exec, deep, xhigh (codex consult), max or ultra call, with a fresh `--request-id <8 random letters/digits>` never used earlier in this conversation; else foreground, timeout 600000. Lost result: rerun unchanged, same id (replays). `already used with different input`: new id, rerun.
 Footer: `council <p> <status> · job <id> · …`. Exit 0 done, 10 needs attention (findings, or `attention: <why>`), 20 still running, 1 failed/cancelled/busy, 2 invalid input.
