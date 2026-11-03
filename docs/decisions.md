@@ -350,3 +350,9 @@ The owner asked to fix two gaps found by checking what the Codex-hosted 1.1.3 ad
 A job already recovered under rc.9 or earlier keeps its stale record, because reconciliation happens at recovery; a later reply there still requests `--agent explore`. That stays a read-only turn; what Grok does with it was not run. A live Grok `task` was not run, because `task` needs the owner's separate go-ahead, so the claim that Grok refuses the switch stays the adapter's recorded note, and the fix does not depend on it.
 
 **rc.10, not 1.0.0.** S7's exact macOS and interactive gates remain open.
+
+## 2026-11-03 Pacific: real Grok default-agent sessions
+
+The owner approved real sessions at grok-4.6/low to save tokens. Real Grok 1.0.70 accepted `--agent explore` on a session that ran the default agent and offered the same three read-only tools as the deny recipe, so the adapter's note does not hold for that CLI and model. The marker stays: it caused no problem in these runs, and other versions were not run. `grok.mjs` keeps its note until the next release, because correcting it changes plugin bytes.
+
+The same run found a new limit. After a lost companion, a command the default agent started keeps running while `cancel` reports `cancelled`. A normal `cancel` stops it. This is not fixed. The record is in the qualification.

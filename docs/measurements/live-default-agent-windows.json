@@ -1,0 +1,559 @@
+{
+  "ownerDate": "2026-11-03 Pacific",
+  "approval": "the owner approved real default-agent sessions and named grok-4.6 at low effort to save tokens",
+  "host": "claude-hosted",
+  "pluginVersion": "1.0.0-rc.10",
+  "tag": "v1.0.0-rc.10",
+  "pluginFilesEqualTag": true,
+  "grokCli": "grok 1.0.70 (f50904eaee6c) [stable]",
+  "model": "grok-4.6",
+  "effort": "low",
+  "submittedTurns": 10,
+  "workspace": "a throwaway Git repository with a scratch state root",
+  "notes": [
+    "In sessions.lostCompanionDuringTask the sleepers counts also match the companion, whose argv carries the prompt, so they do not separate the two. The processes runs filter it out and are the evidence for a surviving command.",
+    "The recovered job was removed by hand to stand in for pruning.",
+    "The stale check rewrote the record to explore, removed any marker and deleted the thread's job history, which is the state a recovery before the fix leaves.",
+    "No read-only turn tried a write tool, so the advertised tools are the evidence, not a blocked attempt.",
+    "meta.json keeps status running after a recovery by design: recovery writes a stopped marker and never rewrites a dead companion's result, and wait reports cancelled from it."
+  ],
+  "catalogues": [
+    {
+      "job": "vjjmdhe97flkggnr",
+      "verb": "ask",
+      "round": 1,
+      "agentFlag": "explore",
+      "tools": [
+        "read_file",
+        "list_dir",
+        "grep"
+      ]
+    },
+    {
+      "job": "e62ti3iv5jw41319",
+      "verb": "reply",
+      "round": 2,
+      "agentFlag": null,
+      "tools": [
+        "read_file",
+        "list_dir",
+        "grep"
+      ]
+    },
+    {
+      "job": "9nmeg79huavwfs3i",
+      "verb": "reply",
+      "round": 5,
+      "agentFlag": "explore",
+      "tools": [
+        "read_file",
+        "list_dir",
+        "grep"
+      ]
+    }
+  ],
+  "sessions": {
+    "date": "2026-11-03T23:29:54.255Z",
+    "host": "claude-hosted",
+    "entry": "E:/_PMOg/codex-agy-grok-plugin-for-claude/plugins/council/scripts/council.mjs",
+    "model": "grok-4.6",
+    "effort": "low",
+    "root": "C:\\Users\\kkao\\AppData\\Local\\Temp\\tw-da-claude-hosted-mw1bll5h",
+    "scenarios": {
+      "completedSession": {
+        "ask": {
+          "code": 0,
+          "seconds": 8.688,
+          "job": {
+            "status": "done",
+            "outcome": "ok",
+            "code": 0,
+            "error": null,
+            "attention": null,
+            "denied": null,
+            "failedCommands": [],
+            "edited": [],
+            "readOnly": true,
+            "round": 1,
+            "threadId": "87a057b2-be17-4dd1-926a-4ce45cee3b90",
+            "model": "grok-4.6",
+            "effort": "low",
+            "pid": 22584
+          },
+          "out": "first\n\n<handoff>\nGoal: Reply with the single word first\nKnown: User asked for that exact reply\nFiles: none\nConstraints: none\nDone when: that word is sent\n</handoff>\n\nOutcome: Replied with first. Goal met. Files changed: none.\nVerification: not run\nOpen questions: none\nNext: none\ncouncil grok ok · job yvtqxdqo7olnhhk2 · grok-4.6/low · 9s · round 1/9\n",
+          "err": "[council] provider=grok job=yvtqxdqo7olnhhk2\n",
+          "agentFlag": "explore"
+        },
+        "task": {
+          "code": 0,
+          "seconds": 9.48,
+          "job": {
+            "status": "done",
+            "outcome": "ok",
+            "code": 0,
+            "error": null,
+            "attention": null,
+            "denied": null,
+            "failedCommands": [],
+            "edited": [
+              "s1.txt"
+            ],
+            "readOnly": false,
+            "round": 2,
+            "threadId": "87a057b2-be17-4dd1-926a-4ce45cee3b90",
+            "model": "grok-4.6",
+            "effort": "low",
+            "pid": 12536
+          },
+          "out": "I'll create `s1.txt` with the word `done`, then reply as requested.\n\ndone\n\n<handoff>\nGoal: Create s1.txt with done, then reply done\nKnown: File written at workspace s1.txt\nFiles: C:\\Users\\kkao\\AppData\\Local\\Temp\\tw-da-claude-hosted-mw1bll5h\\work\\s1.txt\nConstraints: Do nothing else\nDone when: file exists with done and reply is done\n</handoff>\n\nOutcome: Created s1.txt with done. Goal met. Files changed: s1.txt.\nVerification: write tool succeeded\nOpen questions: none\nNext: none\ncouncil grok ok · job a4252505a2c4da87 · grok-4.6/low · 9s · round 2/9 · edited 1\n",
+          "err": "[council] provider=grok job=a4252505a2c4da87\n",
+          "agentFlag": null,
+          "file": true,
+          "recordAgent": "default"
+        },
+        "replyByNativeId": {
+          "code": 0,
+          "seconds": 4.743,
+          "job": {
+            "status": "done",
+            "outcome": "ok",
+            "code": 0,
+            "error": null,
+            "attention": null,
+            "denied": null,
+            "failedCommands": [],
+            "edited": [],
+            "readOnly": true,
+            "round": 3,
+            "threadId": "87a057b2-be17-4dd1-926a-4ce45cee3b90",
+            "model": "grok-4.6",
+            "effort": "low",
+            "pid": 30792
+          },
+          "out": "second\n\n<handoff>\nGoal: Reply with the single word second\nKnown: User asked for that exact reply\nFiles: none\nConstraints: none\nDone when: that word is sent\n</handoff>\n\nOutcome: Replied with second. Goal met. Files changed: none.\nVerification: not run\nOpen questions: none\nNext: none\ncouncil grok ok · job qwfrymtfs8irxpy0 · grok-4.6/low · 5s · round 3/9\n",
+          "err": "[council] provider=grok job=qwfrymtfs8irxpy0\n",
+          "agentFlag": null,
+          "sameThread": true
+        },
+        "readOnlyWriteAttempt": {
+          "code": 0,
+          "seconds": 18.099,
+          "job": {
+            "status": "done",
+            "outcome": "ok",
+            "code": 0,
+            "error": null,
+            "attention": null,
+            "denied": null,
+            "failedCommands": [],
+            "edited": [],
+            "readOnly": true,
+            "round": 4,
+            "threadId": "87a057b2-be17-4dd1-926a-4ce45cee3b90",
+            "model": "grok-4.6",
+            "effort": "low",
+            "pid": 39436
+          },
+          "out": "I'll try to create `s1-forbidden.txt` with `x`.\n\ndenied\n\n<handoff>\nGoal: Create s1-forbidden.txt with x, or reply denied\nKnown: No write tool in this turn; file does not exist\nFiles: none created\nConstraints: If cannot create, reply denied\nDone when: file created or denied sent\n</handoff>\n\nOutcome: Could not create s1-forbidden.txt. Replied denied. Goal met. Files changed: none.\nVerification: read_file showed file does not exist; write unavailable\nOpen questions: none\nNext: none\ncouncil grok ok · job gcrqoqbgf6pecutw · grok-4.6/low · 18s · round 4/9\n",
+          "err": "[council] provider=grok job=gcrqoqbgf6pecutw\n",
+          "agentFlag": null,
+          "fileCreated": false,
+          "gitStatusBefore": [
+            "?? s1.txt"
+          ],
+          "gitStatusAfter": [
+            "?? s1.txt"
+          ]
+        }
+      },
+      "lostCompanionDuringTask": {
+        "ask": {
+          "code": 0,
+          "job": {
+            "status": "done",
+            "outcome": "ok",
+            "code": 0,
+            "error": null,
+            "attention": null,
+            "denied": null,
+            "failedCommands": [],
+            "edited": [],
+            "readOnly": true,
+            "round": 1,
+            "threadId": "755a7e61-acd7-47ee-9b38-680c57ebd18a",
+            "model": "grok-4.6",
+            "effort": "low",
+            "pid": 36068
+          }
+        },
+        "editSeenBeforeKill": {
+          "startedFile": true,
+          "seconds": 9.053
+        },
+        "lostJob": {
+          "id": "e12739f4505fe06e",
+          "job": {
+            "status": "running",
+            "readOnly": false,
+            "round": 2,
+            "threadId": "755a7e61-acd7-47ee-9b38-680c57ebd18a",
+            "model": "grok-4.6",
+            "effort": "low",
+            "pid": 8264
+          },
+          "agentFlag": null,
+          "companionPid": 34300,
+          "sleepers": 1
+        },
+        "afterKill": {
+          "providerAlive": false,
+          "sleepers": 0,
+          "recordAgent": "explore",
+          "marker": false
+        },
+        "blockedUntilCancel": {
+          "code": 1,
+          "out": "council grok failed · job vnq0grw0idt2m96f · grok-4.6/low · 0s · round 2/9 · error: thread 755a7e61-acd7-47ee-9b38-680c57ebd18a is busy as job e12739f4505fe06e; wait or cancel e12739f4505fe06e\n"
+        },
+        "cancel": {
+          "code": 0,
+          "out": "cancelled · grok · job e12739f4505fe06e · the thread stays resumable\n",
+          "err": ""
+        },
+        "afterCancel": {
+          "job": {
+            "status": "running",
+            "readOnly": false,
+            "round": 2,
+            "threadId": "755a7e61-acd7-47ee-9b38-680c57ebd18a",
+            "model": "grok-4.6",
+            "effort": "low",
+            "pid": 8264
+          },
+          "providerAlive": false,
+          "sleepers": 0,
+          "recordAgent": "explore",
+          "marker": true
+        },
+        "replyAfterPrune": {
+          "code": 0,
+          "seconds": 5.178,
+          "job": {
+            "status": "done",
+            "outcome": "ok",
+            "code": 0,
+            "error": null,
+            "attention": null,
+            "denied": null,
+            "failedCommands": [],
+            "edited": [],
+            "readOnly": true,
+            "round": 2,
+            "threadId": "755a7e61-acd7-47ee-9b38-680c57ebd18a",
+            "model": "grok-4.6",
+            "effort": "low",
+            "pid": 35400
+          },
+          "out": "resumed\ncouncil grok ok · job e62ti3iv5jw41319 · grok-4.6/low · 5s · round 2/9\n",
+          "err": "[council] provider=grok job=e62ti3iv5jw41319\n",
+          "agentFlag": null,
+          "sameThread": true
+        }
+      },
+      "staleExploreRecordOnRealDefaultSession": {
+        "reply": {
+          "code": 0,
+          "seconds": 8.343,
+          "job": {
+            "status": "done",
+            "outcome": "ok",
+            "code": 0,
+            "error": null,
+            "attention": null,
+            "denied": null,
+            "failedCommands": [],
+            "edited": [],
+            "readOnly": true,
+            "round": 5,
+            "threadId": "87a057b2-be17-4dd1-926a-4ce45cee3b90",
+            "model": "grok-4.6",
+            "effort": "low",
+            "pid": 44796
+          },
+          "out": "I'll try to create `stale-forbidden.txt` with `x`.\n\ndenied\n\n<handoff>\nGoal: Create stale-forbidden.txt with x, or reply denied\nKnown: File does not exist; no write tool available\nFiles: none created\nConstraints: If cannot create, reply denied\nDone when: file created or denied sent\n</handoff>\n\nOutcome: Could not create stale-forbidden.txt. Replied denied. Goal met. Files changed: none.\nVerification: read_file showed file does not exist\nOpen questions: none\nNext: none\ncouncil grok ok · job 9nmeg79huavwfs3i · grok-4.6/low · 8s · round 5/9\n",
+          "err": "[council] provider=grok job=9nmeg79huavwfs3i\n",
+          "agentFlag": "explore",
+          "childArgs": [
+            "--prompt-file",
+            "C:\\Users\\kkao\\AppData\\Local\\Temp\\tw-da-claude-hosted-mw1bll5h\\state\\jobs\\9nmeg79huavwfs3i\\prompt.md",
+            "-r",
+            "87a057b2-be17-4dd1-926a-4ce45cee3b90",
+            "--cwd",
+            "C:\\Users\\kkao\\AppData\\Local\\Temp\\tw-da-claude-hosted-mw1bll5h\\work",
+            "--output-format",
+            "streaming-json",
+            "--model",
+            "grok-4.6",
+            "--effort",
+            "low",
+            "--no-auto-update",
+            "--agent",
+            "explore",
+            "--always-approve",
+            "--no-subagents",
+            "--disable-web-search",
+            "--disallowed-tools",
+            "Agent,ask_user_question,enter_plan_mode,exit_plan_mode,image_gen,image_edit,image_to_video,reference_to_video",
+            "--deny",
+            "MCPTool(*)",
+            "--rules",
+            "<council_contract version=\"1\"> Claude calls you; no person reads this. Give a self-contained final answer. A <handoff> (Goal, Known, Files, Constraints, Done when) is authoritative unless the repository contradicts it; report conflicts. Final: outcome (what you did/found, goal met, files changed via any tool); `Verification:` checks/results or `not run`; `Open questions:` direct questions or `none`; `Next:` best step or `none`. No narration or restatement. Ground claims in files read/checks run; label inferences. Discussion: F1, F2 findings, BLOCKER/MAJOR/MINOR, file:line. Claude replies per finding AGREE, CHANGE: <text>, REJECT: <evidence>. Answer only changed findings, each AGREE, CHANGE or REJECT. </council_contract>"
+          ],
+          "fileCreated": false,
+          "gitStatusBefore": [
+            "?? s1.txt",
+            "?? s2-started.txt"
+          ],
+          "gitStatusAfter": [
+            "?? s1.txt",
+            "?? s2-started.txt"
+          ]
+        }
+      }
+    },
+    "finalGitStatus": [
+      "?? s1.txt",
+      "?? s2-started.txt"
+    ],
+    "finalSleepers": 0
+  },
+  "processes": {
+    "date": "2026-11-03T23:34:29.636Z",
+    "host": "claude-hosted",
+    "entry": "E:/_PMOg/codex-agy-grok-plugin-for-claude/plugins/council/scripts/council.mjs",
+    "model": "grok-4.6",
+    "effort": "low",
+    "root": "C:\\Users\\kkao\\AppData\\Local\\Temp\\tw-or-claude-hosted-mw1brhn5",
+    "runs": {
+      "normalCancel": {
+        "sleepMs": 170101,
+        "job": "929abb13c356f41c",
+        "before": {
+          "providerPid": 45336,
+          "sleepers": [
+            {
+              "pid": 44876,
+              "parent": 45336,
+              "chain": [
+                "pwsh.exe:44876",
+                "grok.exe:45336",
+                "node.exe:31864",
+                "node.exe:44960",
+                "bash.exe:18692",
+                "bash.exe:46352",
+                "bash.exe:13956",
+                "claude.exe:44264"
+              ]
+            },
+            {
+              "pid": 36820,
+              "parent": 44876,
+              "chain": [
+                "node.exe:36820",
+                "pwsh.exe:44876",
+                "grok.exe:45336",
+                "node.exe:31864",
+                "node.exe:44960",
+                "bash.exe:18692",
+                "bash.exe:46352",
+                "bash.exe:13956"
+              ]
+            }
+          ]
+        },
+        "cancel": {
+          "code": 0,
+          "out": "cancelled · grok · job 929abb13c356f41c\n",
+          "err": ""
+        },
+        "companionExit": 1,
+        "afterCancel": {
+          "providerAlive": false,
+          "sleepers": []
+        },
+        "wait": {
+          "code": 1,
+          "out": "I'll run the exact command and wait until it exits.\ncouncil grok cancelled · job 929abb13c356f41c · grok-4.6/low · 11s · round 1/9 · edited 0 · error: cancelled\n",
+          "err": ""
+        },
+        "meta": {
+          "status": "cancelled",
+          "outcome": "cancelled",
+          "error": "cancelled",
+          "cleanupPending": false,
+          "execution": [
+            {
+              "pid": 45336,
+              "ppid": 31864,
+              "stamp": "639293456699830780",
+              "raw": "C:\\Users\\kkao\\.grok\\bin\\grok.exe --prompt-file C:\\Users\\kkao\\AppData\\Local\\Temp\\tw-or-claude-hosted-mw1brhn5\\state\\jobs\\929abb13c356f41c\\prompt.md --session-id 227faab4-b6de-4276-82a8-c15ea817c8cb --cwd C:\\Users\\kkao\\AppData\\Local\\Temp\\tw-or-claude-hosted-mw1brhn5\\work --output-format streaming-json --model grok-4.6 --effort low --no-auto-update --always-approve --no-subagents --disable-web-search --disallowed-tools Agent,ask_user_question,enter_plan_mode,exit_plan_mode,image_gen,image_edit,image_to_video,reference_to_video --deny \"Bash(git push*)\" --deny \"Bash(rm -rf *)\" --rules \"<council_contract version=\\\"1\\\"> Claude calls you; no person reads this. Give a self-contained final answer. A <handoff> (Goal, Known, Files, Constraints, Done when) is authoritative unless the repository contradicts it; report conflicts. Final: outcome (what you did/found, goal met, files changed via any tool); `Verification:` checks/results or `not run`; `Open questions:` direct questions or `none`; `Next:` best step or `none`. No narration or restatement. Ground claims in files read/checks run; label inferences. Discussion: F1, F2 findings, BLOCKER/MAJOR/MINOR, file:line. Claude replies per finding AGREE, CHANGE: <text>, REJECT: <evidence>. Answer only changed findings, each AGREE, CHANGE or REJECT. </council_contract>\"",
+              "name": "grok.exe",
+              "inaccessible": false,
+              "argv": [
+                "C:\\Users\\kkao\\.grok\\bin\\grok.exe",
+                "--prompt-file",
+                "C:\\Users\\kkao\\AppData\\Local\\Temp\\tw-or-claude-hosted-mw1brhn5\\state\\jobs\\929abb13c356f41c\\prompt.md",
+                "--session-id",
+                "227faab4-b6de-4276-82a8-c15ea817c8cb",
+                "--cwd",
+                "C:\\Users\\kkao\\AppData\\Local\\Temp\\tw-or-claude-hosted-mw1brhn5\\work",
+                "--output-format",
+                "streaming-json",
+                "--model",
+                "grok-4.6",
+                "--effort",
+                "low",
+                "--no-auto-update",
+                "--always-approve",
+                "--no-subagents",
+                "--disable-web-search",
+                "--disallowed-tools",
+                "Agent,ask_user_question,enter_plan_mode,exit_plan_mode,image_gen,image_edit,image_to_video,reference_to_video",
+                "--deny",
+                "Bash(git push*)",
+                "--deny",
+                "Bash(rm -rf *)",
+                "--rules",
+                "<council_contract version=\"1\"> Claude calls you; no person reads this. Give a self-contained final answer. A <handoff> (Goal, Known, Files, Constraints, Done when) is authoritative unless the repository contradicts it; report conflicts. Final: outcome (what you did/found, goal met, files changed via any tool); `Verification:` checks/results or `not run`; `Open questions:` direct questions or `none`; `Next:` best step or `none`. No narration or restatement. Ground claims in files read/checks run; label inferences. Discussion: F1, F2 findings, BLOCKER/MAJOR/MINOR, file:line. Claude replies per finding AGREE, CHANGE: <text>, REJECT: <evidence>. Answer only changed findings, each AGREE, CHANGE or REJECT. </council_contract>"
+              ]
+            },
+            {
+              "pid": 43108,
+              "ppid": 45336,
+              "stamp": "639293456699953180",
+              "raw": "\\??\\C:\\Windows\\system32\\conhost.exe 0x4",
+              "name": "conhost.exe",
+              "inaccessible": false,
+              "argv": [
+                "\\??\\C:\\Windows\\system32\\conhost.exe",
+                "0x4"
+              ]
+            },
+            {
+              "pid": 44876,
+              "ppid": 45336,
+              "stamp": "639293456739496100",
+              "raw": "\"pwsh\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"node -e \\\"setTimeout(()=>{},170101)\\\"\"",
+              "name": "pwsh.exe",
+              "inaccessible": false,
+              "argv": [
+                "pwsh",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                "node -e \"setTimeout(()=>{},170101)\""
+              ]
+            },
+            {
+              "pid": 3180,
+              "ppid": 44876,
+              "stamp": "639293456741911380",
+              "raw": "\\??\\C:\\Windows\\system32\\conhost.exe 0x4",
+              "name": "conhost.exe",
+              "inaccessible": false,
+              "argv": [
+                "\\??\\C:\\Windows\\system32\\conhost.exe",
+                "0x4"
+              ]
+            },
+            {
+              "pid": 36820,
+              "ppid": 44876,
+              "stamp": "639293456744741290",
+              "raw": "\"D:\\Apps\\node-v22.19.0\\node.exe\" -e setTimeout(()=>{},170101)",
+              "name": "node.exe",
+              "inaccessible": false,
+              "argv": [
+                "D:\\Apps\\node-v22.19.0\\node.exe",
+                "-e",
+                "setTimeout(()=>{},170101)"
+              ]
+            }
+          ]
+        }
+      },
+      "lostCompanion": {
+        "sleepMs": 170102,
+        "job": "de68567862bffd28",
+        "before": {
+          "providerPid": 28456,
+          "sleepers": [
+            {
+              "pid": 29760,
+              "parent": 28456,
+              "chain": [
+                "pwsh.exe:29760",
+                "grok.exe:28456",
+                "node.exe:34952",
+                "node.exe:44960",
+                "bash.exe:18692",
+                "bash.exe:46352",
+                "bash.exe:13956",
+                "claude.exe:44264"
+              ]
+            },
+            {
+              "pid": 26044,
+              "parent": 29760,
+              "chain": [
+                "node.exe:26044",
+                "pwsh.exe:29760",
+                "grok.exe:28456",
+                "node.exe:34952",
+                "node.exe:44960",
+                "bash.exe:18692",
+                "bash.exe:46352",
+                "bash.exe:13956"
+              ]
+            }
+          ]
+        },
+        "afterKill": {
+          "providerAlive": false,
+          "sleepers": [
+            26044
+          ]
+        },
+        "cancel": {
+          "code": 0,
+          "out": "cancelled · grok · job de68567862bffd28\n",
+          "err": ""
+        },
+        "afterCancel": {
+          "providerAlive": false,
+          "sleepers": [
+            {
+              "pid": 26044,
+              "parent": 29760,
+              "chain": [
+                "node.exe:26044"
+              ]
+            }
+          ]
+        },
+        "wait": {
+          "code": 1,
+          "out": "I'll run the exact command and wait until it exits.\ncouncil grok cancelled · job de68567862bffd28 · grok-4.6/low · 10s · round 1/9 · edited 0 · error: recovered after the companion stopped\n",
+          "err": ""
+        },
+        "meta": {
+          "status": "running",
+          "cleanupPending": false,
+          "execution": []
+        }
+      }
+    }
+  }
+}

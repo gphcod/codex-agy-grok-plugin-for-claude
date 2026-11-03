@@ -62,7 +62,7 @@ Real CLIs, on the frozen rc.10 runtime, at the owner's settings: Codex 6.1 Sol/x
 
 The fix diff's own reviews also ran on this code, on all three providers, with no cleanup pending.
 
-Not run live: a Grok `task` through a lost companion, because `task` needs the owner's separate go-ahead. So the claim that Grok refuses `--agent explore` on a session that ran the default agent stays the adapter's recorded note; the fix does not depend on it. A real failed marker write and a real locked marker were not produced; those rely on mocked tests.
+Not run live for this release: a Grok `task` through a lost companion. It ran later the same day, and Grok accepted `--agent explore` on such a session; see [Later real Grok sessions](#later-real-grok-sessions). The fix does not depend on that. A real failed marker write and a real locked marker were not produced; those rely on mocked tests.
 
 ## Source
 
@@ -70,4 +70,22 @@ Runtime 4870 → 4916 lines in 24 files; largest module `lifecycle.mjs` 476, unc
 
 ## Limits
 
-This remains **1.0.0-rc.10**. Exact macOS and interactive qualification still gates final 1.0.0, so the macOS behaviour of these fixes rests on tests run only on Windows here. Linux stays optional. A job already recovered under rc.9 or earlier keeps its stale thread agent, because reconciliation happens at recovery; a later reply there still requests `--agent explore`. That stays a read-only turn; what Grok does with it was not run.
+This remains **1.0.0-rc.10**. Exact macOS and interactive qualification still gates final 1.0.0, so the macOS behaviour of these fixes rests on tests run only on Windows here. Linux stays optional. A job already recovered under rc.9 or earlier keeps its stale thread agent, because reconciliation happens at recovery; a later reply there still requests `--agent explore`. That stays a read-only turn, and real Grok accepted it in the later sessions.
+
+## Later real Grok sessions
+
+Run on 2026-11-03 Pacific, after the owner approved real default-agent sessions, at Grok 1.0.70 and grok-4.6/low to save tokens, in a throwaway repository with a scratch state root. Ten submitted turns on this plugin; the other combined plugin ran the same checks. [Raw record](../measurements/live-default-agent-windows.json). The plugin files equal the v1.0.0-rc.10 tag's.
+
+| Check | Result |
+|---|---|
+| Task, then read-only replies by native id | The task wrote its file. Replies sent no `--agent`, kept the thread and created no file when asked to write |
+| Companion killed after a real edit | A reply was refused as busy until `cancel`. The record stayed on `explore`, and `cancel` set the marker, which is the real case this fix covers. With the job removed by hand to stand in for pruning, a reply by native id kept the thread without `--agent`, offering only `read_file`, `list_dir` and `grep` |
+| Record forced back to `explore` on a session that really ran the default agent | The reply sent `--agent explore`. Grok accepted it and exited 0, with the same three tools and no file created |
+| `cancel` with a live companion during a long command | Grok, its PowerShell wrapper and the command all stopped |
+| `cancel` after a lost companion during a long command | Grok and its wrapper were gone, **but the command kept running**. `cancel` still exited 0 with `cancelled`, `wait` reported `recovered after the companion stopped`, and no cleanup was pending |
+
+The last two rows come from separate runs that waited until the command was running. In the killed-companion run above them, the kill came before that command started.
+
+- **Grok accepts the switch.** The adapter's note that a session on the default agent cannot switch to explore does not hold for Grok 1.0.70 with grok-4.6. The reply this fix protects against would not have failed in this check, and both recipes gave the same read-only tools. The fix caused no problem in these runs and stays, because other CLI versions and models were not run. The note in `grok.mjs` is unchanged, since correcting it changes plugin bytes.
+- **A lost task's command can outlive `cancel`.** This is a new limit and is not fixed. The evidence record is empty and the command has no living parent, so recovery has nothing that links it to the job; that cause is inferred. The test command only slept, so edits by a surviving command are also inferred.
+- **Not run:** a kill inside the window itself, grok-4.7, and any platform but Windows. No read-only turn tried a write tool, so the advertised tools are the evidence, not a blocked attempt.
