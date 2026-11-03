@@ -343,6 +343,20 @@ test("finalizeReview: well-formed [P2] and [P3] findings are MINOR (milestone 3 
   assert.match(minorOnly.renderedText, /\nF1 MINOR \/r\/b\.js:1: Nit\n/);
 });
 
+test("a finding's indented body may mention a priority; an indented bullet that fails the form stays unrecognized", () => {
+  const body = "Review comment:\n\n- [P1] Guard against null — /r/parse.js:42-45\n  Without it `table[P0]` throws, so this is [P1] rather than [P2].\n  Restore the early return.\n- [P2] Second — /r/b.js:7\n  Fine.";
+  const r = adapter.finalizeReview({ answerText: body });
+  assert.deepEqual([r.verdict, r.incomplete], ["changes", null]);
+  assert.deepEqual(r.findings.map((f) => f.title), ["Guard against null", "Second"]);
+  assert.equal(r.findings[0].text, "Without it `table[P0]` throws, so this is [P1] rather than [P2].\nRestore the early return.");
+  assert.equal(finalizeReviewTurn({ adapter, answerText: body }).exit, 10);
+  const nested = adapter.finalizeReview({ answerText: "Review comment:\n\n- [P1] Real — /r/a.js:4\n  body\n  - [P2] no location" });
+  assert.equal(nested.verdict, "incomplete");
+  assert.match(nested.incomplete, /1 finding line/);
+  // Prose after a finding, not indented, is outside it.
+  assert.equal(adapter.finalizeReview({ answerText: "Review comment:\n\n- [P1] Real — /r/a.js:4\n  body\n\nThis [P1] is the only one." }).verdict, "incomplete");
+});
+
 test("finalizeReview → incomplete (exit 10): unparseable lines, empty, fallback text, prose without findings", () => {
   const cases = [
     ["Review comment:\n\n- [P4] Unknown priority — /r/a.js:4-4\n  minor", /1 finding line\(s\) not in Codex's `- \[P0-3\] <title> — <path>:<line>` form/],

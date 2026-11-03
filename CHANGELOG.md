@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (unreleased; 1.0.0-rc.8 candidate)
+## 1.0.0 (unreleased; 1.0.0-rc.9 candidate)
 
 First release of `council`. A single plugin now provides the following, through one companion process and one provider CLI child per call:
 
@@ -10,6 +10,19 @@ First release of `council`. A single plugin now provides the following, through 
 - authorized delegated edits
 
 The release check is S7 of `PLAN.md`: a macOS matrix, a Windows session and the tag.
+
+### 1.0.0-rc.9 (2026-11-03 Pacific)
+
+Fixes from a whole-code review by Codex, Gemini, Grok and Claude. Nothing changes for a healthy turn: model defaults, framing, skill, contract and commands are as in rc.8.
+
+- `reply --last` no longer replies on an older thread while the latest thread-starting job is still open. Grok names its session only when a turn ends, so during a running Grok `ask` the job was skipped and the previous thread was resumed with no warning. It now exits 2 with `native thread not confirmed yet; wait or cancel <job>`. A lost job is refused the same way until `cancel` recovers it.
+- A caller that closed stderr no longer kills the companion. The start line's write error was unhandled after the provider had started: the call exited 1, the job was never finalized and the provider kept running unsupervised. Stderr now gets the same handler as stdout, and the turn finishes.
+- A thread record that stays locked for 2 s now stops the call with exit 1 and `retry: thread <id> cannot be read right now`. It used to read as missing, so a reply fell back to the job's fields and could resume a thread marked not resumable, with old settings and round. A `--thread` value that cannot be a native id reads nothing and reports `no job or thread`.
+- Review coverage now names every file whatever the user's Git diff configuration says. `diff.noprefix` or `diff.mnemonicPrefix` turned every tracked file into `unknown file`, including files listed as not reviewed, and `diff.submodule=log` or `diff` dropped a changed submodule from the list. Gemini and Grok reviews collect with `--src-prefix=a/ --dst-prefix=b/ --submodule=short`.
+- A resumed turn whose provider never started (a failed spawn, a throwing `beforeTurn`, a cancel before the spawn) leaves its thread record alone. It used to count a round, keep that call's one-shot model and effort, and after an unexecuted `task --thread` make Grok resume with the default agent. A turn that started and failed still counts a round.
+- A Gemini 503 on a `reply` whose stream never named its thread is no longer eligible for the one automatic retry. Real agy names it in `init`, so this needs a failure before any event.
+- A Codex finding whose indented body mentions `[P0]` to `[P9]` keeps its whole body and its `changes` verdict. It used to become `incomplete` with the body cut there. Exit 10 is unchanged, and a bullet that fails the finding form is still reported.
+- A job whose claims cannot be read no longer fails the next turn from inside pruning.
 
 ### 1.0.0-rc.8 (2026-11-02 Pacific)
 

@@ -114,6 +114,32 @@ for (const testedVerb of ['ask', 'reply', 'review', 'partial', 'partial-review']
   assert.equal(fs.readFileSync(log, 'utf8').trim().split('\n').length, 2, 'exactly one explicit new submission');
 });
 
+test('a resumed 503 that nothing in the stream tied to its thread grants no retry', async t => {
+  const root = fs.mkdtempSync(join(tmpdir(), 'council-503-noid-'));
+  t.after(() => { fs.rmSync(root, { recursive: true, force: true, maxRetries: 3 }); });
+  const home = join(root, 'state'), log = join(root, 'turns.jsonl'), workspace = join(root, 'work');
+  fs.mkdirSync(workspace); fs.writeFileSync(log, '{}\n', 'utf8'); // the normal fake establishes the thread
+  const entry = fileURLToPath(new URL('../plugins/council/scripts/council.mjs', import.meta.url));
+  const contract = fs.readFileSync(new URL('../plugins/council/contract.md', import.meta.url), 'utf8').trim();
+  const env = { ...process.env, COUNCIL_HOME: home, HOME: root, USERPROFILE: root, COUNCIL_AGY_BIN: fileURLToPath(new URL('./fixtures/fake-agy-transient.mjs', import.meta.url)),
+    COUNCIL_FAKE_TRANSIENT_LOG: log, COUNCIL_FAKE_EXPECT_PROMPT_CONTAINS: '', COUNCIL_FAKE_JOB_DIR: join(home, 'jobs'), COUNCIL_FAKE_EXPECT_CONTRACT: contract, COUNCIL_FAKE_TRANSIENT_NO_ID: '1' };
+  for (const guard of GUARD_VARS) delete env[guard];
+  const run = (args, scenario) => new Promise(resolve => {
+    let out = '';
+    const child = spawn(process.execPath, [entry, ...args, '--json', '--', 'Reply with pong'], { cwd: workspace, env: { ...env, COUNCIL_FAKE_SCENARIO: scenario }, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    child.stdout.on('data', d => out += d);
+    child.on('close', code => resolve({ code, out }));
+  });
+  const seed = await run(['ask', '--to', 'gemini', '--tier', 'consult', '--request-id', 'seed'], 'ok');
+  assert.equal(seed.code, 0, seed.out);
+  fs.writeFileSync(log, '', 'utf8');
+  const failed = await run(['reply', '--thread', JSON.parse(seed.out).job, '--request-id', 'first'], 'resume');
+  assert.equal(failed.code, 1, failed.out);
+  const error = JSON.parse(failed.out);
+  assert.match(error.error, /code 503/);
+  assert.deepEqual([error.retry.status, error.retry.eligible, error.retry.maxRetries], [503, false, 0]);
+});
+
 test('a later 503 cannot replace an earlier malformed-stream failure', () => {
   for (const sameChunk of [true, false]) {
     const reader = makeReader();

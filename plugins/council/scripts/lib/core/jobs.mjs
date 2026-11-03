@@ -14,7 +14,7 @@ import path from "node:path";
 
 import { canonical, readJson, readRecord, retryLocked, sleepSync, writeFileAtomic } from "./fs.mjs";
 import { UsageError } from "./catalog.mjs";
-import { claimHeld } from "./claims.mjs";
+import { THREAD, claimHeld } from "./claims.mjs";
 import { BEAT_STALE_MS, beatMs, touchBeat } from "./heartbeat.mjs";
 import { MESSAGES } from "./output.mjs";
 
@@ -277,11 +277,11 @@ export function prune(home, keep = KEEP_FINISHED) {
   catch { /* Next turn. */ }
   const trash = path.join(home, "trash");
   for (const job of finished.slice(keep)) {
-    if (claimHeld(home, job)) continue;
     try {
+      if (claimHeld(home, job)) continue;
       fs.mkdirSync(trash, { recursive: true });
       fs.renameSync(job.dir, path.join(trash, `${job.id}-${randomBytes(4).toString("hex")}`));
-    } catch { /* Another companion took it, or the rename failed: a later turn tries again. */ }
+    } catch { /* Its claims could not be read, another companion took it, or the rename failed: a later turn tries again. */ }
   }
   let left;
   try { left = fs.readdirSync(trash); } catch { return; }
@@ -370,8 +370,10 @@ export function lastEvent(job) {
 
 /** threads/<provider>-<threadId>.json: provider, native thread id, cwd, model, effort, tier, round, rounds, agent. Never pruned. */
 export function loadThread(home, provider, threadId) {
-  if (!threadId) return null;
-  return readJson(threadFile(home, provider, threadId));
+  if (!threadId || !THREAD.test(threadId)) return null; // Not a native id, so never a path to read.
+  // A record that cannot be read now is not a missing one: a caller's fallback to the job would lose its refusal.
+  try { return readRecord(threadFile(home, provider, threadId)); }
+  catch (error) { throw new Error(MESSAGES.threadUnreadable(threadId, error.code ?? error.message)); }
 }
 
 export function saveThread(home, record) {

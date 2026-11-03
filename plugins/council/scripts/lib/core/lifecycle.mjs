@@ -430,10 +430,12 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
   }
   let edited = [...(seen?.edited ?? [])];
   if (edits) { beat(); edited = unionEdited(request.cwd, edited, worktreeChanges(request.cwd, edits)); }
+  const transient = outcome === "failed" && error === seen?.failed ? seen?.transientFailure ?? null : null;
   Object.assign(job, {
     status: ["ok", "attention"].includes(outcome) ? "done" : outcome, outcome, code: outcome === "ok" ? 0 : outcome === "attention" ? 10 : refused && outcome === "failed" && cleanupConfirmed ? 2 : 1,
     error, cleanupPending: !cleanupConfirmed, endedAt: new Date().toISOString(),
-    transientFailure: outcome === "failed" && error === seen?.failed ? seen?.transientFailure ?? null : null,
+    // A resumed turn whose stream never named its thread cannot show it did no work, so the service helper grants no retry.
+    transientFailure: transient && resumed && !seen?.threadId ? { ...transient, noVisibleWork: false } : transient,
     // X1: the reason a turn needs attention, shown in the footer as `attention: <reason>`.
     attention: outcome === "attention" ? attentionReason({ isReview, review: job.review, denied: seen?.denied, deniedAction: seen?.deniedAction, deniedCount: seen?.deniedCount, questions: parsed?.questions }) : null,
     edited, failedCommands: seen?.failedCommands ?? [], failedCommandCount: seen?.failedCommandCount ?? 0,
@@ -447,8 +449,9 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
     await hooks.beforeFinalize?.(job);
     // A7.6: the thread record follows every threaded turn that confirmed its thread. It is written
     // while the claim is still held and before completion is published, so a failed write never
-    // leaves a published result whose thread metadata is stale.
-    if (job.threadId && !isReview && job.admitted) {
+    // leaves a published result whose thread metadata is stale. A resumed turn whose provider never
+    // started changes nothing: job.threadId is its requested thread, not a confirmation.
+    if (job.threadId && !isReview && job.admitted && child && !spawnError) {
       (hooks.saveThread ?? saveThread)(ctx.home, { provider, threadId: job.threadId, cwd: job.cwd, model: job.model, effort: job.effort, tier: job.tier, round: job.round, rounds: job.rounds, roundsSet: job.roundsSet, web: job.web, agent: turn?.agent ?? null, lastJob: job.id, lastVerb: job.verb, readOnly: job.readOnly, ...(job.unconfirmed ? { resumable: false, unconfirmed: job.unconfirmed } : {}) });
     }
     save(job); finishMarker(job); // No other process writes these result artifacts.

@@ -336,6 +336,9 @@ export function bound(root, diff, untracked, cap = INLINE_CAP) {
   return { diff: text, omitted, reviewed, empty: !files.length && !untracked.length };
 }
 
+// Whatever diff.noprefix, diff.mnemonicPrefix and diff.submodule say: bound() and diffFileName() read these headers.
+const CANONICAL_HEADERS = ["--src-prefix=a/", "--dst-prefix=b/", "--submodule=short"];
+
 /**
  * Collects the diff for a collected-diff review (gemini, grok). Everything is collected from the
  * repository root with --no-relative: run from a subdirectory with diff.relative set, Git would
@@ -343,12 +346,12 @@ export function bound(root, diff, untracked, cap = INLINE_CAP) {
  */
 export function collectReview(target, { cap = INLINE_CAP } = {}) {
   const { root } = target;
-  const flags = ["--no-relative", "--no-color", "--no-ext-diff"];
+  const flags = ["--no-relative", "--no-color", "--no-ext-diff", ...CANONICAL_HEADERS];
   let diff, untracked = [];
   if (target.kind === "commit") {
     diff = target.merge
       ? checked(git(root, ["diff", ...flags, target.parents[0], target.oid, "--"]), "git diff")
-      : checked(git(root, ["diff-tree", "--no-commit-id", "-p", "-M", "--root", "--no-color", "--no-ext-diff", target.oid, "--"]), "git diff-tree");
+      : checked(git(root, ["diff-tree", "--no-commit-id", "-p", "-M", "--root", "--no-color", "--no-ext-diff", ...CANONICAL_HEADERS, target.oid, "--"]), "git diff-tree");
   } else {
     const from = target.kind === "base" ? target.base : worktreeBase(root);
     diff = checked(git(root, ["diff", ...flags, from, "--"]), "git diff");

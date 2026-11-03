@@ -15,10 +15,12 @@ if (['--version', 'models'].includes(process.argv[2])) {
     if (process.env.COUNCIL_FAKE_TRANSIENT_PARTIAL === '1') process.stdout.write(JSON.stringify({
       event: 'step_update', step_update: { step_type: 'agent_response', state: 'DONE', text_delta: process.env.COUNCIL_FAKE_TRANSIENT_PARTIAL_TEXT || 'partial answer' },
     }) + '\n');
+    // COUNCIL_FAKE_TRANSIENT_NO_ID=1: the 503 arrives before anything names the conversation.
+    const named = process.env.COUNCIL_FAKE_TRANSIENT_NO_ID !== '1';
     for (const event of [
-      { event: 'init', conversation_id: id },
+      ...(named ? [{ event: 'init', conversation_id: id }] : []),
       { event: 'result', result: {
-        conversation_id: id, status: 'ERROR', response: '', num_turns: 1, finished_reason: 'error',
+        ...(named ? { conversation_id: id } : {}), status: 'ERROR', response: '', num_turns: 1, finished_reason: 'error',
         error: 'API error (attempt 1): UNAVAILABLE (code 503): The service is currently unavailable.',
         usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
       } },
