@@ -251,8 +251,8 @@ async function runTurn(ctx, io, verb, o, text, literal, hooks) {
         fingerprint: fp, verb, companionPid: process.pid, companionIdentity: control.self(),
       });
       // A job claim under this binding can only exist from an earlier binding that was released after its tombstone: replay it.
-      if (!claimed.fresh) { const prior = claimed; claimed = null; bindScope(scope.file, adapter.id, prior.id); return replayRequest(ctx, o, prior, fp, io.out, { control }); }
-      bindScope(scope.file, adapter.id, claimed.id);
+      if (!claimed.fresh) { const prior = claimed; claimed = null; bindScope(scope.file, adapter.id, prior.id, scope.recordToken); return replayRequest(ctx, o, prior, fp, io.out, { control }); }
+      bindScope(scope.file, adapter.id, claimed.id, scope.recordToken);
     }
     // resolveTarget just read this history; the under-claim prepare below still refreshes it.
     initial = prepareRequest(ctx, adapter, verb, o, text, target, memo, false); // runs adapter.checkRequest first
@@ -260,7 +260,10 @@ async function runTurn(ctx, io, verb, o, text, literal, hooks) {
   } catch (error) {
     // Nothing ran: a retry may. The job claim and the binding go together.
     if (claimed) releaseRequest(ctx.home, claimed.id);
-    if (scope && !(claimed && loadTombstone(ctx.home, claimed.id))) releaseScope(scope.file);
+    if (scope && !(claimed && loadTombstone(ctx.home, claimed.id))) {
+      try { releaseScope(scope.file, scope.recordToken); }
+      catch (cleanup) { error.message += `; request binding cleanup pending: ${cleanup.message}`; }
+    }
     throw error;
   }
   const result = await runManagedTurn(ctx, adapter, initial, () => prepareRequest(ctx, adapter, verb, o, text, target, memo),

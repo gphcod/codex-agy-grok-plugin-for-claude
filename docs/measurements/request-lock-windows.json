@@ -1,0 +1,101 @@
+{
+  "ownerDate": "2026-11-02 Pacific",
+  "recordedAt": "2026-11-03T05:12:04.057Z",
+  "versions": {
+    "codexHosted": "1.1.2",
+    "claudeHosted": "1.0.0-rc.8"
+  },
+  "platform": "Windows 11 Enterprise 25H2 x64; Node 22.19.0",
+  "originalObservation": "Claude-hosted scope reservation rename returned EPERM before any provider submission. Same-id rerun recovered. The OS handle holder was not captured; no antivirus cause is asserted.",
+  "method": "Real PowerShell FileStream opens the root with FileShare.Read and keeps it held until explicitly released. The old atomic overwrite exhausts its existing five-second retry window. Immutable publication and a complete current companion ask/replay succeed while the same handle remains held, with one fake-provider submission. Test readiness/release waits are bounded; no elevation, services or persistent tasks.",
+  "publicationHelperSha256": "bb64388a0bb9bdda457c504db8c0fd1a0cc1a69ca2fffe505b9f8325ed1065e8",
+  "publicationRegressionsPerRepository": 18,
+  "behavior": "Immutable format-2 root, flushed private files, exclusive binding/prepared sidecars, generation-specific unlink ownership marker. Terminal stage read first and validated binding required. Cleanup/publisher paired checks prevent raced preparation from being freed or admitted without ownership. Initial and stage names sync on POSIX; Windows full-machine power-loss recovery is not qualified.",
+  "compatibility": {
+    "ownerDate": "2026-11-02 Pacific",
+    "cases": [
+      {
+        "host": "claude",
+        "legacySource": "v1.0.0-rc.6",
+        "newSource": "rc.8 candidate",
+        "oldInlineReplay": 0,
+        "oldReaderWithBody": 2,
+        "oldReaderAfterPrune": 2,
+        "currentAfterPrune": 1,
+        "modelSubmissions": 2,
+        "expectedSubmissions": 2,
+        "pass": true
+      },
+      {
+        "host": "codex",
+        "legacySource": "v1.1.1",
+        "newSource": "1.1.2 candidate",
+        "oldInlineReplay": 0,
+        "oldReaderWithBody": 1,
+        "oldReaderAfterPrune": 1,
+        "currentAfterPrune": 1,
+        "modelSubmissions": 2,
+        "expectedSubmissions": 2,
+        "pass": true
+      }
+    ],
+    "method": "Actual previous/current companions using null adapters and isolated temporary state. New clients replay old inline records; old clients fail closed on new-format records with retained and pruned job bodies, without extra provider submissions. Two intended model submissions per host."
+  },
+  "peers": {
+    "peer-binding-claude": {
+      "job": "cb6818050c96b150",
+      "model": "claude-opus-5-5",
+      "effort": "xhigh",
+      "exit": 1,
+      "error": "wall-clock deadline passed"
+    },
+    "peer-binding-compact-claude": {
+      "job": "96bda56171ba9075",
+      "model": "claude-opus-5-5",
+      "effort": "high",
+      "exit": 10,
+      "error": null
+    },
+    "peer-binding-gemini": {
+      "job": "30cf9ace9e28ddb3",
+      "model": "gemini-4-argon",
+      "effort": "high",
+      "exit": 1,
+      "error": "wall-clock deadline passed"
+    },
+    "peer-binding-compact-gemini": {
+      "job": "ca207d0039eaed6a",
+      "model": "gemini-4-argon",
+      "effort": "medium",
+      "exit": 0,
+      "error": null
+    },
+    "peer-binding-grok": {
+      "job": "3fba0e5cf25d55ba",
+      "model": "grok-4.7",
+      "effort": "high",
+      "exit": 1,
+      "error": "wall-clock deadline passed"
+    },
+    "peer-binding-compact-grok": {
+      "job": "8a081fc4d1b468d2",
+      "model": "grok-4.7",
+      "effort": "high",
+      "exit": 1,
+      "error": "wall-clock deadline passed"
+    },
+    "claudeClosing": {
+      "job": "697c386859792ff9",
+      "exit": 10,
+      "error": null
+    }
+  },
+  "reviewDisposition": "Claude F1/F2 accepted as resolved, with Windows durability limits. F3 conditional live-cleaner premise is excluded by application callers, and paired marker/prepared checks additionally harden the helper and are locally regression-tested. Argon compact review found no actionable findings. Three larger reviews and bounded Grok follow-ups hit deadlines; they are not approvals. Final F3 hardening is locally verified, not represented as another model approval.",
+  "costs": "Four retained request-related names per completed request: Codex root/owner/binding/prepared; Claude scope root/owner/binding plus its per-job tombstone. Owner is a hard link to root bytes. More metadata names, request-stage reads and flushes are explicit costs; model context/permissions and healthy framing are unchanged.",
+  "limitations": [
+    "One Windows machine; exact payload macOS/interactive qualification remains open.",
+    "Completed legacy inline requests replay; unfinished legacy roots without the cleanup marker remain occupied for explicit reconciliation.",
+    "The original external lock holder is unknown. This avoids that overwrite class; it does not bypass persistent filesystem permissions.",
+    "File flush and POSIX directory sync are implemented; full-machine power-loss recovery is not qualified on Windows."
+  ]
+}
