@@ -617,3 +617,7 @@ A7’s logical request lifecycle and identifiers are unchanged. New request-form
 ## rc.9 review amendment (2026-11-03 Pacific)
 
 A7.2: `reply --last` also selects the latest thread-starting job that is still open and refuses it, rather than passing over it to an older thread. A7.6: the thread record follows only a turn whose provider started; a resumed turn that never started leaves the record alone. A5.2's collector forces canonical diff headers whatever the user's Git configuration says. The reasons are in `docs/decisions.md`.
+
+## rc.10 thread-state amendment (2026-11-03 Pacific)
+
+A7.6: a thread with no record resumes only from the newest job on it whose provider started, and refuses when a newer job may have started. A7.8: recovery marks a thread whose lost turn may have run Grok's default agent, in a one-way file beside its record, before the job stops blocking the thread. The reasons are in `docs/decisions.md`.

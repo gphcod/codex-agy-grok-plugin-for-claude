@@ -16,7 +16,7 @@ import { PLUGIN_ROOT, catalogPath, loadCatalog, refreshCatalog } from "./lib/cor
 import { TIERS, loadTiers, resolveTier } from "./lib/core/tiers.mjs";
 import { assertNotNested, childEnv, companionState, executionController } from "./lib/core/execution.mjs";
 import {
-  REQUEST_ID, bindScope, candidates, claimRequest, claimScope, homeDir, loadJob, loadScope, loadThread, loadTombstone, markRequestPrepared, releaseRequest, releaseScope,
+  REQUEST_ID, bindScope, candidates, claimRequest, claimScope, homeDir, loadJob, loadScope, loadThread, loadTombstone, markRequestPrepared, releaseRequest, releaseScope, startedOnThread,
 } from "./lib/core/jobs.mjs";
 import { DEADLINE_S, DEFAULT_ROUNDS, INACTIVITY_S, cancelJob, replayRequest, runManagedTurn, waitFor } from "./lib/core/lifecycle.mjs";
 import { MESSAGES, renderResult, resultJson, startLine } from "./lib/core/output.mjs";
@@ -115,6 +115,11 @@ async function awaitScope(ctx, o, scope, fp, control, sleepMs = 50) {
 
 /** A job with no terminal marker: running, or lost until cancel recovers it. */
 const isOpen = (job) => !job.done && !job.stopped;
+/** A thread record from a started job's own fields, for a thread with none: a companion lost mid-turn writes none. */
+const threadFromJob = (job) => job && {
+  cwd: job.cwd, model: job.model, effort: job.effort, tier: job.tier, round: job.round, rounds: job.rounds, roundsSet: job.roundsSet, web: job.web,
+  agent: job.turn?.agent ?? null, readOnly: job.readOnly, ...(job.unconfirmed ? { resumable: false, unconfirmed: job.unconfirmed } : {}),
+};
 
 /**
  * ask/review/fresh task: `--to` names the provider. reply and `task --thread`: the job or thread
@@ -162,9 +167,8 @@ export function resolveTarget(ctx, verb, o) {
     threadId = job.threadId;
   }
   if (o.to !== undefined && o.to !== provider) throw new UsageError(`thread ${threadId} belongs to ${provider}; --to ${o.to} conflicts`);
-  const record = loadThread(ctx.home, provider, threadId)
-    ?? (job ? { provider, threadId, cwd: job.cwd, model: job.model, effort: job.effort, tier: job.tier, round: job.round, rounds: job.rounds, roundsSet: job.roundsSet } : null);
-  if (!record) throw new UsageError(`no ${provider} thread ${threadId}`);
+  const record = loadThread(ctx.home, provider, threadId) ?? (job ? threadFromJob(startedOnThread(ctx.home, provider, threadId)) : null);
+  if (!record) throw new UsageError(`${provider} thread ${threadId} has no started history or record; start a new ask`);
   if (record.resumable === false) throw new UsageError(`${provider} thread ${threadId}: ${record.unconfirmed ?? "not resumable"}`);
   if (record.cwd && record.cwd !== ctx.cwd) throw new UsageError(`${provider} thread ${threadId} belongs to workspace ${record.cwd}; a thread is never adopted across workspaces`);
   return { provider, thread: { ...record, provider, threadId } };

@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (unreleased; 1.0.0-rc.9 candidate)
+## 1.0.0 (unreleased; 1.0.0-rc.10 candidate)
 
 First release of `council`. A single plugin now provides the following, through one companion process and one provider CLI child per call:
 
@@ -10,6 +10,13 @@ First release of `council`. A single plugin now provides the following, through 
 - authorized delegated edits
 
 The release check is S7 of `PLAN.md`: a macOS matrix, a Windows session and the tag.
+
+### 1.0.0-rc.10 (2026-11-03 Pacific)
+
+Fixes two thread-state gaps found by checking what the Codex-hosted 1.1.3 added against rc.9. A healthy turn changes only by one extra `stat` per thread-record read: model defaults, framing, skill, contract and commands equal rc.9.
+
+- A reply naming a job no longer resumes from a job whose provider never started. A thread with no record (a companion lost mid-turn writes none) now takes its settings from the newest job on it whose provider started, including the agent, `readOnly`, `web` and any `unconfirmed` refusal. It exits 2 with `<provider> thread <id> has no started history or record; start a new ask` when no job started, or when a newer job may have started: a crash inside the spawn window leaves that unknown. An existing thread record still wins, and by native id it refuses as before.
+- A lost turn that ran Grok's default agent no longer leaves its thread asking for `explore`. Recovery by `cancel` now sets a one-way marker beside the thread record, `threads/<provider>-<id>.default-agent`, before the job stops blocking its thread. A later read-only reply then carries the recipe for a session on the default agent instead of `--agent explore`, which the adapter's notes say such a session cannot accept. A job that may have started counts too. If the marker cannot be written, `cancel` exits 1 and keeps the claim, and running it again retries. A marker that cannot be read stops the reply with `retry: thread <id> cannot be read right now`. Recovery never writes the thread record, so concurrent cancels cannot regress it. A job already recovered under rc.9 or earlier is not corrected.
 
 ### 1.0.0-rc.9 (2026-11-03 Pacific)
 
