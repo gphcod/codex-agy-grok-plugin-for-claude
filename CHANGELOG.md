@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (unreleased; 1.0.0-rc.7 candidate)
+## 1.0.0 (unreleased; 1.0.0-rc.8 candidate)
 
 First release of `council`. A single plugin now provides the following, through one companion process and one provider CLI child per call:
 
@@ -10,6 +10,12 @@ First release of `council`. A single plugin now provides the following, through 
 - authorized delegated edits
 
 The release check is S7 of `PLAN.md`: a macOS matrix, a Windows session and the tag.
+
+### 1.0.0-rc.8 (2026-11-02 Pacific)
+
+- Fix the recorded pre-provider Windows scope-file rename failure by publishing an immutable generation-specific binding. The reservation is never overwritten while a reader holds it open.
+- Preserve legacy request replay and fail closed when an older client sees the new format. Damaged sidecars stay blocked; cleanup only removes its own generation. Keep the original preparation error if cleanup also fails.
+- Test a real Windows lock beyond the old five-second retry window and a complete ask/replay with exactly one provider submission while the file remains held. The extra metadata files/source are an explicit maintenance cost; model defaults and healthy framing remain unchanged.
 
 ### 1.0.0-rc.7 (2026-11-02 Pacific)
 

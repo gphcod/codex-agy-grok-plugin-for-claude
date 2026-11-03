@@ -6,6 +6,7 @@
 // releaseRequest implement the A7.4 lifecycle with the fingerprint in an immutable tombstone under
 // claims/requests/ and `result expired` when the body is gone; latestOnThread, blockingJob and
 // onThread take the provider; thread records live under threads/<provider>-<threadId>.json.
+import { reservationRecord, readPublications, publishRequest, cleanupPublications, syncPublicationDirectory, linkReservation, releaseReservation } from "./request-publication.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -163,14 +164,16 @@ export function claimScope(home, { session, cwd, requestId }, record, io = fs) {
   // to its name (exclusive: EEXIST when another call holds it). A failed write leaves no empty binding
   // that identical retries would wait on.
   const temp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+  const recordToken = randomBytes(16).toString("hex");
   try {
-    io.writeFileSync(temp, `${JSON.stringify({ ...record, requestId, session: session ?? null, cwd, provider: null, job: null, reservedAt: new Date().toISOString() })}\n`, { flag: "wx" });
-    try { io.linkSync(temp, file); }
+    io.writeFileSync(temp, `${JSON.stringify(reservationRecord({ ...record, recordToken, requestId, session: session ?? null, cwd, provider: null, job: null, reservedAt: new Date().toISOString() }))}\n`, { flag: "wx", flush: true });
+    try { linkReservation(temp, file, { recordToken }, io); }
     catch (error) {
       if (error.code !== "EEXIST") throw error;
       return { fresh: false, file, record: loadScope(file) };
     }
-    return { fresh: true, file };
+    syncPublicationDirectory(file, io);
+    return { fresh: true, file, recordToken };
   } finally {
     // Best effort: once the binding is linked, a failed removal of the temporary name must not turn
     // a successful claim into a thrown error that abandons the published binding.
@@ -179,17 +182,18 @@ export function claimScope(home, { session, cwd, requestId }, record, io = fs) {
 }
 /** The binding, or null while its creator is still writing it (or when it was released). */
 export function loadScope(file) {
-  return readJson(file);
+  return readPublications(file, readRecord(file), ["binding"]);
 }
 /** Records the resolved provider and job id in the binding. */
-export function bindScope(file, provider, job) {
-  const record = readJson(file);
+export function bindScope(file, provider, job, expectedToken = null) {
+  const record = loadScope(file);
   if (!record) throw new Error(`request binding ${path.basename(file)} cannot be read`);
-  writeFileAtomic(file, `${JSON.stringify({ ...record, provider, job, boundAt: new Date().toISOString() })}\n`);
+  if (expectedToken && record.recordToken !== expectedToken) throw new Error("request reservation changed; leave it intact");
+  publishRequest(file, record, "binding", { provider, job, boundAt: new Date().toISOString() });
 }
 /** Frees a binding whose call failed before its tombstone: nothing ran, so a retry may. */
-export function releaseScope(file) {
-  fs.rmSync(file, { force: true });
+export function releaseScope(file, expectedToken = null) {
+  return releaseReservation(file, expectedToken);
 }
 
 /** The reservation a request id's first call wrote with its claim, or null. */

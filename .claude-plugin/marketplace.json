@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "council: Codex, Gemini (agy) and Grok from Claude Code, one plugin.",
-    "version": "1.0.0-rc.7"
+    "version": "1.0.0-rc.8"
   },
   "plugins": [
     {
       "name": "council",
       "description": "Ask Codex, Gemini or Grok a question, discuss findings, review changes, fan a brief out to several models, or delegate authorized edits from Claude Code.",
-      "version": "1.0.0-rc.7",
+      "version": "1.0.0-rc.8",
       "author": {
         "name": "gphcod"
       },

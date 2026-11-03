@@ -609,3 +609,7 @@ Every flag Part A passes to a provider was checked against `--help` of codex-cli
 ## rc.7 service-recovery amendment (2026-11-02 Pacific)
 
 A1 and A3.1 retain one provider CLI child per companion call. The narrow recovery exception to the one-call host rule is a Gemini read-only 503 with a plugin footer token starting `temporary 503; next: repeat once` or JSON `retry.eligible=true`. The host may submit exactly one further call per user request after at least two seconds, with the same input/model/permissions and a fresh request id; a second 503 is reported. This is not an internal relaunch or an exception for tasks, partial streams, tool activity, unknown mutations or uncertain cleanup. A3.4 adds nullable retry metadata and conditional unfinished-draft pointers. Neither a partial draft nor a service failure is a completed review or approval. The failed original request remains immutable. See the recorded decision and Windows service qualification.
+
+## Windows request publication amendment (2026-11-02 Pacific)
+
+A7’s logical request lifecycle and identifiers are unchanged. New request-format-2 roots remain immutable, with generation-specific binding/prepared publications and an unlink ownership gate. The physical envelope fails closed for older clients; current readers still understand completed legacy inline requests. Failed preparation only frees an owned, unprepared generation. Legacy unfinished requests require explicit reconciliation. See docs/qualification/windows-request-lock.md and the recorded review decisions.

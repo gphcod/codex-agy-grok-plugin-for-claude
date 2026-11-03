@@ -239,3 +239,7 @@ Retries are separate companion calls/jobs, preserving one provider child per cal
 ## rc.7 efficiency evidence
 
 The [final Windows qualification](docs/qualification/efficiency-rc7-windows.md) records the matched 240-call rc.6/rc.7 benchmark, native workflows and limits. Ask framing saves 76 B and advice wrapper text 131 B; the lifecycle split improves boundaries while source grows. Native usage/timings are mixed. Exact macOS and interactive checks still gate final 1.0.0.
+
+## rc.8 Windows request-file locks
+
+Request binding now publishes an immutable sidecar without replacing the reservation held open by a Windows reader. Actual file-lock tests cover the old failure, the corrected full entry and identical replay without another provider submission. Legacy inline requests remain readable; older clients fail closed on the new format. [Qualification](docs/qualification/windows-request-lock.md). This remains a release candidate pending macOS and interactive qualification.
