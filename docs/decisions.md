@@ -347,6 +347,6 @@ The owner asked to fix two gaps found by checking what the Codex-hosted 1.1.3 ad
 - **An uncertain job marks too, and with a record present it is not refused.** The recipe for a session on the default agent is valid and read-only on a session that never used it, while `explore` on one that did is the failure being fixed. Codex first asked for refusal through every selector. The marker reaches the same safety, because each selector goes through the blocked claim and then reads it, and Codex agreed.
 - **Rounds are unchanged.** A crashed started turn does not count a round when a record exists; with no record the fallback inherits `job.round`, so it does. The earlier ruling on finalized failures and `atLimit` stands.
 
-A job already recovered under rc.9 or earlier keeps its stale record, because reconciliation happens at recovery; that failure is loud, not unsafe. A live Grok `task` was not run, because `task` needs the owner's separate go-ahead, so the claim that Grok refuses the switch stays the adapter's recorded note, and the fix does not depend on it.
+A job already recovered under rc.9 or earlier keeps its stale record, because reconciliation happens at recovery; a later reply there still requests `--agent explore`. That stays a read-only turn; what Grok does with it was not run. A live Grok `task` was not run, because `task` needs the owner's separate go-ahead, so the claim that Grok refuses the switch stays the adapter's recorded note, and the fix does not depend on it.
 
 **rc.10, not 1.0.0.** S7's exact macOS and interactive gates remain open.

@@ -1,0 +1,62 @@
+{
+  "date": "2026-11-03T20:45:07.217Z",
+  "checks": {
+    "codexLostMidTurn": {
+      "job": "elm8iiursa55k1wa",
+      "thread": "01a1a328-9bc4-71e3-9242-0fba64bc5c73",
+      "pid": 39504,
+      "recordBeforeCancel": false,
+      "recordAfterCancel": false,
+      "blockedUntilCancel": {
+        "code": 1,
+        "seconds": 0.198,
+        "job": "v55ln40sx90i593p",
+        "footer": "council codex failed · job v55ln40sx90i593p · gpt-6.1-sol/xhigh · 0s · round 2/9 · error: thread 01a1a328-9bc4-71e3-9242-0fba64bc5c73 is busy as job elm8iiursa55k1wa; wait or cancel elm8iiursa55k1wa",
+        "err": "[council] provider=codex job=v55ln40sx90i593p"
+      },
+      "cancelled": {
+        "code": 0,
+        "seconds": 0.777,
+        "job": "elm8iiursa55k1wa",
+        "footer": "cancelled · codex · job elm8iiursa55k1wa · the thread stays resumable",
+        "err": ""
+      },
+      "resumed": {
+        "code": 0,
+        "seconds": 4.498,
+        "job": "hjd7wain9jfx5mdw",
+        "footer": "council codex ok · job hjd7wain9jfx5mdw · gpt-6.1-sol/xhigh · 4s · round 2/9",
+        "err": "[council] provider=codex job=hjd7wain9jfx5mdw"
+      },
+      "sameThread": true,
+      "round": 2
+    },
+    "grokHealthy": {
+      "ask": {
+        "code": 0,
+        "seconds": 10.054,
+        "job": "275ma1cp3nf7m2ns",
+        "footer": "council grok ok · job 275ma1cp3nf7m2ns · grok-4.7/high · 10s · round 1/9",
+        "err": "[council] provider=grok job=275ma1cp3nf7m2ns"
+      },
+      "follow": {
+        "code": 0,
+        "seconds": 4.27,
+        "job": "6opvdiyan6z9jl38",
+        "footer": "council grok ok · job 6opvdiyan6z9jl38 · grok-4.7/high · 4s · round 2/9",
+        "err": "[council] provider=grok job=6opvdiyan6z9jl38"
+      },
+      "sameThread": true,
+      "round": 2,
+      "agentFlag": "explore",
+      "marker": false
+    },
+    "geminiAsk": {
+      "code": 0,
+      "seconds": 8.135,
+      "job": "hpsjnk1gwt5qf0t6",
+      "footer": "council gemini ok · job hpsjnk1gwt5qf0t6 · gemini-4-argon/medium · 8s · round 1/9",
+      "err": "[council] provider=gemini job=hpsjnk1gwt5qf0t6"
+    }
+  }
+}
