@@ -1,0 +1,222 @@
+{
+  "date": "2026-11-03T17:21:38.927Z",
+  "checks": {
+    "replyLast": {
+      "older": {
+        "args": [
+          "ask",
+          "grok",
+          "grok-4.7"
+        ],
+        "code": 0,
+        "seconds": 8.936,
+        "job": "pd50g8b7yugg0aaz",
+        "status": "ok",
+        "model": "grok-4.7",
+        "effort": "low",
+        "thread": "b1a6aff4-2af2-4c9b-9a7c-9b16e7125345",
+        "round": 1,
+        "answer": "older",
+        "coverage": {
+          "reviewed": [],
+          "unreviewed": []
+        },
+        "verdict": null,
+        "usage": {
+          "input_tokens": 6378,
+          "cache_read_input_tokens": 1536,
+          "cache_creation_input_tokens": 0,
+          "output_tokens": 210,
+          "reasoning_tokens": 209,
+          "total_tokens": 8124
+        },
+        "attention": null,
+        "error": "",
+        "cleanupPending": false
+      },
+      "refused": {
+        "args": [
+          "reply",
+          "--last",
+          "grok-4.7"
+        ],
+        "code": 2,
+        "seconds": 0.139,
+        "job": null,
+        "status": "failed",
+        "model": null,
+        "effort": null,
+        "thread": null,
+        "round": null,
+        "answer": null,
+        "coverage": null,
+        "verdict": null,
+        "usage": null,
+        "attention": null,
+        "error": "job 9amqpzugb5pgpaqt: native thread not confirmed yet; wait or cancel 9amqpzugb5pgpaqt",
+        "cleanupPending": null
+      },
+      "newest": {
+        "args": [
+          "ask",
+          "grok",
+          "grok-4.7"
+        ],
+        "code": 0,
+        "seconds": 8.428,
+        "job": "9amqpzugb5pgpaqt",
+        "status": "ok",
+        "model": "grok-4.7",
+        "effort": "low",
+        "thread": "d13f5dad-907d-4820-8a70-39d9af93098d",
+        "round": 1,
+        "answer": "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n",
+        "coverage": {
+          "reviewed": [],
+          "unreviewed": []
+        },
+        "verdict": null,
+        "usage": {
+          "input_tokens": 6002,
+          "cache_read_input_tokens": 1920,
+          "cache_creation_input_tokens": 0,
+          "output_tokens": 351,
+          "reasoning_tokens": 272,
+          "total_tokens": 8273
+        },
+        "attention": null,
+        "error": "",
+        "cleanupPending": false
+      },
+      "follow": {
+        "args": [
+          "reply",
+          "--last",
+          "grok-4.7"
+        ],
+        "code": 0,
+        "seconds": 4.806,
+        "job": "0329v6v4lykqn0oc",
+        "status": "ok",
+        "model": "grok-4.7",
+        "effort": "low",
+        "thread": "d13f5dad-907d-4820-8a70-39d9af93098d",
+        "round": 2,
+        "answer": "followed",
+        "coverage": {
+          "reviewed": [],
+          "unreviewed": []
+        },
+        "verdict": null,
+        "usage": {
+          "input_tokens": 494,
+          "cache_read_input_tokens": 7808,
+          "cache_creation_input_tokens": 0,
+          "output_tokens": 25,
+          "reasoning_tokens": 24,
+          "total_tokens": 8327
+        },
+        "attention": null,
+        "error": "",
+        "cleanupPending": false
+      },
+      "olderThreadUntouched": true
+    },
+    "noprefixReview": {
+      "args": [
+        "review",
+        "grok",
+        "grok-4.7"
+      ],
+      "code": 0,
+      "seconds": 7.12,
+      "job": "93brkf6lks2adzxp",
+      "status": "ok",
+      "model": "grok-4.7",
+      "effort": "low",
+      "thread": "ba832c6d-551e-428e-9777-d0a0d1c83b2e",
+      "round": null,
+      "answer": "Verdict: approve. Ship it. The working-tree change only appe",
+      "coverage": {
+        "reviewed": [
+          "f.txt"
+        ],
+        "unreviewed": []
+      },
+      "verdict": "approve",
+      "usage": {
+        "input_tokens": 6823,
+        "cache_read_input_tokens": 1920,
+        "cache_creation_input_tokens": 0,
+        "output_tokens": 225,
+        "reasoning_tokens": 172,
+        "total_tokens": 8968
+      },
+      "attention": null,
+      "error": "",
+      "cleanupPending": false
+    },
+    "ask-codex": {
+      "args": [
+        "ask",
+        "codex",
+        "gpt-6.1-sol"
+      ],
+      "code": 0,
+      "seconds": 8.523,
+      "job": "m7cee8cds71jh9wj",
+      "status": "ok",
+      "model": "gpt-6.1-sol",
+      "effort": "xhigh",
+      "thread": "01a1a26e-bfaa-7c10-91ac-5bb7855cdcb3",
+      "round": 1,
+      "answer": "pong",
+      "coverage": {
+        "reviewed": [],
+        "unreviewed": []
+      },
+      "verdict": null,
+      "usage": {
+        "input_tokens": 19683,
+        "cached_input_tokens": 13440,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 0
+      },
+      "attention": null,
+      "error": "",
+      "cleanupPending": false
+    },
+    "ask-gemini": {
+      "args": [
+        "ask",
+        "gemini",
+        "gemini-4-argon"
+      ],
+      "code": 0,
+      "seconds": 18.286,
+      "job": "sp3ge8f0bvg8qock",
+      "status": "ok",
+      "model": "gemini-4-argon",
+      "effort": "high",
+      "thread": "3669e1bf-83e8-42a6-8eea-9dfc84bdd60f",
+      "round": 1,
+      "answer": "pong\n",
+      "coverage": {
+        "reviewed": [],
+        "unreviewed": []
+      },
+      "verdict": null,
+      "usage": {
+        "input_tokens": 13160,
+        "output_tokens": 386,
+        "thinking_tokens": 381,
+        "cache_read_tokens": 0,
+        "total_tokens": 13546
+      },
+      "attention": null,
+      "error": "",
+      "cleanupPending": false
+    }
+  }
+}

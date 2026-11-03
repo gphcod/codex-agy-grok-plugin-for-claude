@@ -332,4 +332,6 @@ The owner asked for the plugin to be reviewed and any issue fixed. Codex 6.1 Sol
 
 Rejected, and agreed by all three reviewers (Gemini F3 part 2): not counting a round on a turn that started and failed, and changing `atLimit` to `>`. A round counts a provider call that started, `tests/gemini-service.test.mjs` asserts a 9/9 reply gets no retry on purpose, and a retry there would print 10/9.
 
+**Review efforts.** After these reviews the owner set the standing review efforts to Grok high and Gemini medium, with Codex staying at xhigh. Grok at low had found none of the defects, so Grok at high then reviewed the same code diff and approved it. Grok at high and Gemini at medium also reviewed the release record and the handbook: no BLOCKER or MAJOR. Codex at xhigh and Grok at low had each found one error in those documents, both corrected.
+
 **rc.9, not 1.0.0.** S7's exact macOS and interactive gates are owner steps and remain open for this payload.
