@@ -1,9 +1,9 @@
 {
   "ownerDate": "2026-11-02 Pacific",
-  "recordedAt": "2026-11-03T03:22:12.661Z",
+  "recordedAt": "2026-11-03T05:18:27.710Z",
   "versions": {
-    "codexHosted": "1.1.1",
-    "claudeHosted": "1.0.0-rc.7"
+    "codexHosted": "1.1.2",
+    "claudeHosted": "1.0.0-rc.8"
   },
   "platform": "Windows 11 Enterprise 25H2 x64; Node 22.19.0; Codex CLI 0.166.0; Claude Code 2.1.316; agy 1.4.12",
   "originalHost": "codex-agy-grok-plugin-for-claude (Claude-hosted)",
@@ -40,9 +40,9 @@
       "cleanup": true,
       "requestIds": [
         "x7Kq2mZ9",
-        "p4Tn8wR3"
+        "p4Rn8vT3"
       ],
-      "backoffMs": 6187,
+      "backoffMs": 7244,
       "permissionDenials": 0,
       "partial": false,
       "partialDraftRetained": false,
@@ -62,10 +62,10 @@
       ],
       "cleanup": true,
       "requestIds": [
-        "k7Qm2xP9",
-        "r4Tz8bLn"
+        "k7Qm2xPb",
+        "t3Vn9wLc"
       ],
-      "backoffMs": 8068,
+      "backoffMs": 8845,
       "permissionDenials": 0,
       "partial": false,
       "partialDraftRetained": false,
@@ -84,7 +84,7 @@
       ],
       "cleanup": true,
       "requestIds": [
-        "x7Kq2mP9"
+        "x7k2m9qp"
       ],
       "backoffMs": null,
       "permissionDenials": 0,
@@ -107,9 +107,9 @@
       "cleanup": true,
       "requestIds": [
         null,
-        "pongretry"
+        "pongretrycedar"
       ],
-      "backoffMs": 11116,
+      "backoffMs": 15466,
       "permissionDenials": null,
       "partial": false,
       "partialDraftRetained": false,
@@ -132,7 +132,7 @@
         null,
         "pongretry"
       ],
-      "backoffMs": 11605,
+      "backoffMs": 13154,
       "permissionDenials": null,
       "partial": false,
       "partialDraftRetained": false,

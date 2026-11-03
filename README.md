@@ -243,3 +243,5 @@ The [final Windows qualification](docs/qualification/efficiency-rc7-windows.md) 
 ## rc.8 Windows request-file locks
 
 Request binding now publishes an immutable sidecar without replacing the reservation held open by a Windows reader. Actual file-lock tests cover the old failure, the corrected full entry and identical replay without another provider submission. Legacy inline requests remain readable; older clients fail closed on the new format. [Qualification](docs/qualification/windows-request-lock.md). This remains a release candidate pending macOS and interactive qualification.
+
+The [final rc.8 efficiency qualification](docs/qualification/efficiency-rc8-windows.md) includes the immutable-publication costs in a fresh 240-call rc.6/rc.8 benchmark. Latest Windows regression: 502 pass, 23 platform skips, zero failures.

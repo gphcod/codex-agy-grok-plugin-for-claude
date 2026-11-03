@@ -16,11 +16,11 @@ An unfinished response is saved separately in `partial.md`, marked not a complet
 
 | Host / fixture | Model submissions | Provider exits | Submission interval | Partial draft | Result |
 |---|---|---|---|---|---|
-| claude / recover | 2 | 1 → 0 | 6.187 s | — | pass |
-| claude / outage | 2 | 1 → 1 | 8.068 s | — | pass |
+| claude / recover | 2 | 1 → 0 | 7.244 s | — | pass |
+| claude / outage | 2 | 1 → 1 | 8.845 s | — | pass |
 | claude / partial | 1 | 1 | — | retained, unfinished | pass |
-| codex / recover | 2 | 1 → 0 | 11.116 s | — | pass |
-| codex / outage | 2 | 1 → 1 | 11.605 s | — | pass |
+| codex / recover | 2 | 1 → 0 | 15.466 s | — | pass |
+| codex / outage | 2 | 1 → 1 | 13.154 s | — | pass |
 | codex / partial | 1 | 1 | — | retained, unfinished | pass |
 
 All six final cases pass with confirmed cleanup. Both recoveries reach pong; both persistent outages stop after two model submissions; both partial turns stop after one submission and preserve the unfinished draft without approval. Claude Opus 5.5/high ran with default permissions, Bash and plugin-dir, with zero permission denials. Codex 6.1 Sol/medium used the exact skill explicitly by path. These are functional checks, not latency/billing or desktop-wake measurements.
