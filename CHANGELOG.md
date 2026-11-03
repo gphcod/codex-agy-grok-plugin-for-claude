@@ -18,6 +18,7 @@ The release check is S7 of `PLAN.md`: a macOS matrix, a Windows session and the 
 - Reuse the just-resolved thread for initial preparation, refreshing under the claim. Scope reservation-owner liveness queries to that pid, retaining unknown on error and full cleanup snapshots.
 - Separate wait/cancel/replay and recovery from turn execution, retaining the public lifecycle API. Add native `usage` to JSON; existing `costUsd` mapping is unchanged.
 - Add a matched Windows benchmark and regression checks; report bytes, state operations, latency and native counters separately.
+- Handle the recorded Gemini 503 in both hosts. Preserve failure usage and unfinished response drafts; permit one separate read-only retry only on explicit eligibility, after 2 seconds with a fresh request id. A task, partial/tool-active turn, unconfirmed thread or uncertain mutation/cleanup never gets an automatic retry. Same-id replay remains immutable.
 - Remains a candidate pending final macOS and interactive qualification.
 
 ### 1.0.0-rc.6 (2026-11-02)

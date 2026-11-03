@@ -1,6 +1,7 @@
 // Ported from grok-build-plugin-cc 1.1.5 lib/output.mjs and lib/answer.mjs (commit 9c66028), with
 // the start line, footer and --json object of PLAN.md A3.4 and the 24 KiB answer cap.
 import fs from "node:fs";
+import { serviceRetry, serviceRetryHint } from "./gemini-service.mjs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 
@@ -91,7 +92,9 @@ export function recoveryHint(job) {
   }
   if (pendingCleanup(job)) return `cleanup pending; next: cancel ${job.id}; do not resume`;
   // The provider finished without confirming its thread (grok `end` without a session id): not resumable.
-  if (job.unconfirmed && job.verb !== "review") return oneLine(job.unconfirmed);
+  const retry = serviceRetryHint(job, pendingCleanup(job));
+  if (job.unconfirmed && job.verb !== "review") return retry ? `thread not confirmed; ${retry}` : oneLine(job.unconfirmed);
+  if (retry) return retry;
   if (job.outcome !== "ok" && job.threadId && job.admitted !== false && job.verb !== "review") return `next: reply ${job.id}`;
   return null;
 }
@@ -110,6 +113,8 @@ export function footer(job, clipped) {
   if (job.verb === "review" && (job.unreviewed ?? []).length) parts.push(`unreviewed ${job.unreviewed.length}`);
   if (job.modelVerified === false) parts.push("model unverified");
   if (clipped || job.answerClipped) parts.push(`full: ${answerPath(job)}`);
+  if (job.partialFile) parts.push(`partial draft: ${oneLine(job.partialFile, 2000)}`);
+  if (job.partialError) parts.push(`draft not saved: ${oneLine(job.partialError)}`);
   if (job.error) parts.push(`error: ${oneLine(job.error)}`);
   else if (job.attention) parts.push(`attention: ${oneLine(job.attention, ATTENTION_MAX)}`);
   const hint = recoveryHint(job);
@@ -134,6 +139,8 @@ export function resultJson(job, answer) {
     verdict: review?.verdict ?? job.verdict ?? null, findings: review?.findings ?? [], coverage: review?.coverage ?? { reviewed: [], unreviewed: (job.unreviewed ?? []).map((u) => oneLine(u)) },
     edited: (job.edited ?? []).slice(0, 100).map((p) => oneLine(p)), failedCommands: (job.failedCommands ?? []).slice(0, 20).map((f) => (typeof f === "string" ? oneLine(f, 120) : { cmd: oneLine(f.cmd ?? "", 120), exit: f.exit ?? null })),
     costUsd: job.costUsd ?? null, usage: job.usage ?? null, exit: job.code, answerFile: answerPath(job),
+    retry: serviceRetry(job, pendingCleanup(job)),
+    ...(job.partial ? { partial: true, partialFile: job.partialFile ?? null, ...(job.partialError ? { partialError: oneLine(job.partialError, 2000) } : {}) } : {}),
     verb: job.verb, status: job.outcome, elapsedMs: elapsedOf(job), error: job.error ? oneLine(job.error, 2000) : null,
     attention: !job.error && job.attention ? oneLine(job.attention, ATTENTION_MAX) : null,
     cleanupPending: pendingCleanup(job), answer: text, clipped: clipped || Boolean(job.answerClipped),

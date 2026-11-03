@@ -8,6 +8,7 @@
 // A2 deny union on read-only turns), --mode accept-edits only on tasks, --sandbox always, denial
 // exits 10 instead of 20 (S5.7 parity record).
 import fs from "node:fs";
+import { geminiServiceFailure } from "../core/gemini-service.mjs";
 import os from "node:os";
 import path from "node:path";
 import { UsageError } from "../core/args.mjs";
@@ -191,6 +192,7 @@ export function parseAgyEvent(line, state) {
       own.partial += step.text_delta;
     }
     if (step.step_type === "tool" || step.tool_name || step.tool_info) {
+      own.toolActivity = true;
       out.toolStep = step.state === "ERROR" ? describeStepError(step) : describeToolStep(step);
       if (isDenialStep(step)) { own.denials.push(out.toolStep); out.denied = `agy denied ${out.toolStep.replace(/^failed: /, "")}`; out.deniedAction = describeToolStep(step); }
       else {
@@ -210,7 +212,14 @@ export function parseAgyEvent(line, state) {
   if (!isObject(r) || typeof r.status !== "string" || typeof r.response !== "string") return { fatal: "agy returned a malformed result: expected status and response strings" };
   if (r.denied_actions !== undefined && !Array.isArray(r.denied_actions)) return { fatal: "agy returned malformed denied_actions; expected an array" };
   if (isObject(r.usage)) out.usage = r.usage;
-  if (r.status !== "SUCCESS") return { ...out, fatal: `agy finished with status ${r.status}${r.error ? `: ${clip(r.error, 500)}` : ""}` };
+  if (r.status !== "SUCCESS") {
+    const partialText = r.response.trim() ? r.response : own.partial;
+    const transientFailure = geminiServiceFailure(r.error, {
+      partial: Boolean(partialText.trim()), toolActivity: Boolean(own.toolActivity || own.denials.length || r.denied_actions?.length),
+    });
+    return { ...out, fatal: `agy finished with status ${r.status}${r.error ? `: ${clip(r.error, 500)}` : ""}`, transientFailure,
+      ...(transientFailure && partialText.trim() ? { partialText } : {}) };
+  }
   const answer = r.response.trim() ? r.response : own.partial;
   // The partial answer is kept for the reader; the turn still fails (exit 1, A3.3).
   if (r.finished_reason === "print_timeout") return { ...out, ...(answer.trim() ? { textDelta: answer } : {}), completed: true, incomplete: "agy hit its print timeout before the turn finished; the response is partial. Retry with a larger --deadline or a narrower request" };

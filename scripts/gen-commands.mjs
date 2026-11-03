@@ -140,6 +140,7 @@ export function render(template, spec) {
     description: spec.description,
     "argument-hint": spec.hint,
     "background-rule": spec.rule,
+    "retry-rule": ["ask", "reply", "review"].includes(spec.verb) ? "Only footer `· temporary 503; next: repeat once` or JSON `retry.eligible=true` permits one retry per user request: after 2s, fresh request id; then stop. Never auto-retry tasks." : "",
     "fixed-flags": spec.fixedFlags,
   };
   const out = template.replace(/\{\{([a-z-]+)\}\}/g, (match, key) => {

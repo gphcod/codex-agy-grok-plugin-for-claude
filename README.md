@@ -225,3 +225,13 @@ Design and procedure: `PLAN.md`. Every deviation is recorded in `docs/decisions.
 ## License
 
 Apache-2.0. See `LICENSE` and `NOTICE`, which names the three source plugins.
+
+## Gemini service outages (503)
+
+A native agy `UNAVAILABLE (code 503)` is a temporary upstream failure, not a permission denial. The companion still exits 1 and keeps that failed job immutable. Text output gives a `temporary 503` recovery hint; JSON adds `retry` with status, eligibility, a 2-second delay and a one-retry budget.
+
+The host may repeat a call **once per user request**, with a fresh request id, only when a footer token starts with `temporary 503; next: repeat once` or JSON says `retry.eligible=true`: read-only, no visible partial answer or tool activity, no recorded edits and confirmed thread/cleanup. This host relies on native event evidence; unlike the Codex host, it does not compare Git snapshots around read-only calls Keep the same inputs, model and permissions. A second 503 is reported to the user. Tasks, partial/tool-active turns, denials and uncertain cleanup are not automatically retried; inspect them first. Repeating the original request id only replays its original failed job and never starts another provider.
+
+If a 503 follows a partial response, the unfinished text is saved separately to `partial.md`, with a path in the footer and conditional JSON `partialFile`. It is not a completed answer, review or approval, and the turn remains failed and ineligible for automatic retry. A draft-write failure reports `partialError` without masking the native failure. Existing failed jobs stay immutable.
+
+Retries are separate companion calls/jobs, preserving one provider child per call and explicit recovery. This handles a temporary outage; it cannot make an unavailable backend succeed.

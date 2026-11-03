@@ -7,6 +7,7 @@
 // the thread record is updated after each turn. The entry's orchestration from grok.mjs (replay,
 // wait, cancel and replay) lives in control.mjs behind the same public exports.
 import fs from "node:fs";
+import { saveServiceDraft } from "./gemini-service.mjs";
 import path from "node:path";
 import { BusyError, claimHeld, claimThread, releaseClaims } from "./claims.mjs";
 import {
@@ -432,11 +433,13 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
   Object.assign(job, {
     status: ["ok", "attention"].includes(outcome) ? "done" : outcome, outcome, code: outcome === "ok" ? 0 : outcome === "attention" ? 10 : refused && outcome === "failed" && cleanupConfirmed ? 2 : 1,
     error, cleanupPending: !cleanupConfirmed, endedAt: new Date().toISOString(),
+    transientFailure: outcome === "failed" && error === seen?.failed ? seen?.transientFailure ?? null : null,
     // X1: the reason a turn needs attention, shown in the footer as `attention: <reason>`.
     attention: outcome === "attention" ? attentionReason({ isReview, review: job.review, denied: seen?.denied, deniedAction: seen?.deniedAction, deniedCount: seen?.deniedCount, questions: parsed?.questions }) : null,
     edited, failedCommands: seen?.failedCommands ?? [], failedCommandCount: seen?.failedCommandCount ?? 0,
     unconfirmed: isReview ? null : seen?.unconfirmed ?? null, denied: seen?.denied ?? null, costUsd: seen?.costUsd ?? null, usage: seen?.usage ?? null, answerClipped: parsed?.answerClipped ?? false,
   });
+  saveServiceDraft(job, seen?.partialText, io);
   delete job.stderrTail;
   let published = false;
   try {
