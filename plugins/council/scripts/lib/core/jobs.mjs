@@ -317,6 +317,20 @@ export function latestOnThread(home, provider, threadId, excludeId = null) {
   return listJobs(home).find((job) => job.id !== excludeId && job.admitted !== false && onThread(job, provider, threadId)) ?? null;
 }
 
+/**
+ * What a thread with no record can resume from: the newest job on it whose provider started (`pid` is
+ * saved right after the spawn). A job never started says nothing about the thread and is passed over; one
+ * that attempted a spawn and never finished may have started, so it refuses rather than guesses. → job | null
+ */
+export function startedOnThread(home, provider, threadId) {
+  for (const job of listJobs(home)) {
+    if (job.admitted === false || !onThread(job, provider, threadId)) continue;
+    if (job.pid) return job;
+    if (job.spawnAttempted && !job.done) return null;
+  }
+  return null;
+}
+
 /** A named job id resolves across sessions and providers; a thread id needs its provider. */
 export function findJob(home, ref, provider = null) {
   return loadJob(home, ref) ?? (provider ? latestOnThread(home, provider, ref) : null);
@@ -368,12 +382,33 @@ export function lastEvent(job) {
 
 // --- thread records (A7.6) -------------------------------------------------------------------------
 
+/**
+ * Beside a thread's record: its session ran Grok's default agent, which a session cannot leave. Recovery sets
+ * it for a lost turn, whose finalization never saved the agent, and never writes the record itself: concurrent
+ * cancels could overwrite newer fields, while this file can only state again what is already true. Its
+ * existence is the whole record; it is never removed.
+ */
+const defaultAgentFile = (home, provider, threadId) => threadFile(home, provider, threadId).replace(/\.json$/, ".default-agent");
+export function markDefaultAgent(home, provider, threadId) {
+  const file = defaultAgentFile(home, provider, threadId);
+  fs.mkdirSync(path.dirname(file), { recursive: true }); // A first turn lost before finalization leaves no threads/ yet.
+  try { fs.writeFileSync(file, "", { flag: "wx" }); }
+  catch (error) { if (error.code !== "EEXIST") throw error; }
+}
+function hasDefaultAgentMark(home, provider, threadId) {
+  // statSync, never existsSync: existsSync reads a locked marker as absent, and the session would be told to use the agent it left.
+  try { retryLocked(() => fs.statSync(defaultAgentFile(home, provider, threadId))); return true; }
+  catch (error) { if (error.code === "ENOENT") return false; throw error; }
+}
+
 /** threads/<provider>-<threadId>.json: provider, native thread id, cwd, model, effort, tier, round, rounds, agent. Never pruned. */
 export function loadThread(home, provider, threadId) {
   if (!threadId || !THREAD.test(threadId)) return null; // Not a native id, so never a path to read.
   // A record that cannot be read now is not a missing one: a caller's fallback to the job would lose its refusal.
-  try { return readRecord(threadFile(home, provider, threadId)); }
-  catch (error) { throw new Error(MESSAGES.threadUnreadable(threadId, error.code ?? error.message)); }
+  try {
+    const record = readRecord(threadFile(home, provider, threadId));
+    return record && hasDefaultAgentMark(home, provider, threadId) ? { ...record, agent: "default" } : record;
+  } catch (error) { throw new Error(MESSAGES.threadUnreadable(threadId, error.code ?? error.message)); }
 }
 
 export function saveThread(home, record) {

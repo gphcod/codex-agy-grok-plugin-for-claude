@@ -248,4 +248,8 @@ The [final rc.8 efficiency qualification](docs/qualification/efficiency-rc8-wind
 
 ## rc.9 review fixes
 
-A whole-code review by Codex, Gemini, Grok and Claude led to eight fixes; see the [changelog](CHANGELOG.md) and [decisions](docs/decisions.md). The [rc.9 qualification](docs/qualification/review-fixes-rc9-windows.md) records the matched rc.8/rc.9 benchmark and the Windows regression. It remains a release candidate pending macOS and interactive qualification.
+A whole-code review by Codex, Gemini, Grok and Claude led to eight fixes; see the [changelog](CHANGELOG.md) and [decisions](docs/decisions.md). The [rc.9 qualification](docs/qualification/review-fixes-rc9-windows.md) records the matched rc.8/rc.9 benchmark and the Windows regression.
+
+## rc.10 thread-state fixes
+
+Two gaps found by checking what the Codex-hosted 1.1.3 added against rc.9: a reply no longer resumes from a job whose provider never started, and a lost turn that ran Grok's default agent no longer leaves its thread asking for `explore`. See the [changelog](CHANGELOG.md) and [decisions](docs/decisions.md). The [rc.10 qualification](docs/qualification/thread-state-rc10-windows.md) records the matched rc.9/rc.10 benchmark and the Windows regression. It remains a release candidate pending macOS and interactive qualification.

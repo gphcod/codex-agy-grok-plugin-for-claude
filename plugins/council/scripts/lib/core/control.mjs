@@ -4,7 +4,7 @@ import path from "node:path";
 import { claimHeld, releaseClaims } from "./claims.mjs";
 import {
   EXPIRED, candidates, cleanupNeeded, findJob, lastEvent, loadJob, loadRequest, loadTombstone,
-  markStopped, neverPrepared, requestReserved, resultRecord, stateOf,
+  markDefaultAgent, markStopped, neverPrepared, requestReserved, resultRecord, stateOf,
 } from "./jobs.mjs";
 import { companionState, executionController, recordRecoveryEvidence } from "./execution.mjs";
 import { MESSAGES, elapsed, elapsedOf, readAnswer, renderResult, resultJson, startLine } from "./output.mjs";
@@ -46,6 +46,13 @@ export async function cancelManaged(ctx, job, { timeoutMs = 30000, control = exe
       else if (found.state === "gone") {
         // Identified execution is stopped, but an unidentified holder of the turn's pipes may not be.
         if (job.unattributedPipes) return { status: "unknown", code: 1, job: view(), error: "execution ownership/cleanup cannot be confirmed; claim and cancellation request retained" };
+        // A lost turn may have moved its session to Grok's default agent and never saved that. Set before the
+        // job stops blocking its thread, so every later selection reads it. A spawn that may not have run counts:
+        // that recipe is valid on a session that never used the agent; explore is not on one that did.
+        if (job.threadId && job.spawnAttempted && job.turn?.agent === "default") {
+          try { markDefaultAgent(ctx.home, job.provider, job.threadId); }
+          catch (e) { return { status: "unknown", code: 1, job: view(), error: `cannot save the thread's agent: ${e.message}; claim and cancellation request retained` }; }
+        }
         markStopped(job);
         releaseClaims(ctx.home, job);
         const current = view();
