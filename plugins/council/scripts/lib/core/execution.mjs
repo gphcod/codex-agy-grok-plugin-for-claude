@@ -445,7 +445,10 @@ export function executionController(options = {}) {
   const adapter = options.adapter ?? null;
   return {
     platform,
-    snapshot: (timeout = QUERY_MS) => snapshot({ platform, timeout, powershell: options.powershell, run: options.run, proc: options.proc }),
+    // A reservation needs only its owner's identity; cleanup leaves pid null and scans all processes.
+    snapshot: (timeout = QUERY_MS, pid = null) => snapshot({
+      platform, timeout, pid, powershell: options.powershell, run: options.run, proc: options.proc,
+    }),
     self: () => selfIdentity(platform, { snapshot, powershell: options.powershell, run: options.run }),
     /** The identity of one pid (a scoped query), used to record the child as its group's leader right after the spawn. */
     identify: (pid, timeout = QUERY_MS) => { const r = snapshot({ pid, platform, timeout, powershell: options.powershell, run: options.run, proc: options.proc }); return r.state === "ok" ? r.rows.find((row) => row.pid === pid) ?? null : null; },

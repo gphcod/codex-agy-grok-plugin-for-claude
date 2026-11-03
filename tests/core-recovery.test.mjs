@@ -87,7 +87,7 @@ test("replayRequest: a tombstone whose job is still running is awaited and print
     const out = sink();
     const code = await replayRequest(s.ctx, { "request-id": "w" }, claimRequest(s.home, "null", "w", { session: "s", cwd: s.cwd }), "fp", out, { control: liveControl([]), sleepMs: 20 });
     assert.equal(code, 0);
-    assert.match(out.err(), new RegExp(`^\\[council\\] provider=null job=${c.id} thread=t-w replay=w\\n$`));
+    assert.match(out.err(), new RegExp(`^\\[council\\] provider=null job=${c.id} replay=w\\n$`));
     assert.match(out.text(), /^late answer\ncouncil null ok · job /);
   } finally { s.done(); }
 });

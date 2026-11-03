@@ -67,7 +67,7 @@ Slash commands: `/council:ask`, `/council:reply`, `/council:review`, `/council:t
 - `--rounds <n>`: the reply budget of a thread (default 9, or `COUNCIL_ROUNDS`). The thread keeps it. Refused on `review`.
 - `--request-id <id>`: 1–128 characters, `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`. Retrying an identical call with the same id replays or awaits the first result and never starts a second CLI. The same id with different input exits 2.
 - `--deadline <s>` (default 14400) and `--inactivity-timeout <s>` (default 1200) stop a turn and clean up, exit 1. `wait --timeout` only stops waiting.
-- `--json`: one JSON object instead of the text output: `provider, job, thread, session, model, modelVerified, effort, requestedEffort, tier, round, rounds, verdict, findings, coverage, edited, failedCommands, costUsd, exit, answerFile`, plus `verb, status, elapsedMs, error, attention, cleanupPending, answer, clipped`. `attention` is the footer's reason, or null.
+- `--json`: one JSON object instead of the text output: `provider, job, thread, session, model, modelVerified, effort, requestedEffort, tier, round, rounds, verdict, findings, coverage, edited, failedCommands, costUsd, usage, exit, answerFile`, plus `verb, status, elapsedMs, error, attention, cleanupPending, answer, clipped`. `attention` is the footer's reason, or null. `usage` retains native counters (or null); provider schemas and cache counters differ.
 - `--session <id>`: the Claude session that scopes `--last`, bare `wait` and bare `cancel`. When it is absent, empty or still the literal `${CLAUDE_SESSION_ID}`, council uses `CLAUDE_CODE_SESSION_ID` from the environment if that is UUID-like, and otherwise runs with no session. Provider children never receive that variable.
 
 Any flag that a provider has no tested mapping for exits 2 before a job is recorded and before any process starts.
@@ -98,13 +98,13 @@ The static catalog is `plugins/council/models.json`. `models --refresh` merges e
 A start line on stderr (left out under `--json`):
 
 ```text
-[council] provider=grok job=0j52lxy97fhtkbom thread=6f1c2d3e-…
+[council] provider=grok job=0j52lxy97fhtkbom
 ```
 
 The answer, then a one-line footer on stdout:
 
 ```text
-council grok ok · job 0j52lxy97fhtkbom · grok-4.7/low · 3s · round 1/9 · next: reply 0j52lxy97fhtkbom
+council grok ok · job 0j52lxy97fhtkbom · grok-4.7/low · 3s · round 1/9
 ```
 
 Grammar: `council <provider> <ok|needs attention|failed|cancelled> · job <16 chars> · <model>/<effort>[<=requested] · <duration>[ · round N/M][ · edited N][ · unreviewed N][ · model unverified][ · full: <file>][ · error: <msg> | · attention: <reason>][ · <recovery hint>]`. `round` appears on `ask`, `reply` and `task`; `edited` on `task` only; `unreviewed` on `review` only. `attention:` says why a turn needs attention, in one line of at most 200 B: `denied <action>` (with ` (+N more)` for several), `open questions in the answer`, or why a review is incomplete or malformed. Plain review findings add no token; they are the answer. `edited N` is the union of the provider's edit events and the working-tree changes between the start and the end of the turn (a Git snapshot of HEAD and the dirty paths' contents). So an edit made through a shell counts, and so does anything else that changes the tree during the turn, such as you or another job. Outside a Git repository, on a Git failure or timeout, over 5,000 dirty paths, or past 10 s it is the provider's edit events alone. At most 4 MiB is hashed in total; a file past that is compared by size and mtime. A submodule counts as one path when its dirty state changes, so edits inside an already dirty one count only through the provider's events. The starting snapshot and the event count live in the companion's memory, so a job whose companion died prints `edited 0` whatever it changed. An answer over 24 KiB is clipped, and `full:` names the file that holds all of it.
@@ -225,3 +225,17 @@ Design and procedure: `PLAN.md`. Every deviation is recorded in `docs/decisions.
 ## License
 
 Apache-2.0. See `LICENSE` and `NOTICE`, which names the three source plugins.
+
+## Gemini service outages (503)
+
+A native agy `UNAVAILABLE (code 503)` is a temporary upstream failure, not a permission denial. The companion still exits 1 and keeps that failed job immutable. Text output gives a `temporary 503` recovery hint; JSON adds `retry` with status, eligibility, a 2-second delay and a one-retry budget.
+
+The host may repeat a call **once per user request**, with a fresh request id, only when a footer token starts with `temporary 503; next: repeat once` or JSON says `retry.eligible=true`: read-only, no visible partial answer or tool activity, no recorded edits and confirmed thread/cleanup. This host relies on native event evidence; unlike the Codex host, it does not compare Git snapshots around read-only calls Keep the same inputs, model and permissions. A second 503 is reported to the user. Tasks, partial/tool-active turns, denials and uncertain cleanup are not automatically retried; inspect them first. Repeating the original request id only replays its original failed job and never starts another provider.
+
+If a 503 follows a partial response, the unfinished text is saved separately to `partial.md`, with a path in the footer and conditional JSON `partialFile`. It is not a completed answer, review or approval, and the turn remains failed and ineligible for automatic retry. A draft-write failure reports `partialError` without masking the native failure. Existing failed jobs stay immutable.
+
+Retries are separate companion calls/jobs, preserving one provider child per call and explicit recovery. This handles a temporary outage; it cannot make an unavailable backend succeed.
+
+## rc.7 efficiency evidence
+
+The [final Windows qualification](docs/qualification/efficiency-rc7-windows.md) records the matched 240-call rc.6/rc.7 benchmark, native workflows and limits. Ask framing saves 76 B and advice wrapper text 131 B; the lifecycle split improves boundaries while source grows. Native usage/timings are mixed. Exact macOS and interactive checks still gate final 1.0.0.

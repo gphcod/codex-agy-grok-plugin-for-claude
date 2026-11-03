@@ -35,7 +35,7 @@ test("the skill's example is a foreground call by its own rule, and the rule nam
 
 test("with no model named the skill rules out a task, even for a fix, and says how to get one (S7.1 C1)", () => {
   const text = readFileSync(skillPath, "utf8");
-  assert.match(text, /User named no model \(a provider is no model\): ask\/reply\/review only/);
+  assert.match(text, /No model named \(provider names excluded\): ask\/reply\/review with/);
   assert.match(text, /Never task, even for a fix or edit: ask or review, then say `\/council:task` or naming a model lets the provider edit\./);
   assert.match(text, /`task --to <p> \[--thread id\]`: edits files; needs a named model and authorization\./);
   assert.doesNotMatch(text, /only when the user authorizes it/, "the wording Claude read as permission");
@@ -43,7 +43,7 @@ test("with no model named the skill rules out a task, even for a fix, and says h
 
 test("request ids are fresh per call; a refused reuse takes a new id (S7.1 C3)", () => {
   const text = readFileSync(skillPath, "utf8");
-  assert.match(text, /a fresh `--request-id <8 random letters\/digits>` never used earlier in this conversation/);
+  assert.match(text, /a fresh `--request-id <8 random letters\/digits>`, unique here/);
   assert.match(text, /`already used with different input`: new id, rerun\./);
 });
 

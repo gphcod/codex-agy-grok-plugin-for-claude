@@ -41,14 +41,14 @@ test("a native thread id two providers share is ambiguous without --to and resol
   const h = harness();
   try {
     const ask = await h.call(["ask", "--to", "null", "--session", "s", "--", "start"]);
-    const thread = /thread=([0-9a-f-]{36})/.exec(ask.err)[1];
+    const thread = JSON.parse((await h.call(["wait", /job[= ]([a-z0-9]{16})/.exec(ask.err)[1], "--json"])).out).thread;
     saveThread(h.home(), { provider: "codex", threadId: thread, cwd: canonical(h.cwd), model: "gpt-6.1-sol", effort: "high", tier: "consult", round: 1, rounds: 9 });
     const ambiguous = await h.call(["reply", "--thread", thread, "--", "next"]);
     assert.equal(ambiguous.code, 2);
     assert.match(ambiguous.err, new RegExp(`thread ${thread} exists for codex and null; pass --to`));
     const chosen = await h.call(["reply", "--thread", thread, "--to", "null", "--", "next"]);
     assert.equal(chosen.code, 0, chosen.err);
-    assert.match(chosen.out, / · round 2\/9 · /);
+    assert.match(chosen.out, / · round 2\/9(?: · |\n|$)/);
     const codex = await h.call(["reply", "--thread", thread, "--to", "codex", "--", "next"]);
     assert.equal(codex.code, 2);
     assert.match(codex.err, /provider codex not available in this build/, "the codex binding is found, its module is not in this build");
@@ -62,7 +62,7 @@ test("wait --to <provider> <native thread id> finds the thread's latest job", as
   const h = harness();
   try {
     const ask = await h.call(["ask", "--to", "null", "--", "start"]);
-    const thread = /thread=([0-9a-f-]{36})/.exec(ask.err)[1];
+    const thread = JSON.parse((await h.call(["wait", /job[= ]([a-z0-9]{16})/.exec(ask.err)[1], "--json"])).out).thread;
     const byThread = await h.call(["wait", thread, "--to", "null"]);
     assert.equal(byThread.code, 0);
     assert.match(byThread.out, /^pong for job /);

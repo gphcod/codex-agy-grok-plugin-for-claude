@@ -1,0 +1,307 @@
+{
+  "ownerDate": "2026-11-02 Pacific",
+  "nativeSource": "913aa3598f8987ebb66b6aa61a4bd3452911719f",
+  "method": "Five native workflow/input calls per provider: baseline/candidate ask and candidate bug review, one-file authorized task, read-only resumed reply. One exploratory input pair per provider; contexts/output/cache vary. Host smokes use real Claude Opus 5.5/high with fake providers and default permissions. Final service handling is separately qualified on the final payload.",
+  "providers": {
+    "codex": {
+      "checks": {
+        "asksPass": true,
+        "reviewFindsBug": true,
+        "taskOnlySmoke": true,
+        "readonlyReply": true,
+        "cleanup": true
+      },
+      "calls": [
+        {
+          "arm": "baseline",
+          "verb": "ask",
+          "exit": 0,
+          "model": "gpt-6.1-sol",
+          "effort": "xhigh",
+          "usage": {
+            "input_tokens": 17390,
+            "cached_input_tokens": 13440,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 353,
+            "reasoning_output_tokens": 327
+          },
+          "cleanupPending": false
+        },
+        {
+          "arm": "candidate",
+          "verb": "ask",
+          "exit": 0,
+          "model": "gpt-6.1-sol",
+          "effort": "xhigh",
+          "usage": {
+            "input_tokens": 19702,
+            "cached_input_tokens": 13440,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 6,
+            "reasoning_output_tokens": 0
+          },
+          "cleanupPending": false
+        },
+        {
+          "arm": "candidate",
+          "verb": "review",
+          "exit": 10,
+          "model": "gpt-6.1-sol",
+          "effort": "xhigh",
+          "usage": {
+            "input_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          },
+          "cleanupPending": false
+        },
+        {
+          "arm": "candidate",
+          "verb": "task",
+          "exit": 0,
+          "model": "gpt-6.1-sol",
+          "effort": "xhigh",
+          "usage": {
+            "input_tokens": 35388,
+            "cached_input_tokens": 25856,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 178,
+            "reasoning_output_tokens": 79
+          },
+          "cleanupPending": false
+        },
+        {
+          "arm": "candidate",
+          "verb": "reply",
+          "exit": 0,
+          "model": "gpt-6.1-sol",
+          "effort": "xhigh",
+          "usage": {
+            "input_tokens": 53471,
+            "cached_input_tokens": 43520,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 399,
+            "reasoning_output_tokens": 259
+          },
+          "cleanupPending": false
+        }
+      ]
+    },
+    "gemini": {
+      "checks": {
+        "asksPass": true,
+        "reviewFindsBug": true,
+        "taskOnlySmoke": true,
+        "readonlyReply": true,
+        "cleanup": true
+      },
+      "calls": [
+        {
+          "arm": "candidate",
+          "verb": "ask",
+          "exit": 0,
+          "model": "gemini-4-argon",
+          "effort": "medium",
+          "usage": {
+            "input_tokens": 11851,
+            "output_tokens": 6,
+            "thinking_tokens": 0,
+            "cache_read_tokens": 0,
+            "total_tokens": 11857
+          },
+          "cleanupPending": false
+        },
+        {
+          "arm": "baseline",
+          "verb": "ask",
+          "exit": 0,
+          "model": "gemini-4-argon",
+          "effort": "medium",
+          "usage": {
+            "input_tokens": 11881,
+            "output_tokens": 32,
+            "thinking_tokens": 26,
+            "cache_read_tokens": 0,
+            "total_tokens": 11913
+          },
+          "cleanupPending": false
+        },
+        {
+          "arm": "candidate",
+          "verb": "review",
+          "exit": 10,
+          "model": "gemini-4-argon",
+          "effort": "medium",
+          "usage": {
+            "input_tokens": 12784,
+            "output_tokens": 461,
+            "thinking_tokens": 150,
+            "cache_read_tokens": 0,
+            "total_tokens": 13245
+          },
+          "cleanupPending": false
+        },
+        {
+          "arm": "candidate",
+          "verb": "task",
+          "exit": 0,
+          "model": "gemini-4-argon",
+          "effort": "medium",
+          "usage": {
+            "input_tokens": 14058,
+            "output_tokens": 189,
+            "thinking_tokens": 0,
+            "cache_read_tokens": 9802,
+            "total_tokens": 14247
+          },
+          "cleanupPending": false
+        },
+        {
+          "arm": "candidate",
+          "verb": "reply",
+          "exit": 10,
+          "model": "gemini-4-argon",
+          "effort": "medium",
+          "usage": {
+            "input_tokens": 18952,
+            "output_tokens": 339,
+            "thinking_tokens": 0,
+            "cache_read_tokens": 30259,
+            "total_tokens": 19291
+          },
+          "cleanupPending": false
+        }
+      ]
+    },
+    "grok": {
+      "checks": {
+        "asksPass": true,
+        "reviewFindsBug": true,
+        "taskOnlySmoke": true,
+        "readonlyReply": true,
+        "cleanup": true
+      },
+      "calls": [
+        {
+          "arm": "baseline",
+          "verb": "ask",
+          "exit": 0,
+          "model": "grok-4.7",
+          "effort": "high",
+          "usage": {
+            "input_tokens": 6869,
+            "cache_read_input_tokens": 1664,
+            "cache_creation_input_tokens": 0,
+            "output_tokens": 390,
+            "reasoning_tokens": 388,
+            "total_tokens": 8923
+          },
+          "cleanupPending": false
+        },
+        {
+          "arm": "candidate",
+          "verb": "ask",
+          "exit": 0,
+          "model": "grok-4.7",
+          "effort": "high",
+          "usage": {
+            "input_tokens": 5963,
+            "cache_read_input_tokens": 1920,
+            "cache_creation_input_tokens": 0,
+            "output_tokens": 41,
+            "reasoning_tokens": 39,
+            "total_tokens": 7924
+          },
+          "cleanupPending": false
+        },
+        {
+          "arm": "candidate",
+          "verb": "review",
+          "exit": 10,
+          "model": "grok-4.7",
+          "effort": "high",
+          "usage": {
+            "input_tokens": 6853,
+            "cache_read_input_tokens": 1920,
+            "cache_creation_input_tokens": 0,
+            "output_tokens": 927,
+            "reasoning_tokens": 701,
+            "total_tokens": 9700
+          },
+          "cleanupPending": false
+        },
+        {
+          "arm": "candidate",
+          "verb": "task",
+          "exit": 0,
+          "model": "grok-4.7",
+          "effort": "high",
+          "usage": {
+            "input_tokens": 11453,
+            "cache_read_input_tokens": 14464,
+            "cache_creation_input_tokens": 0,
+            "output_tokens": 533,
+            "reasoning_tokens": 413,
+            "total_tokens": 26450
+          },
+          "cleanupPending": false
+        },
+        {
+          "arm": "candidate",
+          "verb": "reply",
+          "exit": 0,
+          "model": "grok-4.7",
+          "effort": "high",
+          "usage": {
+            "input_tokens": 17746,
+            "cache_read_input_tokens": 72832,
+            "cache_creation_input_tokens": 0,
+            "output_tokens": 2057,
+            "reasoning_tokens": 1552,
+            "total_tokens": 92635
+          },
+          "cleanupPending": false
+        }
+      ]
+    }
+  },
+  "hostSmokes": {
+    "codex": {
+      "hostExit": 0,
+      "submissions": 1,
+      "jobs": 1,
+      "completed": true,
+      "permissionDenials": 0,
+      "hostModel": "claude-opus-5-5/high",
+      "defaultModel": "gpt-6.1-sol",
+      "defaultEffort": "xhigh"
+    },
+    "gemini": {
+      "hostExit": 0,
+      "submissions": 1,
+      "jobs": 1,
+      "completed": true,
+      "permissionDenials": 0,
+      "hostModel": "claude-opus-5-5/high",
+      "defaultModel": "gemini-4-argon",
+      "defaultEffort": "medium"
+    },
+    "grok": {
+      "hostExit": 0,
+      "submissions": 1,
+      "jobs": 1,
+      "completed": true,
+      "permissionDenials": 0,
+      "hostModel": "claude-opus-5-5/high",
+      "defaultModel": "grok-4.7",
+      "defaultEffort": "high"
+    }
+  },
+  "limitations": [
+    "Native normal-path workflows precede the 503 follow-up; normal contract/permissions are unchanged. Final tagged installed asks are recorded in handbook evidence.",
+    "Codex native input increased by 2312; Gemini decreased by 30; Grok input plus cache decreased by 650 with a changed cache mix. No billed-cost or universal speed claim.",
+    "One Windows machine; final macOS and interactive release gate remain open."
+  ]
+}

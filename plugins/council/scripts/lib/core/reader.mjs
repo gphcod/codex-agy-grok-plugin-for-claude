@@ -52,7 +52,12 @@ export function createReader({ adapter, cwd = process.cwd(), turn = null, onThre
     const ev = adapter.parseEvent(text, state);
     if (!ev || typeof ev !== "object") return false;
     state.events += 1;
-    if (ev.fatal) { fail(typeof ev.fatal === "string" ? ev.fatal : "provider reported a fatal error"); return true; }
+    if (ev.fatal) {
+      if (ev.transientFailure) state.transientFailure = ev.transientFailure;
+      if (typeof ev.partialText === "string") state.partialText = ev.partialText;
+      if (ev.usage) state.usage = ev.usage;
+      fail(typeof ev.fatal === "string" ? ev.fatal : "provider reported a fatal error"); return true;
+    }
     if (ev.threadId !== undefined && ev.threadId !== null) {
       if (typeof ev.threadId !== "string" || !THREAD.test(ev.threadId)) { fail("invalid thread id in the event stream"); return true; }
       if (state.threadId && state.threadId.toLowerCase() !== ev.threadId.toLowerCase()) { fail(`thread id changed during the turn (${state.threadId} → ${ev.threadId})`); return true; }

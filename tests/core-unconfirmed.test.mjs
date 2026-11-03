@@ -31,7 +31,8 @@ test("the reader latches the first unconfirmed signal; a bare true gets a generi
 test("recoveryHint: the unconfirmed hint replaces next: reply, never on a review, after cleanup pending", () => {
   const base = { id: "j".repeat(16), provider: "grok", verb: "ask", outcome: "ok", model: "m", effort: "low", spawnedAt: new Date().toISOString(), endedAt: new Date().toISOString(), admitted: true };
   assert.equal(recoveryHint({ ...base, threadId: "t", unconfirmed: HINT }), HINT);
-  assert.equal(recoveryHint({ ...base, threadId: "t" }), `next: reply ${base.id}`);
+  assert.equal(recoveryHint({ ...base, threadId: "t" }), null, 'healthy continuation is already documented in the skill');
+  assert.equal(recoveryHint({ ...base, outcome: 'attention', threadId: 't' }), `next: reply ${base.id}`);
   assert.equal(recoveryHint({ ...base, verb: "review", unconfirmed: HINT }), null);
   assert.match(recoveryHint({ ...base, unconfirmed: HINT, cleanupPending: true }), /^cleanup pending/);
   assert.match(footer({ ...base, threadId: null, unconfirmed: HINT, round: 1, rounds: 9 }, false), new RegExp(` · round 1/9 · ${HINT}$`));

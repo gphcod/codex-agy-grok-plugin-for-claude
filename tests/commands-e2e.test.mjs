@@ -91,10 +91,10 @@ test("reply, review, task, wait, cancel, models, setup through their command blo
     // reply: the job id as first word, or --thread; the provider comes from the job.
     let r = await h.sh(command("reply", `${ask.job} follow up`), { ...env, ...markers("codex", "follow up"), COUNCIL_FAKE_SCENARIO: "resume" });
     assert.equal(r.code, 0, r.err + r.out);
-    assert.match(footer(r.out), /^council codex ok · .* · gpt-6\.1-sol\/low · .* · round 2\/9 · /);
+    assert.match(footer(r.out), /^council codex ok · .* · gpt-6\.1-sol\/low · .* · round 2\/9(?: · |\n|$)/);
     r = await h.sh(command("reply", `--thread ${ask.job} --effort medium and more`), { ...env, ...markers("codex", "and more"), COUNCIL_FAKE_SCENARIO: "resume" });
     assert.equal(r.code, 0, r.err + r.out);
-    assert.match(footer(r.out), /^council codex ok · .* · gpt-6\.1-sol\/medium · .* · round 3\/9 · /);
+    assert.match(footer(r.out), /^council codex ok · .* · gpt-6\.1-sol\/medium · .* · round 3\/9(?: · |\n|$)/);
     r = await h.sh(command("reply", `--thread ${ask.job} --to grok x`), env);
     assert.equal(r.code, 2);
     assert.match(r.err, /belongs to codex; --to grok conflicts/);
@@ -114,7 +114,7 @@ test("reply, review, task, wait, cancel, models, setup through their command blo
     // task: the exec tier by default; grok's write recipe.
     r = await h.sh(command("task", "--to grok --effort low do the edit"), { ...env, ...markers("grok", "do the edit") });
     assert.equal(r.code, 0, r.err + r.out);
-    assert.match(footer(r.out), /^council grok ok · .* · grok-4\.7-build-fast\/low · .* · round 1\/9 · edited 0 · /);
+    assert.match(footer(r.out), /^council grok ok · .* · grok-4\.7-build-fast\/low · .* · round 1\/9 · edited 0(?: · |\n|$)/);
     assert.equal(h.job(r.job).readOnly, false);
 
     // Control commands: their arguments arrive on stdin through the heredoc.

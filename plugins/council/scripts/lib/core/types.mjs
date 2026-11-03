@@ -54,6 +54,8 @@
 
 /**
  * @typedef {object} ParsedEvent  parseEvent's return; null for a line that carries nothing.
+ * @property {object} [transientFailure] classified native failure with no-visible-work evidence
+ * @property {string} [partialText] unfinished service-failure draft, saved separately from answer/review output
  * @property {string} [threadId]
  * @property {string} [textDelta]
  * @property {string} [toolStep]

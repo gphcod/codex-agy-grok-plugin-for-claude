@@ -63,9 +63,9 @@ test("ask --to null -- hi: start line on stderr, answer and footer on stdout, ex
     const r = await h.call(["ask", "--to", "null", "--session", "s1", "--", "hi"]);
     assert.equal(r.code, 0, r.err);
     const job = h.jobOf(r.err);
-    assert.match(r.err, new RegExp(`^\\[council\\] provider=null job=${job} thread=[0-9a-f-]{36}\\n$`));
+    assert.match(r.err, new RegExp(`^\\[council\\] provider=null job=${job}\\n$`));
     assert.equal(r.out, `pong for job ${job}\n${r.out.split("\n")[1]}\n`);
-    assert.match(r.out, new RegExp(`^council null ok · job ${job} · null-model/high · \\d+s · round 1/9 · next: reply ${job}$`, "m"));
+    assert.match(r.out, new RegExp(`^council null ok · job ${job} · null-model/high · \\d+s · round 1/9$`, "m"));
     const [spawn] = h.spawns();
     assert.equal(spawn.prompt, `${CONTRACT}\n\nhi`, "contract prepended, text after --");
     assert.deepEqual(spawn.guards, GUARD_VARS, "the child carries all four guard variables");
@@ -162,7 +162,7 @@ test("model, effort and tier resolution through the catalog: aliases, clamps, un
     assert.match(clamp.out, / · null-fast\/medium<=xhigh · /, "alias resolved, effort clamped down, clamp shown");
     const unknown = await h.call(["ask", "--to", "null", "--model", "null-mystery", "--effort", "max", "--", "x"]);
     assert.equal(unknown.code, 0, unknown.err);
-    assert.match(unknown.out, / · null-mystery\/max · .* · model unverified · /);
+    assert.match(unknown.out, / · null-mystery\/max · .* · model unverified(?: · |\n|$)/);
     const deep = await h.call(["ask", "--to", "null", "--tier", "deep", "--json", "--", "x"]);
     assert.deepEqual([JSON.parse(deep.out).model, JSON.parse(deep.out).effort, JSON.parse(deep.out).tier], ["null-model", "xhigh", "deep"]);
     const task = await h.call(["task", "--to", "null", "--json", "--", "edit it"]);
@@ -197,24 +197,24 @@ test("reply: by first word, --thread and --last; rounds count, inheritance, expl
   try {
     const ask = await h.call(["ask", "--to", "null", "--session", "s1", "--effort", "low", "--", "first"]);
     const askJob = h.jobOf(ask.err);
-    const thread = /thread=([0-9a-f-]{36})/.exec(ask.err)[1];
+    const thread = JSON.parse((await h.call(["wait", /job[= ]([a-z0-9]{16})/.exec(ask.err)[1], "--json"])).out).thread;
     const r1 = await h.call(["reply", "--session", "s1", "--", `${askJob} second`]);
     assert.equal(r1.code, 0, r1.err);
-    assert.match(r1.out, / · null-model\/low · \d+s · round 2\/9 · /, "model and effort inherited from the thread");
+    assert.match(r1.out, / · null-model\/low · \d+s · round 2\/9(?: · |\n|$)/, "model and effort inherited from the thread");
     assert.equal(h.spawns().at(-1).prompt, `${CONTRACT}\n\nsecond`);
     assert.ok(h.spawns().at(-1).argv.includes(thread), "the native thread is resumed");
     const r2 = await h.call(["reply", "--session", "s1", "--last", "--effort", "medium", "--", "third"]);
-    assert.match(r2.out, / · null-model\/medium · \d+s · round 3\/9 · /, "explicit effort wins for this turn");
+    assert.match(r2.out, / · null-model\/medium · \d+s · round 3\/9(?: · |\n|$)/, "explicit effort wins for this turn");
     const r3 = await h.call(["reply", "--session", "s1", "--thread", thread, "--", "fourth"]);
-    assert.match(r3.out, / · null-model\/medium · \d+s · round 4\/9 · /, "and is persisted on the thread");
+    assert.match(r3.out, / · null-model\/medium · \d+s · round 4\/9(?: · |\n|$)/, "and is persisted on the thread");
     const r4 = await h.call(["reply", "--session", "s1", "--last", "--tier", "consult", "--", "fifth"]);
-    assert.match(r4.out, / · null-model\/high · \d+s · round 5\/9 · /, "--tier consult can lower or raise a thread's effort deliberately");
+    assert.match(r4.out, / · null-model\/high · \d+s · round 5\/9(?: · |\n|$)/, "--tier consult can lower or raise a thread's effort deliberately");
     const record = loadThread(canonical(h.home), "null", thread);
     assert.equal(record.round, 5); assert.equal(record.effort, "high"); assert.equal(record.tier, "consult");
     const rounds = await h.call(["reply", "--session", "s1", "--last", "--rounds", "3", "--", "sixth"]);
-    assert.match(rounds.out, / · round 6\/3 · /);
+    assert.match(rounds.out, / · round 6\/3(?: · |\n|$)/);
     const after = await h.call(["reply", "--session", "s1", "--last", "--", "seventh"]);
-    assert.match(after.out, / · round 7\/3 · /, "a budget set with --rounds is inherited");
+    assert.match(after.out, / · round 7\/3(?: · |\n|$)/, "a budget set with --rounds is inherited");
     const conflict = await h.call(["reply", "--session", "s1", "--last", "--to", "codex", "--", "x"]);
     assert.equal(conflict.code, 2);
     assert.match(conflict.err, new RegExp(`thread ${thread} belongs to null; --to codex conflicts`));
@@ -255,14 +255,14 @@ test("task then reply: reply stays read-only after a task; task --thread resumes
     const job = h.jobOf(ask.err);
     const task = await h.call(["task", "--session", "s1", "--thread", job, "--", "do it"]);
     assert.equal(task.code, 0, task.err);
-    assert.match(task.out, / · round 2\/9 · edited 0 · /);
+    assert.match(task.out, / · round 2\/9 · edited 0(?: · |\n|$)/);
     assert.ok(h.spawns().at(-1).argv.includes("--write"));
     const reply = await h.call(["reply", "--session", "s1", "--last", "--", "check"]);
     assert.equal(reply.code, 0, reply.err);
     assert.ok(!h.spawns().at(-1).argv.includes("--write"), "reply after a task is read-only");
-    assert.match(reply.out, / · round 3\/9 · /);
+    assert.match(reply.out, / · round 3\/9(?: · |\n|$)/);
     const task2 = await h.call(["task", "--session", "s1", "--thread", h.jobOf(reply.err), "--to", "null", "--", "again"]);
-    assert.match(task2.out, / · round 4\/9 · edited 0 · /);
+    assert.match(task2.out, / · round 4\/9 · edited 0(?: · |\n|$)/);
     const lastTask = await h.call(["task", "--session", "s1", "--last", "--", "x"]);
     assert.equal(lastTask.code, 2);
   } finally { h.done(); }
@@ -336,11 +336,11 @@ test("request id: reply --last replay recovers the original provider and job aft
   const h = harness();
   try {
     const a = await h.call(["ask", "--to", "null", "--session", "s1", "--", "thread A"]);
-    const threadA = /thread=([0-9a-f-]{36})/.exec(a.err)[1];
+    const threadA = JSON.parse((await h.call(["wait", /job[= ]([a-z0-9]{16})/.exec(a.err)[1], "--json"])).out).thread;
     const r = await h.call(["reply", "--session", "s1", "--last", "--request-id", "r-last", "--", "follow-up"]);
     assert.equal(r.code, 0, r.err);
     const replyJob = h.jobOf(r.err);
-    assert.match(r.err, new RegExp(`provider=null job=${replyJob} thread=${threadA}`));
+    assert.match(r.err, new RegExp(`provider=null job=${replyJob}`));
     const b = await h.call(["ask", "--to", "null2", "--session", "s1", "--", "thread B on another provider"]);
     assert.match(b.err, /provider=null2 /);
     mkdirSync(join(h.home, "catalog"), { recursive: true });

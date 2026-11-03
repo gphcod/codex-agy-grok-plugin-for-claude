@@ -6,6 +6,7 @@ allowed-tools: Bash(node:*), PowerShell(node:*), Write
 ---
 
 Make one Bash tool call in the foreground. It starts no provider CLI. It waits up to `--timeout` seconds (90 by default); exit 20 means the job is still running.
+
 If a line of the arguments is exactly `COUNCIL_EOF`, use another delimiter that is not in the text, in both places. Apart from that and the request id where the command has one, keep the command exactly as shown.
 
 ```bash
