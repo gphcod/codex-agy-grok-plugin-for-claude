@@ -17,7 +17,7 @@ The release check is S7 of `PLAN.md`: a macOS matrix, a Windows session and the 
 - Omit redundant healthy `next: reply` hints; keep cleanup, unconfirmed, failed and attention hints. Shorten contract/skill prose, retaining per-turn protocol, authorization and Claude background notifications.
 - Reuse the just-resolved thread for initial preparation, refreshing under the claim. Scope reservation-owner liveness queries to that pid, retaining unknown on error and full cleanup snapshots.
 - Separate wait/cancel/replay and recovery from turn execution, retaining the public lifecycle API. Add native `usage` to JSON; existing `costUsd` mapping is unchanged.
-- Add a matched Windows benchmark and regression checks; report bytes, state operations, latency and native counters separately.
+- Final matched benchmark: 240 expected-success calls; ask framing −76 B, advice wrapper input −131 B. Description 150 → 122 B; lifecycle 647 → 473 lines while total source grows. Native inputs/timings are mixed and reported separately. See docs/qualification/efficiency-rc7-windows.md.
 - Handle the recorded Gemini 503 in both hosts. Preserve failure usage and unfinished response drafts; permit one separate read-only retry only on explicit eligibility, after 2 seconds with a fresh request id. A task, partial/tool-active turn, unconfirmed thread or uncertain mutation/cleanup never gets an automatic retry. Same-id replay remains immutable.
 - Remains a candidate pending final macOS and interactive qualification.
 

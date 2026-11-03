@@ -235,3 +235,7 @@ The host may repeat a call **once per user request**, with a fresh request id, o
 If a 503 follows a partial response, the unfinished text is saved separately to `partial.md`, with a path in the footer and conditional JSON `partialFile`. It is not a completed answer, review or approval, and the turn remains failed and ineligible for automatic retry. A draft-write failure reports `partialError` without masking the native failure. Existing failed jobs stay immutable.
 
 Retries are separate companion calls/jobs, preserving one provider child per call and explicit recovery. This handles a temporary outage; it cannot make an unavailable backend succeed.
+
+## rc.7 efficiency evidence
+
+The [final Windows qualification](docs/qualification/efficiency-rc7-windows.md) records the matched 240-call rc.6/rc.7 benchmark, native workflows and limits. Ask framing saves 76 B and advice wrapper text 131 B; the lifecycle split improves boundaries while source grows. Native usage/timings are mixed. Exact macOS and interactive checks still gate final 1.0.0.
