@@ -258,7 +258,7 @@ test("end to end: kill the companion during task --thread, cancel, and a read-on
     await closed;
 
     const stale = JSON.parse(readFileSync(threadFile(canonical(h.home), "grok", thread), "utf8"));
-    assert.equal(stale.agent, "explore", "the lost task never saved its agent");
+    assert.equal(stale.agent, "default", "the initial ask already used the default agent");
     const blocked = await h.turn("grok", ["reply", "--thread", id, "--effort", "low"], "too early", { COUNCIL_FAKE_SCENARIO: "resume" });
     assert.notEqual(blocked.code, 0, "the lost job blocks its thread until cancel");
 
@@ -269,7 +269,7 @@ test("end to end: kill the companion during task --thread, cancel, and a read-on
     assert.equal(next.code, 0, next.err + next.out);
     const { argv } = h.invocations().at(-1);
     assert.equal(argv.includes("--agent"), false, "explore is not requested of a session that ran the default agent");
-    assert.equal(argv[argv.indexOf("--disallowed-tools") + 1], RESUME_DENY.join(","));
+    assert.equal(argv.includes("--disallowed-tools"), false);
     assert.equal(argv[argv.indexOf("-r") + 1], thread);
   } finally { h.done(); }
 });

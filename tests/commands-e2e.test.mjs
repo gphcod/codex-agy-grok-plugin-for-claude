@@ -50,7 +50,7 @@ test("ask, codex, gemini, grok: leading flags, a literal --, text with -- inside
     assert.match(r.err, /^\[council\] provider=grok /);
     assert.match(footer(r.out), /^council grok ok · job [a-z0-9]{16} · grok-4\.7\/low · /);
     assert.equal(h.job(r.job).session, SESSION, "the session comes from CLAUDE_SESSION_ID");
-    assert.equal(readFileSync(h.job(r.job).turn.promptFile, "utf8"), "What is 2+2?");
+    assert.equal(readFileSync(h.job(r.job).turn.promptFile, "utf8"), 'Instructions for this turn (advice, read-only): inspect and answer; do not edit files or perform external writes.\n\nWhat is 2+2?');
 
     // A literal `--` ends the options: what follows is text even when it looks like a flag.
     r = await h.sh(command("grok", "--effort low -- --verbose is literal text"), { ...env, ...markers("grok", "--verbose is literal text") });
@@ -148,7 +148,7 @@ for (const exe of POWERSHELLS) {
       let r = await h.ps(exe, powershellForm("ask", file), markers("grok", text));
       assert.equal(r.code, 0, r.err + r.out);
       assert.match(footer(r.out), /^council grok ok · job [a-z0-9]{16} · grok-4\.7\/low · /);
-      assert.equal(readFileSync(h.job(r.job).turn.promptFile, "utf8"), text);
+      assert.equal(readFileSync(h.job(r.job).turn.promptFile, "utf8"), 'Instructions for this turn (advice, read-only): inspect and answer; do not edit files or perform external writes.\n\n' + text);
       assert.equal(h.job(r.job).session, SESSION);
       writeFileSync(file, "\uFEFF--to nobody hi");
       r = await h.ps(exe, powershellForm("ask", file), {});
@@ -161,7 +161,7 @@ for (const exe of POWERSHELLS) {
       writeFileSync(file, `--to grok --effort low ${text}`);
       r = await h.ps(exe, powershellForm("ask", file).replace(SESSION, ""), { ...markers("grok", text), CLAUDE_CODE_SESSION_ID: "from-the-host" });
       assert.equal(r.code, 0, r.err + r.out);
-      assert.equal(readFileSync(h.job(r.job).turn.promptFile, "utf8"), text);
+      assert.equal(readFileSync(h.job(r.job).turn.promptFile, "utf8"), 'Instructions for this turn (advice, read-only): inspect and answer; do not edit files or perform external writes.\n\n' + text);
       r = await h.ps(exe, powershellForm("ask", join(h.root, "missing.txt")), {});
       assert.equal(r.code, 2);
       assert.match(r.err, /cannot read --input-file/);
@@ -172,7 +172,7 @@ for (const exe of POWERSHELLS) {
       r = await h.ps(exe, `node "${join(PLUGIN_DIR, "scripts", "council.mjs")}" ask --to grok --effort low "--session=${SESSION}" "--input-file=${file}" --; exit $LASTEXITCODE`, markers("grok", flagged));
       assert.equal(r.code, 0, r.err + r.out);
       assert.match(footer(r.out), /^council grok ok · .* · grok-4\.7\/low · /, "no option was taken from the text");
-      assert.equal(readFileSync(h.job(r.job).turn.promptFile, "utf8"), flagged);
+      assert.equal(readFileSync(h.job(r.job).turn.promptFile, "utf8"), 'Instructions for this turn (advice, read-only): inspect and answer; do not edit files or perform external writes.\n\n' + flagged);
     } finally { h.done(); }
   });
 }

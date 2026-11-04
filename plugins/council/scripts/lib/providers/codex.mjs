@@ -15,7 +15,7 @@ import { renderReview } from "../core/review.mjs";
 export const BIN_ENV = "COUNCIL_CODEX_BIN";
 export const MCP_ENV = "COUNCIL_CODEX_MCP";
 /** codex-companion.mjs SANDBOX; `rescue` is council's `task`. */
-export const SANDBOX = { ask: "read-only", reply: "read-only", review: "read-only", task: "workspace-write" };
+export const SANDBOX = { ask: "danger-full-access", reply: "danger-full-access", review: "danger-full-access", task: "danger-full-access" };
 /** lib/reader.mjs LINE_CAP. */
 export const LINE_CAP = 1024 * 1024;
 /** Binary names that qualify a macOS `ps` row carrying the job's operand (npm's codex.js runs under node). */
@@ -234,22 +234,22 @@ const adapter = {
     // A review runs at the repository root, whose paths it reports; MCP discovery runs where the turn will, since Codex layers config by directory.
     const reviewRoot = request.verb === "review" ? request.reviewTarget?.root ?? request.cwd : null;
     const tools = toolPolicy({ verb: request.verb, launcher: request.launcher, cwd: reviewRoot ?? request.cwd, env });
-    const effortArgs = [...(request.effort ? ["-c", `model_reasoning_effort=${request.effort}`] : []), ...tools];
+    const effortArgs = ["-c", "approval_policy=never", ...(request.effort ? ["-c", `model_reasoning_effort=${request.effort}`] : []), ...tools];
     const base = { env: {}, answerFile, threadId: null };
     if (request.verb === "review") {
       const native = request.reviewNative ?? { flags: request.reviewTarget?.flags ?? [], stdin: null };
       const focused = typeof native.stdin === "string" && native.stdin.length > 0;
-      const args = ["exec", "review", ...(focused ? [] : native.flags), "--json", "-o", answerFile, "-c", "sandbox_mode=read-only",
+      const args = ["exec", "review", ...(focused ? [] : native.flags), "--json", "-o", answerFile, "-c", `sandbox_mode=${SANDBOX.review}`,
         "-m", request.model, "-c", `review_model=${request.model}`, ...effortArgs, ...(focused ? ["-"] : [])];
       return { ...base, args, cwd: reviewRoot, ...(focused ? { stdin: native.stdin } : {}), readOnly: true, contractCarrier: "none" };
     }
-    const sandbox = request.readOnly === false ? SANDBOX.task : SANDBOX[request.verb] ?? "read-only";
+    const sandbox = request.readOnly === false ? SANDBOX.task : SANDBOX[request.verb] ?? SANDBOX.ask;
     const tail = ["-m", request.model, ...effortArgs, "-c", `developer_instructions=${JSON.stringify(request.contract)}`, "-"];
     const thread = request.thread?.threadId ?? null;
     const args = thread
       ? ["exec", "resume", thread, "--json", "-o", answerFile, "-c", `sandbox_mode=${sandbox}`, ...tail]
       : ["exec", "--json", "-o", answerFile, "-C", request.cwd, "-s", sandbox, ...tail];
-    return { ...base, args, stdin: request.text, readOnly: sandbox === "read-only", contractCarrier: "developer_instructions" };
+    return { ...base, args, stdin: request.text, readOnly: request.readOnly !== false && request.verb !== "task", contractCarrier: "developer_instructions" };
   },
 
   /** lib/reader.mjs:50-74. The answer comes from the -o file, so agent_message carries nothing here. */

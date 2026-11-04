@@ -67,7 +67,7 @@ test("ask --to null -- hi: start line on stderr, answer and footer on stdout, ex
     assert.equal(r.out, `pong for job ${job}\n${r.out.split("\n")[1]}\n`);
     assert.match(r.out, new RegExp(`^council null ok · job ${job} · null-model/high · \\d+s · round 1/9$`, "m"));
     const [spawn] = h.spawns();
-    assert.equal(spawn.prompt, `${CONTRACT}\n\nhi`, "contract prepended, text after --");
+    assert.equal(spawn.prompt, `${CONTRACT}\n\nInstructions for this turn (advice, read-only): inspect and answer; do not edit files or perform external writes.\n\nhi`, "contract prepended, text after --");
     assert.deepEqual(spawn.guards, GUARD_VARS, "the child carries all four guard variables");
     assert.equal(spawn.cwd, canonical(h.cwd));
     const record = loadJob(canonical(h.home), job);
@@ -135,11 +135,11 @@ test("slash-command form: leading options parsed out of the heredoc text; a lite
     const r = await h.call(["ask", "--session", "s1"], { stdin: "--to null --effort low What about --flags inside?\nSecond line.\n" });
     assert.equal(r.code, 0, r.err);
     assert.match(r.out, / · null-model\/low · /);
-    assert.equal(h.spawns()[0].prompt, `${CONTRACT}\n\nWhat about --flags inside?\nSecond line.`);
+    assert.equal(h.spawns()[0].prompt, `${CONTRACT}\n\nInstructions for this turn (advice, read-only): inspect and answer; do not edit files or perform external writes.\n\nWhat about --flags inside?\nSecond line.`);
     const lit = await h.call(["ask", "--session", "s1"], { stdin: "--to null --\n--effort max is text here\nCOUNCIL_EOF too\n" });
     assert.equal(lit.code, 0, lit.err);
     assert.match(lit.out, / · null-model\/high · /, "--effort after -- was not parsed");
-    assert.equal(h.spawns()[1].prompt, `${CONTRACT}\n\n--effort max is text here\nCOUNCIL_EOF too`);
+    assert.equal(h.spawns()[1].prompt, `${CONTRACT}\n\nInstructions for this turn (advice, read-only): inspect and answer; do not edit files or perform external writes.\n\n--effort max is text here\nCOUNCIL_EOF too`);
     const both = await h.call(["ask", "--to", "null", "args"], { stdin: "and stdin" });
     assert.equal(both.code, 2);
     assert.match(both.err, /stdin or as arguments, not both/);
@@ -201,7 +201,7 @@ test("reply: by first word, --thread and --last; rounds count, inheritance, expl
     const r1 = await h.call(["reply", "--session", "s1", "--", `${askJob} second`]);
     assert.equal(r1.code, 0, r1.err);
     assert.match(r1.out, / · null-model\/low · \d+s · round 2\/9(?: · |\n|$)/, "model and effort inherited from the thread");
-    assert.equal(h.spawns().at(-1).prompt, `${CONTRACT}\n\nsecond`);
+    assert.equal(h.spawns().at(-1).prompt, `${CONTRACT}\n\nInstructions for this turn (advice, read-only): inspect and answer; do not edit files or perform external writes.\n\nsecond`);
     assert.ok(h.spawns().at(-1).argv.includes(thread), "the native thread is resumed");
     const r2 = await h.call(["reply", "--session", "s1", "--last", "--effort", "medium", "--", "third"]);
     assert.match(r2.out, / · null-model\/medium · \d+s · round 3\/9(?: · |\n|$)/, "explicit effort wins for this turn");

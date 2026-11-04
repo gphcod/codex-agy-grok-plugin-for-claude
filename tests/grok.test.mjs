@@ -52,13 +52,13 @@ test("ask: pong, footer grok-4.7/low, explore recipe, fresh session confirmed, t
     assert.match(r.out, /^pong\n/);
     assert.match(footer(r.out), new RegExp(`^council grok ok · job ${r.job} · grok-4\\.7/low · \\d+s · round 1/9$`));
     const job = h.job(r.job);
-    assert.equal(flag(job.childArgs, "--agent"), "explore");
+    assert.equal(flag(job.childArgs, "--agent"), undefined);
     assert.equal(flag(job.childArgs, "--session-id"), job.threadId);
     assert.equal(job.costUsd, 0.01125);
     assert.equal(job.turn.promptFile, join(job.dir, "prompt.md"));
-    assert.equal(readFileSync(job.turn.promptFile, "utf8"), "Reply with pong");
+    assert.match(readFileSync(job.turn.promptFile, "utf8"), /^Instructions for this turn \(advice, read-only\):.*\n\nReply with pong$/);
     const thread = loadThread(canonical(h.home), "grok", job.threadId);
-    assert.deepEqual([thread.agent, thread.readOnly, thread.model, thread.effort], ["explore", true, "grok-4.7", "low"]);
+    assert.deepEqual([thread.agent, thread.readOnly, thread.model, thread.effort], ["default", true, "grok-4.7", "low"]);
   } finally { h.done(); }
 });
 
@@ -75,8 +75,8 @@ test("ask → task --thread → reply → task --thread: recipe, -r and agent on
     let a = h.job(task1.job).childArgs;
     assert.equal(flag(a, "-r"), sid);
     assert.equal(a.includes("--agent"), false);
-    assert.deepEqual(all(a, "--deny"), ["Bash(git push*)", "Bash(rm -rf *)"]);
-    assert.equal(flag(a, "--disallowed-tools"), HOSTILE.join(","));
+    assert.deepEqual(all(a, "--deny"), []);
+    assert.equal(flag(a, "--disallowed-tools"), undefined);
     assert.match(footer(task1.out), / · round 2\/9 · edited 1$/);
     assert.deepEqual(h.job(task1.job).edited, ["src/a.js"]);
     assert.equal(loadThread(canonical(h.home), "grok", sid).agent, "default");
@@ -86,8 +86,8 @@ test("ask → task --thread → reply → task --thread: recipe, -r and agent on
     a = h.job(reply.job).childArgs;
     assert.equal(flag(a, "-r"), sid);
     assert.equal(a.includes("--agent"), false, "a default-agent session cannot switch back to explore");
-    assert.equal(flag(a, "--disallowed-tools"), RESUME_DENY.join(","));
-    assert.deepEqual(all(a, "--deny"), ["MCPTool(*)"]);
+    assert.equal(flag(a, "--disallowed-tools"), undefined);
+    assert.deepEqual(all(a, "--deny"), []);
     assert.equal(h.job(reply.job).readOnly, true);
     assert.match(reply.out, /^pong again\n/);
     assert.match(footer(reply.out), / · round 3\/9$/);
@@ -97,14 +97,14 @@ test("ask → task --thread → reply → task --thread: recipe, -r and agent on
     assert.equal(task2.code, 0, task2.out);
     a = h.job(task2.job).childArgs;
     assert.equal(flag(a, "-r"), sid);
-    assert.deepEqual(all(a, "--deny"), ["Bash(git push*)", "Bash(rm -rf *)"]);
+    assert.deepEqual(all(a, "--deny"), []);
     assert.match(footer(task2.out), / · round 4\/9 · edited 0(?: · |\n|$)/);
     const thread = loadThread(canonical(h.home), "grok", sid);
     assert.deepEqual([thread.agent, thread.readOnly, thread.round], ["default", false, 4]);
 
     const reply2 = await h.call(["reply", "--thread", sid, "--effort", "low"], { text: "and?", ...resume });
     assert.equal(reply2.code, 0, reply2.out);
-    assert.equal(flag(h.job(reply2.job).childArgs, "--disallowed-tools"), RESUME_DENY.join(","), "reply after a task is read-only with RESUME_DENY");
+    assert.equal(flag(h.job(reply2.job).childArgs, "--disallowed-tools"), undefined, "reply after a task is read-only with RESUME_DENY");
   } finally { h.done(); }
 });
 
@@ -115,30 +115,25 @@ test("reply on an explore thread stays explore", async () => {
     const reply = await h.call(["reply", "--last", "--effort", "low"], { text: "more", env: { COUNCIL_FAKE_SCENARIO: "resume" } });
     assert.equal(reply.code, 0, reply.out);
     const a = h.job(reply.job).childArgs;
-    assert.equal(flag(a, "--agent"), "explore");
+    assert.equal(flag(a, "--agent"), undefined);
     assert.equal(flag(a, "-r"), h.job(ask.job).threadId);
   } finally { h.done(); }
 });
 
-test("a forbidden tool advertised on a read-only turn: exit 1 before any text", async () => {
+test("native tool catalogue does not block an advice turn", async () => {
   const h = harness();
   try {
     const r = await h.call(["ask", "--to", "grok", "--effort", "low"], { text: "q", env: { COUNCIL_FAKE_GROK_ADVERTISE: "write" } });
-    assert.equal(r.code, 1);
-    assert.match(footer(r.out), /^council grok failed · .* · error: read-only tool guard failed: write/);
-    assert.equal(r.out.trim().split("\n").length, 1, "no answer text, only the footer");
-    const job = h.job(r.job);
-    assert.equal(existsSync(join(job.dir, "answer.md")) ? readFileSync(join(job.dir, "answer.md"), "utf8") : "", "");
-    assert.equal(loadThread(canonical(h.home), "grok", job.requestedThreadId), null, "no thread record for an unconfirmed session");
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /^pong/);
   } finally { h.done(); }
 });
 
-test("a forbidden tool call on a read-only turn (denied scenario): exit 1", async () => {
+test("native tool events do not trigger a plugin tool guard", async () => {
   const h = harness();
   try {
-    const r = await h.call(["ask", "--to", "grok", "--effort", "low"], { text: "write a file", env: { COUNCIL_FAKE_SCENARIO: "denied" } });
-    assert.equal(r.code, 1);
-    assert.match(footer(r.out), /error: read-only tool guard failed: Grok called write/);
+    const r = await h.call(["ask", "--to", "grok", "--effort", "low"], { text: "inspect", env: { COUNCIL_FAKE_SCENARIO: "denied" } });
+    assert.ok(!r.out.includes("read-only tool guard failed"));
   } finally { h.done(); }
 });
 
@@ -157,7 +152,7 @@ test("--web omits --disable-web-search; reply inherits web from the thread; revi
   const h = harness();
   try {
     const plain = await h.call(["ask", "--to", "grok", "--effort", "low"], { text: "q" });
-    assert.ok(h.job(plain.job).childArgs.includes("--disable-web-search"));
+    assert.ok(!h.job(plain.job).childArgs.includes("--disable-web-search"));
     const web = await h.call(["ask", "--to", "grok", "--effort", "low", "--web"], { text: "q", env: { COUNCIL_FAKE_WEB: "1" } });
     assert.equal(web.code, 0, web.out);
     assert.ok(!h.job(web.job).childArgs.includes("--disable-web-search"));
@@ -215,7 +210,7 @@ test("review --uncommitted with findings: exit 10, BLOCKER finding, schema inlin
     const job = h.job(r.job);
     assert.ok(job.childArgs.includes("--json-schema"));
     assert.equal(job.childArgs.includes("--rules"), false);
-    assert.equal(flag(job.childArgs, "--agent"), "explore");
+    assert.equal(flag(job.childArgs, "--agent"), undefined);
     assert.equal(job.verdict, "changes");
     const prompt = readFileSync(job.turn.promptFile, "utf8");
     assert.match(prompt, /Target: working tree/);

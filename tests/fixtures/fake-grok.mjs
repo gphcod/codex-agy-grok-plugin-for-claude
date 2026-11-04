@@ -16,7 +16,7 @@ const argv = process.argv.slice(2);
 const EFFORTS = ["xhigh", "high", "medium", "low"];
 const HOSTILE = ["Agent", "ask_user_question", "enter_plan_mode", "exit_plan_mode", "image_gen", "image_edit", "image_to_video", "reference_to_video"];
 const RESUME_DENY = ["search_replace", "write", "run_terminal_cmd", "search_tool", "use_tool", "todo_write", "monitor", "workflow", "scheduler_create", "scheduler_delete", "scheduler_list", "send_feedback", ...HOSTILE];
-const COMPAT = { GROK_DISABLE_AUTOUPDATER: "1", GROK_CLAUDE_SKILLS_ENABLED: "0", GROK_CLAUDE_AGENTS_ENABLED: "0", GROK_CLAUDE_HOOKS_ENABLED: "0", GROK_CLAUDE_MCPS_ENABLED: "0" };
+const COMPAT = { GROK_DISABLE_AUTOUPDATER: "1", GROK_CLAUDE_HOOKS_ENABLED: "0" };
 const COMMANDS = readStreamFixture("grok", "minimal.jsonl")[0].commands;
 
 // --- probe commands (no guard required) ---------------------------------------------------------
@@ -50,30 +50,11 @@ if (args.one("--output-format") !== "streaming-json") fail("--output-format stre
 const model = args.one("--model");
 if (!model) fail("--model missing");
 if (!args.has("--no-auto-update")) fail("--no-auto-update missing");
-if (!args.has("--always-approve") || !args.has("--no-subagents")) fail("--always-approve and --no-subagents are required");
-if (wantsWeb() === args.has("--disable-web-search")) fail(wantsWeb() ? "a --web turn must omit --disable-web-search" : "--disable-web-search missing on a turn without --web");
-const disallowed = (args.one("--disallowed-tools") ?? "").split(",");
-if (!args.has("--disallowed-tools")) fail("--disallowed-tools missing");
-const denies = args.all("--deny");
-const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
-let recipe;
-if (args.one("--agent") === "explore") {
-  if (!same(disallowed, HOSTILE) || !same(denies, ["MCPTool(*)"])) fail("explore recipe needs HOSTILE disallowed tools and --deny MCPTool(*)");
-  recipe = "explore";
-} else if (args.has("--agent")) {
-  fail(`unknown agent ${args.one("--agent")}`);
-} else if (same(disallowed, RESUME_DENY)) {
-  if (!same(denies, ["MCPTool(*)"])) fail("RESUME_DENY recipe needs --deny MCPTool(*)");
-  if (args.has("--session-id")) fail("RESUME_DENY recipe only applies to a resumed session");
-  recipe = "resume-deny";
-} else if (same(disallowed, HOSTILE)) {
-  if (!same(denies, ["Bash(git push*)", "Bash(rm -rf *)"])) fail("write recipe needs --deny Bash(git push*) and --deny Bash(rm -rf *)");
-  recipe = "write";
-} else fail(`unrecognized --disallowed-tools ${disallowed.join(",")}`);
-const readOnly = recipe !== "write";
+if (!args.has("--always-approve")) fail("--always-approve and --no-subagents are required");
+if (args.has("--disallowed-tools") || args.has("--deny")) fail("no plugin tool fence");
+const recipe = "default";
+const readOnly = !/Instructions for this turn \(task: edits are authorized/.test(readFileSync(promptFile, "utf8"));
 for (const [k, v] of Object.entries(COMPAT)) if (process.env[k] !== v) fail(`compatEnv ${k} must be ${v}`);
-if (readOnly && process.env.GROK_CLAUDE_RULES_ENABLED !== "0") fail("read-only turn needs GROK_CLAUDE_RULES_ENABLED=0");
-if (!readOnly && process.env.GROK_CLAUDE_RULES_ENABLED !== undefined) fail("write turn must not set GROK_CLAUDE_RULES_ENABLED");
 let schema = null;
 if (args.has("--json-schema")) {
   try { schema = JSON.parse(args.one("--json-schema")); } catch { fail("--json-schema is not inline JSON"); }

@@ -117,20 +117,21 @@ test("(d) reply after a task is read-only on all three providers: -s read-only, 
       assert.equal(r.readOnly, true, `${p} reply is read-only`);
       assert.equal(r.threadId, t.threadId, `${p} reply resumes the task's thread`);
       if (p === "codex") {
-        assert.equal(flag(t.childArgs, "-s"), "workspace-write");
+        assert.equal(flag(t.childArgs, "-s"), "danger-full-access");
         assert.deepEqual(r.childArgs.slice(0, 3), ["exec", "resume", t.threadId]);
-        assert.ok(r.childArgs.includes("sandbox_mode=read-only") && !r.childArgs.includes("sandbox_mode=workspace-write"));
+        assert.ok(r.childArgs.includes("sandbox_mode=danger-full-access"));
       } else if (p === "grok") {
         assert.equal(flag(r.childArgs, "-r"), t.threadId);
-        assert.equal(flag(r.childArgs, "--disallowed-tools"), RESUME_DENY.join(","));
-        assert.ok(r.childArgs.includes("--deny") && flag(r.childArgs, "--deny") === "MCPTool(*)");
+        assert.equal(flag(r.childArgs, "--disallowed-tools"), undefined);
+        assert.ok(!r.childArgs.includes("--deny"));
         assert.equal(loadThread(canonical(h.home), "grok", t.threadId).agent, "default");
       } else {
         assert.equal(flag(t.childArgs, "--mode"), "accept-edits");
-        assert.equal(flag(r.childArgs, "--mode"), undefined, "no accept-edits on a reply");
+        assert.equal(flag(r.childArgs, "--mode"), undefined);
+        assert.ok(r.childArgs.includes("--dangerously-skip-permissions"));
         assert.equal(flag(r.childArgs, "--conversation"), t.threadId);
         const settings = JSON.parse(readFileSync(join(h.home, "jobs", reply.job, "settings.json"), "utf8"));
-        for (const rule of READ_ONLY_DENY) assert.ok(settings.permissions.deny.includes(rule), `gemini reply denies ${rule}`);
+        assert.deepEqual(settings.permissions.deny, [], "reply adds no tool restrictions");
       }
     }
   } finally { h.done(); }
@@ -225,8 +226,8 @@ test("adapter-era rules: refusals before any job, denials, the unconfirmed-sessi
     assert.equal(grokDenied.code, 10, grokDenied.err + grokDenied.out);
     assert.match(footer(grokDenied.out), /^council grok needs attention · /);
     const grokGuard = await h.turn("grok", ["ask", "--to", "grok"], "write a file", { COUNCIL_FAKE_SCENARIO: "denied" });
-    assert.equal(grokGuard.code, 1, grokGuard.err + grokGuard.out);
-    assert.match(footer(grokGuard.out), /^council grok failed · .*read-only tool guard failed/);
+    assert.equal(grokGuard.code, 10, grokGuard.err + grokGuard.out);
+    assert.doesNotMatch(footer(grokGuard.out), /read-only tool guard failed/);
 
     // Unconfirmed session (grok): the answer and exit 0 stand, the thread is not resumable; other providers' threads are unaffected.
     const ask = await h.turn("codex", ["ask", "--to", "codex"], "codex thread");

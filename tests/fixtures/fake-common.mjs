@@ -39,6 +39,8 @@ export function requireGuards(env = process.env) {
  * every per-job file must live in) and COUNCIL_FAKE_WEB=1 (the turn is a --web turn).
  */
 export function expectPrompt(actual, what, env = process.env) {
+  // Compare the original request bytes after the separately tested per-turn scope line.
+  actual = actual.replace(/Instructions for this turn \((?:task: edits are authorized within the requested scope\)\.|advice, read-only\): inspect and answer; do not edit files or perform external writes\.)\n\n/, "");
   const exact = env.COUNCIL_FAKE_EXPECT_PROMPT;
   const contains = env.COUNCIL_FAKE_EXPECT_PROMPT_CONTAINS;
   if (exact === undefined && contains === undefined) fail(`no COUNCIL_FAKE_EXPECT_PROMPT or COUNCIL_FAKE_EXPECT_PROMPT_CONTAINS marker to check the ${what} against`);

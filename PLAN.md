@@ -1,5 +1,11 @@
 # council: implementation procedure
 
+## Current access policy (2026-11-04)
+
+This amendment supersedes the launch restrictions in earlier design and qualification sections below. Efficiency is the first priority and cooperating agents are assumed to act in good faith. Every delegated turn uses full native tool access with session automatic approvals. Advice and review instructions request inspection only; task instructions authorize work within the request. The plugin adds no tool denylists, command allowlists or directory fences. Native settings files remain unchanged; configured integrations are inherited. Grok sessions previously using explore are explicitly upgraded to the default agent on resume. Hook recursion controls, request deduplication, deadlines, actual error reporting and owned-process cleanup remain. Host, OS and organization restrictions still apply.
+
+Current launch details and evidence: [agent-access qualification](docs/qualification/agent-access-2026-11-04.md).
+
 One Claude Code plugin, `council`, through which Claude calls Codex (`codex`), Gemini (`agy`, the Antigravity CLI) and Grok (`grok`) for questions, discussions, reviews and user-authorized tasks, choosing provider, model and thinking effort per call.
 
 Status: procedure version, 2026-10-31. The design was reviewed by Codex gpt-6.1-sol, Grok 4.7 and Gemini 4 Argon over two rounds (Part C, rounds 1–2). This procedural rewrite was reviewed by Codex gpt-6.1-sol and Gemini 4 Argon (Part C, round 3) and revised before commit.

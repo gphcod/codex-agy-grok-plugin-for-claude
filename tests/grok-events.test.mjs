@@ -23,6 +23,16 @@ function read(events, turn = READ, cwd = "/w") {
 }
 const stream = (name) => readFileSync(new URL(`./fixtures/streams/grok/${name}`, import.meta.url), "utf8").replaceAll("6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f", SID);
 
+test("explicit failed-tool denial survives a normal end_turn", () => {
+  const { state } = read([{ type: "tool_call", toolName: "write", toolCallId: "denied" },
+    { type: "tool_call_update", toolCallId: "denied", status: "failed",
+      content: [{ type: "text", text: "write is not available to this agent" }] }, end()]);
+  assert.equal(state.completed, true);
+  assert.equal(state.failed, null);
+  assert.match(state.denied, /not available/);
+  assert.equal(state.deniedAction, "write");
+});
+
 test("the recorded minimal and resume streams finish ok, confirm the session, carry cost and usage", () => {
   for (const name of ["minimal.jsonl", "resume.jsonl", "effort-xhigh.jsonl"]) {
     const raw = stream(name);
@@ -51,15 +61,13 @@ test("the recorded effort-max stream: the error message, no completion", () => {
   assert.match(state.error, /unknown effort level 'max'/);
 });
 
-test("read-only: a forbidden tool in the catalogue fails closed before any text", () => {
+test("all native tools may be advertised on advice turns", () => {
   for (const tool of ["write", "search_replace", "run_terminal_command", "spawn_subagent", "search_tool", "use_tool"]) {
-    const { state, text } = read([catalogue(["read_file", tool]), { type: "text", data: "leak" }, end()]);
-    assert.match(state.failed, new RegExp(`read-only tool guard failed: ${tool}`));
-    assert.equal(text, "", "no text after the guard failed");
-    assert.equal(state.completed, false);
+    const { state, text } = read([catalogue(["read_file", tool]), { type: "text", data: "answer" }, end()]);
+    assert.equal(state.failed, null);
+    assert.equal(text, "answer");
+    assert.equal(state.completed, true);
   }
-  const named = read([catalogue([{ name: "read_file" }, { name: "write" }])]);
-  assert.match(named.state.failed, /guard failed: write/, "object entries are checked by name");
 });
 
 test("read-only: the guard tolerates repeated catalogues, fails a later malformed one", () => {
@@ -71,17 +79,17 @@ test("read-only: the guard tolerates repeated catalogues, fails a later malforme
   assert.equal(read([{ type: "available_commands", commands: ["x"] }, catalogue(), end()]).state.failed, null, "an event without tools leaves validation pending");
 });
 
-test("read-only: a tool call or end before the catalogue was validated fails", () => {
-  assert.match(read([{ type: "tool_call", toolCallId: "1", toolName: "read_file" }]).state.failed, /used a tool before the read-only tool list was validated/);
-  assert.match(read([{ type: "text", data: "hi" }, end()]).state.failed, /ended before the read-only tool list was validated/);
+test("native tools and completion do not require a prior catalogue", () => {
+  assert.equal(read([{ type: "tool_call", toolCallId: "1", toolName: "read_file" }]).state.failed, null);
+  assert.equal(read([{ type: "text", data: "hi" }, end()]).state.failed, null);
 });
 
-test("read-only: a forbidden or MCP tool call fails whatever the catalogue said", () => {
-  assert.match(read([catalogue(), { type: "tool_call", toolCallId: "1", toolName: "write", rawInput: { file_path: "/w/x" } }]).state.failed, /Grok called write/);
-  assert.match(read([catalogue(), { type: "tool_call", toolCallId: "1", tool_name: "github__create_issue" }]).state.failed, /Grok called github__create_issue/);
-  const ok = read([catalogue(), { type: "tool_call", toolCallId: "1", toolName: "grep" }, { type: "tool_call_update", toolCallId: "1", status: "completed" }, end()]);
-  assert.equal(ok.state.failed, null);
-  assert.equal(ok.state.lastTool, "grep");
+test("MCP and built-in calls are recorded without plugin denial", () => {
+  for (const toolName of ["write", "github__read_issue", "grep"]) {
+    const { state } = read([catalogue(), { type: "tool_call", toolCallId: "1", toolName }, { type: "tool_call_update", toolCallId: "1", status: "completed" }, end()]);
+    assert.equal(state.failed, null);
+    assert.equal(state.lastTool, toolName);
+  }
 });
 
 test("a task turn: write tools allowed, completed edits recorded relative to cwd from every path carrier", () => {
@@ -159,13 +167,13 @@ test("stop reasons other than end_turn, cancelled and max_turns_reached keep the
 });
 
 test("a fatal latches: a later normal end never clears it", () => {
-  const { state } = read([catalogue(["write"]), catalogue(), end()]);
-  assert.match(state.failed, /guard failed: write/);
+  const { state } = read([{ type: "available_commands", tools: "malformed" }, catalogue(), end()]);
+  assert.match(state.failed, /malformed tool catalogue/);
   assert.equal(state.completed, false);
 });
 
-test("without a turn the guard applies (fail closed)", () => {
-  assert.match(read([catalogue(["write"])], null).state.failed, /guard failed: write/);
+test("unseeded parsing accepts native tools", () => {
+  assert.equal(read([catalogue(["write"])], null).state.failed, null);
 });
 
 test("non-JSON and untyped lines carry nothing; thought and usage count as activity", () => {

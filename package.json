@@ -1,6 +1,6 @@
 {
   "name": "council",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "type": "module",
   "description": "Claude Code plugin through which Claude calls Codex, Gemini (agy) and Grok.",

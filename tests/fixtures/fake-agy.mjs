@@ -35,13 +35,13 @@ requireGuards();
 const sc = scenario();
 const args = parseArgs(argv, {
   valueFlags: ["--input-format", "--output-format", "--print-timeout", "--settings", "--model", "--effort", "--conversation", "--json-schema", "--mode"],
-  boolFlags: ["--disable-slash-commands", "--sandbox"],
+  boolFlags: ["--disable-slash-commands", "--sandbox", "--dangerously-skip-permissions"],
 });
 if (args.positionals.length) fail(`unexpected positional ${args.positionals.join(" ")}`);
 if (args.one("--input-format") !== "stream-json") fail("--input-format stream-json missing");
 if (args.one("--output-format") !== "stream-json") fail("--output-format stream-json missing");
 if (!args.has("--disable-slash-commands")) fail("--disable-slash-commands missing");
-if (!args.has("--sandbox") && args.one("--mode") !== "accept-edits") fail("--sandbox missing on a read-only turn");
+if (args.has("--sandbox") || !args.has("--dangerously-skip-permissions")) fail("full native access required");
 if (!/^\d+(\.\d+)?s$/.test(args.one("--print-timeout") ?? "")) fail("--print-timeout <seconds>s missing");
 const settingsPath = args.one("--settings");
 if (!settingsPath || !existsSync(settingsPath)) fail("--settings <file> missing or absent");
@@ -52,11 +52,6 @@ if (!settings || typeof settings.permissions !== "object") fail("settings lack a
 const mode = args.one("--mode");
 if (mode !== undefined && mode !== "accept-edits") fail(`--mode ${mode} is not accept-edits`);
 const readOnly = mode === undefined;
-if (readOnly) {
-  const deny = settings.permissions.deny ?? [];
-  for (const rule of READ_ONLY_DENY) if (!deny.includes(rule)) fail(`read-only turn lacks deny rule ${rule}`);
-  for (const rule of settings.permissions.allow ?? []) if (!/^(read_file|read_url)\(/.test(rule) && !/^command\((git (status|diff|log|show|blame|grep|rev-parse|ls-files)|ls|pwd|cat|head|tail|wc|grep|rg|find)\)$/.test(rule)) fail(`read-only turn allows ${rule}`);
-}
 const model = args.one("--model");
 if (!model) fail("--model missing");
 const suffix = /-(low|medium|high)$/.exec(model)?.[1] ?? null;

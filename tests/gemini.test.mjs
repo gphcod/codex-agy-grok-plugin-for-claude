@@ -161,18 +161,11 @@ test("buildTurn ask: argv, stdin message with the contract, read-only merged set
   const f = turnFixture(dir);
   const turn = gemini.buildTurn(f.request);
   const settingsPath = join(f.jobDir, "settings.json");
-  assert.deepEqual(turn.args, ["--input-format", "stream-json", "--output-format", "stream-json", "--disable-slash-commands", "--print-timeout", "1800s", "--sandbox", "--settings", settingsPath, "--model", "gemini-4-argon", "--effort", "low"]);
+  assert.deepEqual(turn.args, ["--input-format", "stream-json", "--output-format", "stream-json", "--disable-slash-commands", "--print-timeout", "1800s", "--dangerously-skip-permissions", "--settings", settingsPath, "--model", "gemini-4-argon", "--effort", "low"]);
   assert.equal(turn.stdin, JSON.stringify({ event: "user", message: { content: "<c/>\n\nhello" } }) + "\n");
   assert.equal(turn.settingsPath, settingsPath);
   assert.deepEqual([turn.answerFile, turn.readOnly, turn.contractCarrier, turn.threadId], [null, true, "stdin-prefix", null]);
-  assert.deepEqual(f.settings(), {
-    permissions: {
-      allow: ["read_file(/etc/hosts)", "read_url(https://x.test/*)", ...READ_ONLY_COMMANDS],
-      ask: ["command(npm *)"],
-      deny: ["read_file(/secret/*)", "write_file(*)", "edit_file(*)", "unsandboxed(*)", "mcp(*)", "execute_url(*)"],
-    },
-    toolPermission: "strict",
-  }, "global deny retained, write/command allow rules filtered out, credentials never copied");
+  assert.deepEqual(f.settings(), { permissions: GLOBAL.permissions, toolPermission: "strict" }, "native policy copied without credentials or restrictions");
 }));
 
 test("buildTurn task: global lists plus command(*), --mode accept-edits; --conversation on task --thread and reply", () => withTmp((dir) => {
@@ -181,14 +174,14 @@ test("buildTurn task: global lists plus command(*), --mode accept-edits; --conve
   assert.deepEqual(turn.args.slice(-2), ["--mode", "accept-edits"]);
   assert.ok(!turn.args.includes("--sandbox"), "an authorized task needs node, npm and the git index");
   assert.equal(turn.readOnly, false);
-  assert.deepEqual(f.settings(), { permissions: { ...GLOBAL.permissions, allow: [...GLOBAL.permissions.allow, "command(*)"] }, toolPermission: "strict" });
+  assert.deepEqual(f.settings(), { permissions: GLOBAL.permissions, toolPermission: "strict" });
   const thread = { threadId: "0aefb9db-c350-4a61-bc6e-b242fc5946bb" };
   const resumed = gemini.buildTurn({ ...f.request, verb: "task", readOnly: false, thread });
   assert.deepEqual(resumed.args.slice(-4), ["--mode", "accept-edits", "--conversation", thread.threadId]);
   const reply = gemini.buildTurn({ ...f.request, verb: "reply", readOnly: true, thread });
   assert.ok(!reply.args.includes("--mode"), "reply is read-only, also after a task");
   assert.deepEqual(reply.args.slice(-2), ["--conversation", thread.threadId]);
-  assert.ok(f.settings().permissions.deny.includes("write_file(*)"));
+  assert.deepEqual(f.settings().permissions.deny, GLOBAL.permissions.deny);
 }));
 
 test("buildTurn review: runs at the repository root with agy's workspace there; other verbs run where called", () => withTmp((dir) => {
@@ -230,9 +223,9 @@ test("global settings: absent file, HOME from the call's env, invalid content re
   assert.equal(globalSettingsPath({ USERPROFILE: "C:/u" }), join("C:/u", ".gemini", "antigravity-cli", "settings.json"));
   const absent = turnFixture(join(dir, "a"), { global: null });
   gemini.buildTurn(absent.request);
-  assert.deepEqual(absent.settings(), { permissions: { allow: READ_ONLY_COMMANDS, ask: [], deny: READ_ONLY_DENY } });
+  assert.deepEqual(absent.settings(), { permissions: { allow: [], ask: [], deny: [] } });
   const loose = sessionSettings({ permissions: { allow: ["x"], ask: [], deny: ["d", "d"] }, toolPermission: "default" }, false);
-  assert.deepEqual(loose, { permissions: { allow: ["x", "command(*)"], ask: [], deny: ["d"] } }, "only strict is carried over");
+  assert.deepEqual(loose, { permissions: { allow: ["x"], ask: [], deny: ["d"] }, toolPermission: "default" }, "only strict is carried over");
   for (const [name, global, re] of [
     ["json", "{nope", /is not valid JSON; no turn submitted/],
     ["array", "[]", /must contain a JSON object/],
@@ -395,8 +388,8 @@ test("tool-step counters: write tools by any path key, failed or non-zero run_co
   const reader = createReader({ adapter: gemini, turn: { readOnly: true }, onText: (t) => { answer += t; } });
   reader.feed([init, step("edit_file", "DONE", { Path: "/r/c.js" }), ok()].map((l) => JSON.stringify(l) + "\n").join(""));
   reader.end();
-  assert.equal(reader.state.edited.size, 0, "a read-only turn counts no edit");
-  assert.equal(reader.state.incomplete, "agy completed edit_file on a read-only turn");
+  assert.equal(reader.state.edited.size, 1, "report observed edits on every turn");
+  assert.equal(reader.state.incomplete, null);
 });
 
 test("tool steps are described with their main argument", () => {
@@ -451,7 +444,7 @@ test("review --uncommitted: collected diff in the plain template, --json-schema,
     assert.match(spawn.content, /Target: working tree/i);
     assert.ok(spawn.argv.includes("--json-schema"));
     assert.ok(!spawn.argv.includes("--mode"), "a review is read-only");
-    assert.ok(spawn.settings.permissions.deny.includes("write_file(*)"));
+    assert.deepEqual(spawn.settings.permissions.deny, GLOBAL.permissions.deny);
   } finally { s.done(); }
 });
 
@@ -496,11 +489,11 @@ test("ask → task --thread → reply → task --thread: settings, --sandbox, --
       { readOnly: true, conversation: undefined }, { readOnly: false, conversation: thread },
       { readOnly: true, conversation: thread }, { readOnly: false, conversation: thread },
     ];
-    const readOnlySettings = { permissions: { allow: ["read_file(/etc/hosts)", "read_url(https://x.test/*)", ...READ_ONLY_COMMANDS], ask: ["command(npm *)"], deny: ["read_file(/secret/*)", ...READ_ONLY_DENY] }, toolPermission: "strict" };
-    const taskSettings = { permissions: { ...GLOBAL.permissions, allow: [...GLOBAL.permissions.allow, "command(*)"] }, toolPermission: "strict" };
+    const readOnlySettings = { permissions: GLOBAL.permissions, toolPermission: "strict" };
+    const taskSettings = { permissions: GLOBAL.permissions, toolPermission: "strict" };
     for (const [i, spawn] of spawns.entries()) {
       const want = expected[i];
-      assert.equal(spawn.argv.includes("--sandbox"), want.readOnly, `turn ${i + 1}: --sandbox only on read-only turns`);
+      assert.equal(spawn.argv.includes("--dangerously-skip-permissions"), true, `turn ${i + 1}: automatic approvals`);
       assert.equal(args(spawn, "--mode"), want.readOnly ? undefined : "accept-edits", `turn ${i + 1}: --mode only on tasks`);
       assert.equal(args(spawn, "--conversation"), want.conversation, `turn ${i + 1}: --conversation`);
       assert.deepEqual(spawn.settings, want.readOnly ? readOnlySettings : taskSettings, `turn ${i + 1}: settings`);
@@ -682,14 +675,7 @@ test("buildTurn: PWD is the realpath cwd on POSIX, so agy's workspace root match
   assert.deepEqual(gemini.buildTurn({ ...f.request, cwd: "/private/tmp/real" }).env, { PWD: "/private/tmp/real" });
 }));
 
-test("good-faith policy: inspection commands on read-only turns, shell on tasks, writes stay undeclared and a global deny wins", () => {
+test("good-faith policy preserves native settings without plugin restrictions", () => {
   const policy = { permissions: { allow: [], ask: [], deny: ["command(rm *)"] }, toolPermission: null };
-  const ro = sessionSettings(policy, true).permissions;
-  assert.ok(ro.allow.includes("command(git status)"));
-  assert.ok(!ro.allow.includes("command(*)"));
-  assert.ok(!ro.deny.includes("command(*)"), "a blanket deny would block inspection");
-  assert.ok(ro.deny.includes("write_file(*)") && ro.deny.includes("command(rm *)"));
-  const task = sessionSettings(policy, false).permissions;
-  assert.ok(task.allow.includes("command(*)"), "headless agy has nobody to approve a shell step");
-  assert.ok(task.deny.includes("command(rm *)"));
+  for (const readOnly of [true, false]) assert.deepEqual(sessionSettings(policy, readOnly), { permissions: policy.permissions });
 });

@@ -34,7 +34,7 @@ test("skeleton: id, binEnv, line cap from codex-plugin-cc's reader, catalog from
   assert.equal(adapter.maxLineBytes, 1024 * 1024);
   assert.equal(LINE_CAP, adapter.maxLineBytes);
   assert.deepEqual(adapter.catalog, loadStaticCatalog().codex);
-  assert.deepEqual(SANDBOX, { ask: "read-only", reply: "read-only", review: "read-only", task: "workspace-write" });
+  assert.deepEqual(SANDBOX, { ask: "danger-full-access", reply: "danger-full-access", review: "danger-full-access", task: "danger-full-access" });
 });
 
 test("resolveLauncher: COUNCIL_CODEX_BIN, PATH, missing binary; the platform rides on the launcher", () => {
@@ -94,7 +94,7 @@ test("trustsCleanExit: only waitsForCodex launchers, only on Windows (codex-plug
 test("ownsProcess: the job's exact -o operand on row.argv (Linux, Windows) and row.raw (macOS)", () => {
   const job = { id: "abcdefghij123456", dir: "/h/jobs/abcdefghij123456" };
   const answer = join(job.dir, "answer.md");
-  const childArgs = ["exec", "--json", "-o", answer, "-C", "/w", "-s", "read-only", "-m", "gpt-6.1-sol", "-c", "model_reasoning_effort=low", "-"];
+  const childArgs = ["exec", "--json", "-o", answer, "-C", "/w", "-s", "danger-full-access", "-m", "gpt-6.1-sol", "-c", "model_reasoning_effort=low", "-"];
   const recorded = { ...job, turn: { answerFile: answer }, childArgs, argv: ["/opt/homebrew/bin/codex", ...childArgs] };
   const other = childArgs.map((a) => (a === answer ? "/h/jobs/zzzzzzzzzz999999/answer.md" : a));
   // argv rows
@@ -155,7 +155,7 @@ test("buildTurn ask: fresh exec with -C and -s read-only, contract as a JSON str
     const before = { ...process.env };
     const t = adapter.buildTurn(request(dir));
     const answer = join(dir, "answer.md");
-    assert.deepEqual(t.args, ["exec", "--json", "-o", answer, "-C", dir, "-s", "read-only", "-m", "gpt-6.1-sol", "-c", "model_reasoning_effort=high",
+    assert.deepEqual(t.args, ["exec", "--json", "-o", answer, "-C", dir, "-s", "danger-full-access", "-m", "gpt-6.1-sol", "-c", "approval_policy=never", "-c", "model_reasoning_effort=high",
       "-c", `developer_instructions=${JSON.stringify(CONTRACT)}`, "-"]);
     assert.deepEqual([t.stdin, t.answerFile, t.readOnly, t.contractCarrier, t.threadId], ["Reply with pong", answer, true, "developer_instructions", null]);
     assert.deepEqual(t.env, {});
@@ -168,17 +168,17 @@ test("buildTurn: reply resumes read-only; task is workspace-write fresh or resum
   try {
     const answer = join(dir, "answer.md");
     const thread = { threadId: "01a1936d-c678-73b2-b282-4b3c3d2ed281" };
-    const tail = (model = "gpt-6.1-sol", effort = "high") => ["-m", model, "-c", `model_reasoning_effort=${effort}`, "-c", `developer_instructions=${JSON.stringify(CONTRACT)}`, "-"];
+    const tail = (model = "gpt-6.1-sol", effort = "high") => ["-m", model, "-c", "approval_policy=never", "-c", `model_reasoning_effort=${effort}`, "-c", `developer_instructions=${JSON.stringify(CONTRACT)}`, "-"];
     const reply = adapter.buildTurn(request(dir, { verb: "reply", thread }));
-    assert.deepEqual(reply.args, ["exec", "resume", thread.threadId, "--json", "-o", answer, "-c", "sandbox_mode=read-only", ...tail()]);
+    assert.deepEqual(reply.args, ["exec", "resume", thread.threadId, "--json", "-o", answer, "-c", "sandbox_mode=danger-full-access", ...tail()]);
     assert.equal(reply.readOnly, true);
     const task = adapter.buildTurn(request(dir, { verb: "task", readOnly: false, model: "gpt-6-luna", effort: "max" }));
-    assert.deepEqual(task.args, ["exec", "--json", "-o", answer, "-C", dir, "-s", "workspace-write", ...tail("gpt-6-luna", "max")]);
+    assert.deepEqual(task.args, ["exec", "--json", "-o", answer, "-C", dir, "-s", "danger-full-access", ...tail("gpt-6-luna", "max")]);
     assert.equal(task.readOnly, false);
     const taskThread = adapter.buildTurn(request(dir, { verb: "task", readOnly: false, thread, model: "gpt-6-luna", effort: "max" }));
-    assert.deepEqual(taskThread.args, ["exec", "resume", thread.threadId, "--json", "-o", answer, "-c", "sandbox_mode=workspace-write", ...tail("gpt-6-luna", "max")]);
+    assert.deepEqual(taskThread.args, ["exec", "resume", thread.threadId, "--json", "-o", answer, "-c", "sandbox_mode=danger-full-access", ...tail("gpt-6-luna", "max")]);
     const after = adapter.buildTurn(request(dir, { verb: "reply", thread: { ...thread, readOnly: false, lastVerb: "task" } }));
-    assert.ok(after.args.includes("sandbox_mode=read-only") && !after.args.includes("sandbox_mode=workspace-write"));
+    assert.ok(after.args.includes("sandbox_mode=danger-full-access") && after.args.includes("approval_policy=never"));
     for (const t of [reply, taskThread, after]) assert.ok(!t.args.includes("-C") && !t.args.includes("-s"), "resume accepts neither -C nor -s");
     const ultra = adapter.buildTurn(request(dir, { effort: "ultra" }));
     assert.ok(ultra.args.includes("model_reasoning_effort=ultra"), "ultra passes through");
@@ -197,7 +197,7 @@ test("buildTurn review: unfocused passes the target flags and no stdin; focused 
     assert.deepEqual(adapter.reviewPlan({ target }, { text: "  \n" }).stdin, null, "whitespace is no focus");
     const focusedPlan = adapter.reviewPlan({ target }, { text: "loop bounds only" });
     assert.equal(focusedPlan.stdin, `${target.sentence}\n\nloop bounds only`);
-    const common = ["--json", "-o", answer, "-c", "sandbox_mode=read-only", "-m", "gpt-6.1-sol", "-c", "review_model=gpt-6.1-sol", "-c", "model_reasoning_effort=high"];
+    const common = ["--json", "-o", answer, "-c", "sandbox_mode=danger-full-access", "-m", "gpt-6.1-sol", "-c", "review_model=gpt-6.1-sol", "-c", "approval_policy=never", "-c", "model_reasoning_effort=high"];
     const unfocused = adapter.buildTurn(request(dir, { verb: "review", reviewNative: { flags: plain.flags, stdin: plain.stdin }, reviewTarget: target }));
     assert.deepEqual(unfocused.args, ["exec", "review", "--base", "refs/heads/main", ...common]);
     assert.equal("stdin" in unfocused, false, "no stdin: the CLI rejects flags plus a prompt");
@@ -220,7 +220,7 @@ test("buildTurn with COUNCIL_CODEX_MCP=off: ask, reply and review drop plugins, 
     const calls = () => readFileSync(log, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
     const servers = 'mcp_servers={"node_repl"={enabled=false},"openaiDeveloperDocs"={enabled=false},"tradier"={enabled=false},"tradier_sandbox"={enabled=false}}';
     const ask = adapter.buildTurn(request(dir, { env }));
-    assert.deepEqual(ask.args.slice(11, 18), ["model_reasoning_effort=high", "--disable", "plugins", "--disable", "apps", "-c", servers]);
+    assert.deepEqual(ask.args.slice(11, 20), ["approval_policy=never", "-c", "model_reasoning_effort=high", "--disable", "plugins", "--disable", "apps", "-c", servers]);
     assert.equal(calls().length, 2, "two discovery calls with servers configured (S1.1)");
     assert.deepEqual(calls().map((c) => c.argv.slice(0, 3)), [["mcp", "list", "--json"], ["mcp", "list", "--json"]]);
     assert.ok(calls().every((c) => c.guards.length === 6), "discovery calls carry the guard variables");
@@ -232,7 +232,7 @@ test("buildTurn with COUNCIL_CODEX_MCP=off: ask, reply and review drop plugins, 
     assert.equal(calls().length, 4);
     writeFileSync(log, "");
     const bare = adapter.buildTurn(request(dir, { env: { ...env, COUNCIL_FAKE_MCP_SERVERS: "none" } }));
-    assert.deepEqual(bare.args.slice(12, 16), ["--disable", "plugins", "--disable", "apps"]);
+    assert.deepEqual(bare.args.slice(bare.args.indexOf("--disable"), bare.args.indexOf("--disable") + 4), ["--disable", "plugins", "--disable", "apps"]);
     assert.ok(!bare.args.some((a) => a.startsWith("mcp_servers=")));
     assert.equal(calls().length, 1, "one discovery call without enabled servers");
     writeFileSync(log, "");

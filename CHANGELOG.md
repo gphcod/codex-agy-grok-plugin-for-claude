@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.3 — 2026-11-04
+
+- Enforce efficiency first: delegated agents receive native tools and automatic approvals, including reads across repositories named in the request.
+- Express advice/review versus task scope in turn instructions; remove plugin tool denylists and command/directory fences. Preserve stored native settings and report actual provider failures.
+- Inherit configured integrations, upgrade legacy Grok explore sessions on resume, and retain request deduplication, deadlines and owned-process cleanup.
+- Verify cross-repository reads and fresh/resumed launch behavior; record evidence in `docs/qualification/agent-access-2026-11-04.md`.
+
 ## 1.0.2 (2026-11-04)
 
 Gemini only. Efficiency comes first, and called agents are treated as acting in good faith.

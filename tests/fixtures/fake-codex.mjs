@@ -90,7 +90,7 @@ let target = null;
 if (form === "review") {
   const targets = [args.has("--uncommitted") && "--uncommitted", args.has("--base") && "--base", args.has("--commit") && "--commit"].filter(Boolean);
   if (targets.length > 1) fail("more than one review target");
-  if (config.get("sandbox_mode") !== "read-only") fail("exec review needs -c sandbox_mode=read-only");
+  if (config.get("sandbox_mode") !== "danger-full-access") fail("exec review needs -c sandbox_mode=danger-full-access");
   if (config.get("review_model") !== model) fail("-c review_model must equal -m");
   if (args.has("-C") || args.has("-s")) fail("exec review accepts neither -C nor -s");
   if (targets.length && stdinMarker) { process.stderr.write(COMBINED_ERROR); process.exit(2); } // real CLI behaviour
@@ -158,7 +158,7 @@ if (sc === "hold-pipes") {
 // COUNCIL_FAKE_CODEX_EDIT=<relative path>: a workspace-write turn edits that file and reports a
 // completed file_change item (shape from codex-plugin-cc lib/reader.mjs; no capture: read-only probes).
 const sandbox = form === "fresh" ? args.one("-s") : config.get("sandbox_mode");
-if (process.env.COUNCIL_FAKE_CODEX_EDIT && sandbox === "workspace-write") {
+if (process.env.COUNCIL_FAKE_CODEX_EDIT && sandbox === "danger-full-access") {
   const target = join(process.cwd(), process.env.COUNCIL_FAKE_CODEX_EDIT);
   writeFileSync(target, "edited by fake codex\n");
   emit({ type: "item.started", item: { id: "item_9", type: "file_change", changes: [{ path: target, kind: "update" }], status: "in_progress" } });

@@ -32,7 +32,7 @@ Actively try to disprove the change.
 Look for violated invariants, missing guards, unhandled failure paths, and assumptions that stop being true under stress.
 Trace how bad inputs, retries, concurrent actions, or partially completed operations move through the code.
 If the user supplied a focus area, weight it heavily, but still report any other material issue you can defend.
-This is a read-only review: read files to trace call sites and invariants. Do not edit files, run commands that change state, or call external tools.
+This is a read-only review: read files to trace call sites and invariants. Inspect relevant evidence with available native tools. Do not edit files or perform external writes.
 {{REVIEW_COLLECTION_GUIDANCE}}
 </review_method>
 

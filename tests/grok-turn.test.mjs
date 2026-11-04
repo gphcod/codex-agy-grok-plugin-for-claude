@@ -17,22 +17,17 @@ const req = (over = {}) => ({
 const flag = (args, name) => { const i = args.indexOf(name); return i < 0 ? undefined : args[i + 1]; };
 const all = (args, name) => args.flatMap((a, i) => (a === name ? [args[i + 1]] : []));
 
-test("recipes are grok-build's, whole", () => {
-  assert.deepEqual(HOSTILE, ["Agent", "ask_user_question", "enter_plan_mode", "exit_plan_mode", "image_gen", "image_edit", "image_to_video", "reference_to_video"]);
-  assert.deepEqual(FORBIDDEN, ["search_replace", "write", "run_terminal_command", "spawn_subagent", "search_tool", "use_tool"]);
-  assert.deepEqual(RESUME_DENY.slice(0, 12), ["search_replace", "write", "run_terminal_cmd", "search_tool", "use_tool", "todo_write", "monitor", "workflow", "scheduler_create", "scheduler_delete", "scheduler_list", "send_feedback"]);
-  assert.deepEqual(recipe("read-only"), { readOnly: true, agent: "explore", forbidden: FORBIDDEN, args: ["--agent", "explore", "--always-approve", "--no-subagents", "--disable-web-search", "--disallowed-tools", HOSTILE.join(","), "--deny", "MCPTool(*)"] });
-  assert.deepEqual(recipe("read-only", { defaultAgent: true }), { readOnly: true, agent: "default", forbidden: FORBIDDEN, args: ["--always-approve", "--no-subagents", "--disable-web-search", "--disallowed-tools", RESUME_DENY.join(","), "--deny", "MCPTool(*)"] });
-  assert.deepEqual(recipe("write", { web: true }), { readOnly: false, agent: "default", forbidden: [], args: ["--always-approve", "--no-subagents", "--disallowed-tools", HOSTILE.join(","), "--deny", "Bash(git push*)", "--deny", "Bash(rm -rf *)"] });
+test("native tools use automatic approvals; legacy explore sessions are upgraded", () => {
+  assert.deepEqual(recipe("read-only"), { readOnly: true, agent: "default", forbidden: [], args: ["--always-approve"] });
+  assert.deepEqual(recipe("read-only", { legacyExplore: true }).args, ["--agent", "default", "--always-approve"]);
+  assert.deepEqual(recipe("write", { web: true }).args, ["--always-approve"]);
   assert.throws(() => recipe("admin"), /unknown recipe admin/);
 });
 
-test("compatEnv: Claude skills, agents, hooks, MCP off; rules off on read-only turns, left to Grok on tasks", () => {
-  const base = { GROK_DISABLE_AUTOUPDATER: "1", GROK_CLAUDE_SKILLS_ENABLED: "0", GROK_CLAUDE_AGENTS_ENABLED: "0", GROK_CLAUDE_HOOKS_ENABLED: "0", GROK_CLAUDE_MCPS_ENABLED: "0" };
-  assert.deepEqual(compatEnv(true), { ...base, GROK_CLAUDE_RULES_ENABLED: "0" });
-  const write = compatEnv(false);
-  assert.ok(Object.hasOwn(write, "GROK_CLAUDE_RULES_ENABLED") && write.GROK_CLAUDE_RULES_ENABLED === undefined, "an inherited value is dropped (undefined is not passed to the child)");
-  assert.equal(write.GROK_BUILD_DEPTH, undefined, "the guard variables are the core's");
+test("compatEnv only prevents updater and hook recursion; integrations remain native", () => {
+  const expected = { GROK_DISABLE_AUTOUPDATER: "1", GROK_CLAUDE_HOOKS_ENABLED: "0" };
+  assert.deepEqual(compatEnv(true), expected);
+  assert.deepEqual(compatEnv(false), expected);
 });
 
 test("sessionAgent: the record's agent, else inferred from its mode", () => {
@@ -53,7 +48,7 @@ test("ask: fresh session, explore recipe, --rules contract on one line, prompt f
   ]);
   assert.equal(t.promptFile, join("/h/jobs/abcdefghij123456", "prompt.md"));
   assert.equal(t.promptText, "hello", "the contract rides --rules, not the prompt");
-  assert.deepEqual([t.readOnly, t.agent, t.answerFile, t.contractCarrier], [true, "explore", null, "rules"]);
+  assert.deepEqual([t.readOnly, t.agent, t.answerFile, t.contractCarrier], [true, "default", null, "rules"]);
   assert.deepEqual(t.forbidden, FORBIDDEN);
   assert.deepEqual(t.env, compatEnv(true));
   assert.ok(!oneLineContract(CONTRACT).includes("\n"));
@@ -66,35 +61,35 @@ test("reply: -r on the thread; explore unless the thread ran the default agent, 
   assert.equal(flag(explore.args, "-r"), SID);
   assert.equal(explore.args.includes("--session-id"), false);
   assert.equal(explore.threadId, SID);
-  assert.equal(flag(explore.args, "--agent"), "explore");
-  assert.equal(explore.agent, "explore");
+  assert.equal(flag(explore.args, "--agent"), "default");
+  assert.equal(explore.agent, "default");
   const deny = grok.buildTurn(req({ verb: "reply", thread: { threadId: SID, agent: "default", readOnly: false } }));
   assert.equal(deny.args.includes("--agent"), false);
-  assert.equal(flag(deny.args, "--disallowed-tools"), RESUME_DENY.join(","));
-  assert.deepEqual(all(deny.args, "--deny"), ["MCPTool(*)"]);
+  assert.equal(flag(deny.args, "--disallowed-tools"), undefined);
+  assert.deepEqual(all(deny.args, "--deny"), []);
   assert.deepEqual([deny.readOnly, deny.agent], [true, "default"]);
   assert.deepEqual(deny.env, compatEnv(true));
   const inferred = grok.buildTurn(req({ verb: "reply", thread: { threadId: SID, readOnly: false } }));
-  assert.equal(flag(inferred.args, "--disallowed-tools"), RESUME_DENY.join(","), "a thread record without agent but last run as a task");
+  assert.equal(flag(inferred.args, "--disallowed-tools"), undefined, "a thread record without agent but last run as a task");
 });
 
 test("task: write recipe on a new session and on --thread; agent default", () => {
   const fresh = grok.buildTurn(req({ verb: "task", readOnly: false }));
   assert.match(flag(fresh.args, "--session-id"), UUID);
-  assert.deepEqual(all(fresh.args, "--deny"), ["Bash(git push*)", "Bash(rm -rf *)"]);
-  assert.equal(flag(fresh.args, "--disallowed-tools"), HOSTILE.join(","));
+  assert.deepEqual(all(fresh.args, "--deny"), []);
+  assert.equal(flag(fresh.args, "--disallowed-tools"), undefined);
   assert.equal(fresh.args.includes("--agent"), false);
   assert.deepEqual([fresh.readOnly, fresh.agent, fresh.forbidden.length], [false, "default", 0]);
   assert.equal(fresh.env.GROK_CLAUDE_RULES_ENABLED, undefined);
   assert.equal(flag(fresh.args, "--rules"), oneLineContract(CONTRACT));
   const resumed = grok.buildTurn(req({ verb: "task", readOnly: false, thread: { threadId: SID, agent: "explore" } }));
   assert.equal(flag(resumed.args, "-r"), SID);
-  assert.deepEqual(all(resumed.args, "--deny"), ["Bash(git push*)", "Bash(rm -rf *)"]);
+  assert.deepEqual(all(resumed.args, "--deny"), []);
 });
 
 test("--web omits --disable-web-search on every recipe", () => {
   for (const over of [{}, { verb: "reply", thread: { threadId: SID, agent: "default" } }, { verb: "task", readOnly: false }]) {
-    assert.ok(grok.buildTurn(req(over)).args.includes("--disable-web-search"));
+    assert.ok(!grok.buildTurn(req(over)).args.includes("--disable-web-search"));
     assert.ok(!grok.buildTurn(req({ ...over, web: true })).args.includes("--disable-web-search"));
   }
 });
@@ -105,7 +100,7 @@ test("review: explore, inline --json-schema equal to the repository schema, no -
   assert.equal(flag(t.args, "--json-schema"), inlineSchema());
   assert.equal(t.args.includes("--rules"), false);
   assert.equal(flag(t.args, "--cwd"), "/repo");
-  assert.equal(flag(t.args, "--agent"), "explore");
+  assert.equal(flag(t.args, "--agent"), undefined);
   assert.match(flag(t.args, "--session-id"), UUID, "a review is always a new session");
   assert.equal(t.promptText, "RENDERED REVIEW");
   assert.equal(t.contractCarrier, "json-schema");

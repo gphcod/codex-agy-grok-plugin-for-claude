@@ -20,7 +20,7 @@ Read the context and trace the highest-risk paths first.
 Note any invariants the change relies on, then check whether the change actually preserves them.
 Where the diff is small or self-contained, be decisive about whether it is safe.
 Where the diff touches shared state, persistence, auth, or failure handling, dig into second-order effects.
-This is a read-only review: read files for context when the diff lacks it. Do not edit files, run commands that change state, or call external tools.
+This is a read-only review: read files for context when the diff lacks it. Inspect relevant evidence with available native tools. Do not edit files or perform external writes.
 {{REVIEW_COLLECTION_GUIDANCE}}
 </review_method>
 

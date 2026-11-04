@@ -61,7 +61,7 @@ test("ask: fresh read-only exec, prompt on stdin, answer from -o, footer and sta
     assert.match(r.out, footer("ok", "gpt-6\\.1-sol", "low", ` · round 1/9$`));
     const [c] = h.calls();
     assert.equal(h.calls().length, 1, "one model process, nothing else");
-    assert.deepEqual(c.argv, ["exec", "--json", "-o", h.answerOf(job), "-C", h.cwd, "-s", "read-only", "-m", "gpt-6.1-sol", "-c", "model_reasoning_effort=low", "-c", devInstructions, "-"]);
+    assert.deepEqual(c.argv, ["exec", "--json", "-o", h.answerOf(job), "-C", h.cwd, "-s", "danger-full-access", "-m", "gpt-6.1-sol", "-c", "approval_policy=never", "-c", "model_reasoning_effort=low", "-c", devInstructions, "-"]);
     assert.equal(c.guards.length, GUARD_VARS.length, "all the guard variables reach the child");
     const json = JSON.parse((await h.turn(["ask", "--to", "codex", "--json"], "Reply with pong")).out);
     assert.deepEqual([json.provider, json.model, json.effort, json.tier, json.exit, json.answer, json.round], ["codex", "gpt-6.1-sol", "xhigh", "consult", 0, "pong", 1]);
@@ -88,22 +88,22 @@ test("ask → task --thread → reply → task --thread: sandbox and resume argu
     assert.match(task2.out, footer("ok", "gpt-6-luna", "high", " · round 4/9 · edited 1$"));
     const [a, t1, r, t2] = h.calls();
     assert.deepEqual(a.argv.slice(0, 2), ["exec", "--json"]);
-    assert.deepEqual(a.argv.slice(4, 8), ["-C", h.cwd, "-s", "read-only"]);
+    assert.deepEqual(a.argv.slice(4, 8), ["-C", h.cwd, "-s", "danger-full-access"]);
     const resumed = (c, sandbox, effort) => {
       assert.deepEqual(c.argv.slice(0, 4), ["exec", "resume", thread, "--json"]);
-      assert.deepEqual(c.argv.slice(6, 14), ["-c", `sandbox_mode=${sandbox}`, "-m", "gpt-6-luna", "-c", `model_reasoning_effort=${effort}`, "-c", devInstructions]);
+      assert.deepEqual(c.argv.slice(6, 16), ["-c", `sandbox_mode=${sandbox}`, "-m", "gpt-6-luna", "-c", "approval_policy=never", "-c", `model_reasoning_effort=${effort}`, "-c", devInstructions]);
       assert.ok(!c.argv.includes("-C") && !c.argv.includes("-s"));
       assert.equal(canonical(c.cwd), h.cwd, "resume runs with cwd set");
     };
-    resumed(t1, "workspace-write", "max");
-    resumed(r, "read-only", "max");
-    resumed(t2, "workspace-write", "high");
+    resumed(t1, "danger-full-access", "max");
+    resumed(r, "danger-full-access", "max");
+    resumed(t2, "danger-full-access", "high");
     const record = JSON.parse(readFileSync(join(h.home, "threads", `codex-${thread}.json`), "utf8"));
     assert.deepEqual([record.round, record.lastVerb, record.readOnly, record.model], [4, "task", false, "gpt-6-luna"]);
     const fresh = await h.turn(["task", "--to", "codex"], "new work", { COUNCIL_FAKE_CODEX_EDIT: "new.txt" });
     assert.equal(fresh.code, 0, fresh.err + fresh.out);
     assert.match(fresh.out, / · round 1\/9 · edited 1(?: · |\n|$)/);
-    assert.deepEqual(h.calls().at(-1).argv.slice(4, 8), ["-C", h.cwd, "-s", "workspace-write"]);
+    assert.deepEqual(h.calls().at(-1).argv.slice(4, 8), ["-C", h.cwd, "-s", "danger-full-access"]);
     assert.ok(existsSync(join(h.repo, "new.txt")));
   } finally { h.done(); }
 });
@@ -154,7 +154,7 @@ test("review, both routes, every target: flags without focus; sentence plus focu
       const [u] = h.calls();
       assert.deepEqual(u.argv.slice(0, 2 + c.expect.length), ["exec", "review", ...c.expect], c.name);
       assert.notEqual(u.argv.at(-1), "-");
-      assert.ok(u.argv.includes("sandbox_mode=read-only") && u.argv.includes("review_model=gpt-6.1-sol"));
+      assert.ok(u.argv.includes("sandbox_mode=danger-full-access") && u.argv.includes("review_model=gpt-6.1-sol"));
       const sentence = reviewTarget(h.cwd, c.opts).sentence;
       const focus = "Focus on loop bounds only.";
       h.clearLog();

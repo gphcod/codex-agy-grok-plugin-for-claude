@@ -4,11 +4,13 @@ A Claude Code plugin through which Claude asks Codex (`codex`), Gemini (`agy`, t
 
 council 1.0 replaces three plugins: codex-plugin-cc 2.3.2, gemini-plugin-cc 2.1.0 and grok-build-plugin-cc 1.1.5. Each call runs one companion process (`scripts/council.mjs`) and one provider CLI child. The model sees one skill (`skills/council/SKILL.md`, under 3,000 B). The eleven `/council:*` slash commands are user-only. The plugin has no runtime dependencies, no MCP server and no hooks.
 
+Version `1.0.3` gives delegated agents native tools and session automatic approvals. Advice/review and task scope travel in fresh turn instructions. See [access qualification](docs/qualification/agent-access-2026-11-04.md).
+
 ## Design priority
 
 Efficiency is the highest design and policy priority. Assume Codex, Gemini (agy), Grok, and Claude act in good faith regardless of model; minimize unnecessary calls, tokens, latency, and permission interruptions. Preserve explicit user configuration.
 
-Current version: **1.0.2**. Gemini inspection commands and native macOS task execution are fixed; qualification evidence is in `docs/qualification/efficiency-1.0.2-macos.md`.
+Current version: **1.0.3**. Full native tools and automatic approvals remove adviser access interruptions; advice/task scope travels in the instructions. [Access qualification](docs/qualification/agent-access-2026-11-04.md).
 
 ## Install
 
@@ -69,7 +71,7 @@ Slash commands: `/council:ask`, `/council:reply`, `/council:review`, `/council:t
 - `--tier consult|exec|deep`: default `consult`; `task` defaults to `exec`. An explicit `--model` or `--effort` overrides the tier's value.
 - `--thread`, `--last`: select the thread for `reply` and `task --thread`. `--last` is the latest threaded job of this session in this workspace. While that job is still open and has not confirmed its thread, it exits 2 and says to wait or cancel; it never replies on an older thread instead.
 - `--base`, `--commit`, `--uncommitted`, `--adversarial`: review only. `--adversarial` applies to Gemini and Grok, which review a collected diff with `prompts/adversarial-review.md`. Codex's native review has no adversarial mode, so `review --to codex --adversarial` exits 2; give focus text instead.
-- `--web`: Grok only, off by default; `reply` inherits it. Codex has no tested mapping and Gemini cannot switch web search off (see Known trade-offs), so both exit 2. `review --web` exits 2 for every provider.
+- `--web`: Grok compatibility flag; `reply` inherits it, while native web tools remain available by default. Codex and Gemini have no tested mapping, so both exit 2. `review --web` exits 2 for every provider.
 - `--rounds <n>`: the reply budget of a thread (default 9, or `COUNCIL_ROUNDS`). The thread keeps it. Refused on `review`.
 - `--request-id <id>`: 1–128 characters, `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`. Retrying an identical call with the same id replays or awaits the first result and never starts a second CLI. The same id with different input exits 2.
 - `--deadline <s>` (default 14400) and `--inactivity-timeout <s>` (default 1200) stop a turn and clean up, exit 1. `wait --timeout` only stops waiting.
@@ -175,13 +177,14 @@ On Windows council never launches through `cmd.exe`. An npm `.cmd` shim runs its
 
 ## Known trade-offs
 
+- **Codex execution.** All fresh, resumed and review turns use `danger-full-access` with `approval_policy=never`. Advice/review instructions request inspection only; tasks authorize the requested edits. Native tools remain available.
 - **Codex MCP servers (`COUNCIL_CODEX_MCP`).** The default, `inherit`, keeps your MCP servers, plugins and apps on `ask`, `reply` and `review`. `off` drops them there, which measured 19–29 % fewer input tokens on a fresh ask. Each such call then makes one or two extra `codex mcp list --json` calls (two when servers are configured), about 90–100 ms each on macOS. `setup` prints the trade-off and, under `off`, the measured time. Tasks always keep your tools.
 - **A clean Codex review reports `incomplete` (exit 10).** `codex exec review` writes the same explanation-only text for a clean review as for output it could not parse. council therefore cannot prove a clean review and reports `codex reported no findings; its output cannot prove a clean review` with Codex's text. Read it; it is not an approval.
 - **Codex needs a Git repository or a trusted directory.** Elsewhere, `codex exec` exits 1 with its own message. council does not add `--skip-git-repo-check`.
 - **Gemini web search cannot be blocked.** agy's `search_web` tool ignores a `search_web(*)` deny rule, so read-only Gemini turns may search the web, and `--web --to gemini` exits 2 instead of pretending to switch it. `setup` says so.
 - **A hard-killed companion on Windows** takes its provider child with it, unlike POSIX; `cancel` still recovers the job. A command that child started can outlive both. `cancel` stops it once a heartbeat (every 10 s) has recorded it. One started since the last heartbeat, or orphaned between two of them, keeps running, so `cancel` warns you to check the process table.
-- **Gemini settings.** Every turn passes a job-specific `--settings` file. It starts from the `allow`/`ask`/`deny` lists in your `~/.gemini/antigravity-cli/settings.json`, because a session list replaces the global one. On read-only turns it keeps only `read_file`/`read_url` allow rules, allows these inspection commands: `git status`, `git diff`, `git log`, `git show`, `git blame`, `git grep`, `git rev-parse`, `git ls-files`, `ls`, `pwd`, `cat`, `head`, `tail`, `wc`, `grep`, `rg`, `find`, and denies `write_file(*)`, `edit_file(*)`, `unsandboxed(*)`, `mcp(*)`, `execute_url(*)`; other commands normally require approval and headless refusals are reported; these prefix rules are workflow defaults, not shell containment. On tasks it adds `command(*)` to your allow list, because nobody can approve a prompt there; your deny rules still apply. `--sandbox` is passed only on read-only turns and `--mode accept-edits` only on tasks, so a task can run `node` and `npm` and write the git index.
-- **Grok** runs read-only turns on the explore agent, or with the RESUME_DENY tool list once a task ran on the thread. It denies MCP tools, disables Claude skills, agents, hooks and MCP servers through its environment variables (and Claude rules on read-only turns), and turns web search off unless `--web`. Reviews run with `--cwd` at the repository root, because Grok sessions refuse `--add-dir`. Every Grok turn ends with a process scan for leftovers.
+- **Gemini settings.** Every turn uses `--dangerously-skip-permissions` and a per-job settings file that preserves configured native permission lists. The plugin inserts no tool or command restrictions and does not change the global file. Tasks also use `--mode accept-edits`.
+- **Grok** uses the native default agent with `--always-approve`, inherits configured skills, agents, MCPs and web search, and upgrades legacy explore sessions on resume. Hooks remain off to prevent recursion. Reviews run at the repository root and every turn ends with an owned-process scan.
 
 ## Differences from the replaced plugins
 
@@ -209,7 +212,7 @@ The full lists are in `docs/parity/codex.md`, `docs/parity/gemini.md` and `docs/
 
 When `codex`, `agy` or `grok` ships a new version, recheck these before trusting it. The S1 records under `docs/spike/` hold the baseline, and the live tests run with `npm run test:live`.
 
-1. **Flags**: every argv element the adapter builds still exists with the same meaning. Codex: `exec`, `exec resume`, `exec review`, `-o`, `-C`, `-s`, `-c sandbox_mode=`, `-c model_reasoning_effort=`, `-c developer_instructions=`. agy: `--input-format`/`--output-format stream-json`, `--settings`, `--sandbox`, `--mode`, `--conversation`, `--print-timeout`, `--json-schema`, `--disable-slash-commands`. grok: `--prompt-file`, `--output-format streaming-json`, `--session-id`, `-r`, `--agent`, `--deny`, `--disallowed-tools`, `--no-subagents`, `--always-approve`, `--disable-web-search`, `--rules`, `--json-schema`, `--no-auto-update`, `--cwd`.
+1. **Flags**: every argv element the adapter builds still exists with the same meaning. Codex: `exec`, `exec resume`, `exec review`, `-o`, `-C`, `-s`, `-c sandbox_mode=`, `-c model_reasoning_effort=`, `-c developer_instructions=`. agy: `--input-format`/`--output-format stream-json`, `--settings`, `--dangerously-skip-permissions`, `--mode`, `--conversation`, `--print-timeout`, `--json-schema`, `--disable-slash-commands`. grok: `--prompt-file`, `--output-format streaming-json`, `--session-id`, `-r`, `--agent` (legacy resume), `--always-approve`, `--disable-web-search`, `--rules`, `--json-schema`, `--no-auto-update`, `--cwd`.
 2. **Event names and shapes**: Codex `thread.started`, `turn.completed`, `turn.failed`, `error`, `item.completed` (`file_change`, `command_execution`); agy `step_update`, `result` (`status`, `denied_actions`, `finished_reason`, `structured_output`) and the deny-rule tool-step signature; grok `available_commands`, `text`, `tool_call`/`tool_call_update`, `end` (`stopReason`, `sessionId`, `structuredOutput`), `max_turns_reached`.
 3. **Effort rules**: which efforts each model accepts and the error text for the others (Grok `max`, Gemini `xhigh`/`max`, a Gemini suffix conflict, Codex `ultra`).
 4. **Model listing format**: `codex debug models` (JSON, `supported_reasoning_levels`), `agy models` (effort-suffixed ids), `grok models`. Run `models --refresh` and compare with `models.json` and `tiers.json`.

@@ -195,7 +195,11 @@ export function prepareRequest(ctx, adapter, verb, o, text, target, memo, refres
     : ctx.env.COUNCIL_ROUNDS ? roundCount(ctx.env.COUNCIL_ROUNDS, "COUNCIL_ROUNDS") : DEFAULT_ROUNDS;
   const request = {
     verb, provider, cwd: ctx.cwd, session: ctx.session ?? null, tier: resolved.tier, model: resolved.model, modelVerified: resolved.modelVerified,
-    effort: resolved.effort, requestedEffort: resolved.requestedEffort ?? resolved.effort, thread, readOnly: verb !== "task", text,
+    effort: resolved.effort, requestedEffort: resolved.requestedEffort ?? resolved.effort, thread, readOnly: verb !== "task", text: verb === "review" ? text : `${verb === "task"
+      ? "Instructions for this turn (task: edits are authorized within the requested scope)."
+      : "Instructions for this turn (advice, read-only): inspect and answer; do not edit files or perform external writes."}
+
+${text}`,
     contract: memo.contract ??= fs.readFileSync(path.join(PLUGIN_ROOT, "contract.md"), "utf8").replace(/\r\n?/g, "\n").trim(),
     // --web is inherited from the thread unless given explicitly (grok-build grok.mjs:142).
     web: o.web !== undefined ? Boolean(o.web) : Boolean(thread?.web), adversarial: Boolean(o.adversarial), deadline: seconds(o.deadline, DEADLINE_S, "deadline"),

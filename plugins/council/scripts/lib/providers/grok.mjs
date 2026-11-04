@@ -24,46 +24,23 @@ const PATH_CAP = 10000;
 
 // --- recipes (grok-build lib/recipes.mjs, whole) -----------------------------------------------------
 
-export const HOSTILE = ["Agent", "ask_user_question", "enter_plan_mode", "exit_plan_mode", "image_gen", "image_edit", "image_to_video", "reference_to_video"];
-// search_tool and use_tool are the default agent's way to MCP and other deferred tools.
-export const FORBIDDEN = ["search_replace", "write", "run_terminal_command", "spawn_subagent", "search_tool", "use_tool"];
-// For a session that has run the default agent (a task): the verified read-only denylist. Grok 1.0.70 at
-// grok-4.6 also accepted --agent explore there; other versions were not run, so this stays.
-// run_terminal_cmd is the flag-side spelling of run_terminal_command.
-export const RESUME_DENY = [
-  "search_replace", "write", "run_terminal_cmd", "search_tool", "use_tool", "todo_write", "monitor", "workflow",
-  "scheduler_create", "scheduler_delete", "scheduler_list", "send_feedback", ...HOSTILE,
-];
-// Read-only turns also deny every MCP tool; the parseEvent guard stays the check.
-const NO_MCP = ["--deny", "MCPTool(*)"];
+// The verb defines scope in the prompt. Native tools remain available so a
+// good-faith reviewer can inspect other repositories and use ordinary commands.
+export const HOSTILE = [];
+export const FORBIDDEN = [];
+export const RESUME_DENY = [];
 
-/** `agent` is the Grok agent the turn runs; the thread record keeps it so later turns on the session follow it. */
-export function recipe(kind, { web = false, defaultAgent = false } = {}) {
-  const common = ["--always-approve", "--no-subagents", ...(web ? [] : ["--disable-web-search"]), "--disallowed-tools"];
-  if (kind === "read-only") {
-    if (defaultAgent) return { readOnly: true, agent: "default", args: [...common, RESUME_DENY.join(","), ...NO_MCP], forbidden: FORBIDDEN };
-    return { readOnly: true, agent: "explore", args: ["--agent", "explore", ...common, HOSTILE.join(","), ...NO_MCP], forbidden: FORBIDDEN };
-  }
-  if (kind === "write") {
-    return { readOnly: false, agent: "default", args: [...common, HOSTILE.join(","), "--deny", "Bash(git push*)", "--deny", "Bash(rm -rf *)"], forbidden: [] };
-  }
-  throw new Error(`unknown recipe ${kind}`);
+export function recipe(kind, { web = false, legacyExplore = false } = {}) {
+  if (kind !== "read-only" && kind !== "write") throw new Error(`unknown recipe ${kind}`);
+  return { readOnly: kind === "read-only", agent: "default", forbidden: [],
+    args: [...(legacyExplore ? ["--agent", "default"] : []), "--always-approve"] };
 }
 
-/**
- * Child environment additions. Claude skills, agents (which also keeps ~/.claude/CLAUDE.md out), hooks
- * and MCP stay off inside Grok (hook recursion). Read-only turns also skip Claude's rules directories;
- * a task drops an inherited setting (undefined: the spawn leaves the variable out) so Grok's default
- * applies. The guard variables come from the core (A5.1), replacing grok-build's GROK_BUILD_DEPTH.
- */
+/** Child environment: prevent updater and hook recursion; inherit native integrations. */
 export function compatEnv(readOnly) {
   return {
     GROK_DISABLE_AUTOUPDATER: "1",
-    GROK_CLAUDE_SKILLS_ENABLED: "0",
-    GROK_CLAUDE_AGENTS_ENABLED: "0",
     GROK_CLAUDE_HOOKS_ENABLED: "0",
-    GROK_CLAUDE_MCPS_ENABLED: "0",
-    GROK_CLAUDE_RULES_ENABLED: readOnly ? "0" : undefined,
   };
 }
 
@@ -87,7 +64,7 @@ export function inlineSchema() {
 /** The known trade-offs `setup` states (A3.2). */
 export const NOTES = [
   "every turn ends with a process scan for anything still carrying the job's --prompt-file (no launcher kind is trusted to leave nothing behind)",
-  "read-only turns run the explore agent (RESUME_DENY after a task), deny MCP tools and fail closed if a writing tool is advertised; web search is off unless --web",
+  "turn instructions define scope; native tools use automatic approvals, and configured integrations and web search are inherited",
   "reviews run at the repository root (grok sessions refuse --add-dir) and answer in the inline review schema",
 ];
 
@@ -149,7 +126,7 @@ const adapter = {
   buildTurn(request) {
     const kind = request.readOnly === false ? "write" : "read-only";
     const resumed = request.thread?.threadId ?? null;
-    const plan = recipe(kind, { web: Boolean(request.web), defaultAgent: kind === "read-only" && sessionAgent(request.thread) === "default" });
+    const plan = recipe(kind, { web: Boolean(request.web), legacyExplore: Boolean(resumed) && sessionAgent(request.thread) !== "default" });
     const threadId = resumed ?? randomUUID();
     const review = request.verb === "review";
     // grok 1.0.70 lists --add-dir but its sessions refuse it ("additionalDirectories is not supported"),
@@ -179,7 +156,6 @@ const adapter = {
     if (typeof ev?.type !== "string") return null;
     const turn = state?.turn ?? null;
     const readOnly = turn?.readOnly !== false;
-    const forbidden = readOnly ? (turn?.forbidden ?? FORBIDDEN) : [];
     const g = (state.grok ??= { toolChecked: false, calls: new Map(), separate: false });
     switch (ev.type) {
       case "available_commands": {
@@ -190,14 +166,12 @@ const adapter = {
         const names = ev.tools.map(toolName);
         if (names.some((n) => typeof n !== "string" || !n)) return { fatal: "malformed tool catalogue entry" };
         g.toolChecked = true;
-        const bad = names.filter((n) => forbidden.includes(n));
+        const bad = [];
         return bad.length ? { fatal: `read-only tool guard failed: ${bad.join(", ")}` } : {};
       }
       case "tool_call": {
-        if (readOnly && !g.toolChecked) return { fatal: "Grok used a tool before the read-only tool list was validated" };
         const name = nameOf(ev);
         // A forbidden or MCP call fails a read-only turn, whatever the catalogue said.
-        if (readOnly && typeof name === "string" && (forbidden.includes(name) || MCP_TOOL.test(name))) return { fatal: `read-only tool guard failed: Grok called ${name}` };
         if (g.calls.size >= PATH_CAP) return { fatal: "too many open tool calls in event stream" };
         g.calls.set(idOf(ev), { name, path: inputPath(ev) });
         g.separate = state.hasText; // Text before and after a tool call belongs to separate messages.
@@ -207,6 +181,14 @@ const adapter = {
         const id = idOf(ev);
         const call = g.calls.get(id);
         if (call && !call.path && EDIT_TOOLS.has(call.name)) call.path = updatePath(ev);
+        if (ev.status === "failed") {
+          const reason = (typeof ev.content === "string" ? ev.content : Array.isArray(ev.content)
+            ? ev.content.map((part) => part?.text ?? "").join(" ") : "").slice(0, 2000);
+          if (/permission denied|not (?:available|allowed)|approval required|user.configured deny/i.test(reason)) {
+            g.calls.delete(id);
+            return { denied: reason, deniedAction: call?.name ?? "tool" };
+          }
+        }
         const out = {};
         if (ev.status === "completed" && EDIT_TOOLS.has(call?.name) && call.path) out.edited = call.path;
         // A status of null (or none) is a progress update; only a named status other than these ends the call.
@@ -221,7 +203,6 @@ const adapter = {
         return { textDelta: delta };
       }
       case "end": {
-        if (readOnly && !g.toolChecked) return { fatal: "Grok ended before the read-only tool list was validated" };
         const returned = ev.sessionId ?? ev.session_id ?? null;
         const expected = turn?.threadId ?? null;
         // Another session (or a malformed id) is fatal; a missing one keeps the answer but leaves the
@@ -277,8 +258,6 @@ export const PERMISSION_STOP = "Grok cancelled the turn (a tool needed permissio
 /** X1: the footer's `attention: denied <action>` for that refusal, naming the tool call still open when the turn stopped, if any. */
 export const deniedAction = (tool) => `${typeof tool === "string" && tool && tool !== "tool_call" ? tool : "a tool call"} (needed permission headless Grok cannot ask for)`;
 const EDIT_TOOLS = new Set(["search_replace", "write"]);
-// Grok names MCP tools server__tool; a read-only turn that calls one fails.
-const MCP_TOOL = /__/;
 const nameOf = (ev) => ev.toolName ?? ev.tool_name ?? ev.name ?? ev.tool?.name ?? null;
 const inputOf = (ev) => ev.rawInput ?? ev.input ?? ev.tool?.input ?? {};
 const str = (v) => typeof v === "string" && v ? v : null;
