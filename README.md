@@ -4,6 +4,12 @@ A Claude Code plugin through which Claude asks Codex (`codex`), Gemini (`agy`, t
 
 council 1.0 replaces three plugins: codex-plugin-cc 2.3.2, gemini-plugin-cc 2.1.0 and grok-build-plugin-cc 1.1.5. Each call runs one companion process (`scripts/council.mjs`) and one provider CLI child. The model sees one skill (`skills/council/SKILL.md`, under 3,000 B). The eleven `/council:*` slash commands are user-only. The plugin has no runtime dependencies, no MCP server and no hooks.
 
+## Design priority
+
+Efficiency is the highest design and policy priority. Assume Codex, Gemini (agy), Grok, and Claude act in good faith regardless of model; minimize unnecessary calls, tokens, latency, and permission interruptions. Preserve explicit user configuration.
+
+Current version: **1.0.2**. Gemini inspection commands and native macOS task execution are fixed; qualification evidence is in `docs/qualification/efficiency-1.0.2-macos.md`.
+
 ## Install
 
 Requirements: Node `>=22.19.0`. Install whichever of `codex`, `agy` and `grok` you want to use, put them on `PATH`, and log in to each once.
@@ -174,7 +180,7 @@ On Windows council never launches through `cmd.exe`. An npm `.cmd` shim runs its
 - **Codex needs a Git repository or a trusted directory.** Elsewhere, `codex exec` exits 1 with its own message. council does not add `--skip-git-repo-check`.
 - **Gemini web search cannot be blocked.** agy's `search_web` tool ignores a `search_web(*)` deny rule, so read-only Gemini turns may search the web, and `--web --to gemini` exits 2 instead of pretending to switch it. `setup` says so.
 - **A hard-killed companion on Windows** takes its provider child with it, unlike POSIX; `cancel` still recovers the job. A command that child started can outlive both. `cancel` stops it once a heartbeat (every 10 s) has recorded it. One started since the last heartbeat, or orphaned between two of them, keeps running, so `cancel` warns you to check the process table.
-- **Gemini settings.** Every turn passes a job-specific `--settings` file. It starts from the `allow`/`ask`/`deny` lists in your `~/.gemini/antigravity-cli/settings.json`, because a session list replaces the global one. On read-only turns it keeps only `read_file`/`read_url` allow rules and adds a deny list: `write_file(*)`, `edit_file(*)`, `command(*)`, `unsandboxed(*)`, `mcp(*)`, `execute_url(*)`. On tasks it keeps your lists unchanged. `--sandbox` is always on, and `--mode accept-edits` is passed only on tasks.
+- **Gemini settings.** Every turn passes a job-specific `--settings` file. It starts from the `allow`/`ask`/`deny` lists in your `~/.gemini/antigravity-cli/settings.json`, because a session list replaces the global one. On read-only turns it keeps only `read_file`/`read_url` allow rules, allows these inspection commands: `git status`, `git diff`, `git log`, `git show`, `git blame`, `git grep`, `git rev-parse`, `git ls-files`, `ls`, `pwd`, `cat`, `head`, `tail`, `wc`, `grep`, `rg`, `find`, and denies `write_file(*)`, `edit_file(*)`, `unsandboxed(*)`, `mcp(*)`, `execute_url(*)`; other commands normally require approval and headless refusals are reported; these prefix rules are workflow defaults, not shell containment. On tasks it adds `command(*)` to your allow list, because nobody can approve a prompt there; your deny rules still apply. `--sandbox` is passed only on read-only turns and `--mode accept-edits` only on tasks, so a task can run `node` and `npm` and write the git index.
 - **Grok** runs read-only turns on the explore agent, or with the RESUME_DENY tool list once a task ran on the thread. It denies MCP tools, disables Claude skills, agents, hooks and MCP servers through its environment variables (and Claude rules on read-only turns), and turns web search off unless `--web`. Reviews run with `--cwd` at the repository root, because Grok sessions refuse `--add-dir`. Every Grok turn ends with a process scan for leftovers.
 
 ## Differences from the replaced plugins

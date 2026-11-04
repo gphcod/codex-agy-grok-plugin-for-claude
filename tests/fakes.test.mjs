@@ -92,7 +92,7 @@ function codexArgs(dir, form, { effort = "low", model = "gpt-6.1-sol", target = 
 }
 function agyArgs(dir, form, { effort = "low", model = "gemini-4-argon", settings, mode = null, schema = false } = {}) {
   const settingsPath = join(dir, "settings.json");
-  writeFileSync(settingsPath, JSON.stringify(settings ?? { permissions: { deny: ["write_file(*)", "edit_file(*)", "command(*)", "unsandboxed(*)", "mcp(*)", "execute_url(*)"] } }));
+  writeFileSync(settingsPath, JSON.stringify(settings ?? { permissions: { deny: ["write_file(*)", "edit_file(*)", "unsandboxed(*)", "mcp(*)", "execute_url(*)"] } }));
   const args = ["--input-format", "stream-json", "--output-format", "stream-json", "--disable-slash-commands", "--print-timeout", "540s", "--sandbox", "--settings", settingsPath, "--model", model];
   if (effort) args.push("--effort", effort);
   if (mode) args.push("--mode", mode);
@@ -270,7 +270,7 @@ test("fakes refuse a wrong launch contract with exit 99", async () => {
     const agyRun = (built, extra = {}) => run(fakes.agy, built.args, { env: guards, input: built.input, cwd: dir, prompt: built.prompt, ...extra });
     const weak = agyArgs(dir, "fresh", { settings: { permissions: { deny: ["write_file(*)"] } } });
     assert.equal((await agyRun(weak)).code, 99);
-    const allow = agyArgs(dir, "fresh", { settings: { permissions: { deny: ["write_file(*)", "edit_file(*)", "command(*)", "unsandboxed(*)", "mcp(*)", "execute_url(*)"], allow: ["command(git status)"] } } });
+    const allow = agyArgs(dir, "fresh", { settings: { permissions: { deny: ["write_file(*)", "edit_file(*)", "unsandboxed(*)", "mcp(*)", "execute_url(*)"], allow: ["command(rm x)"] } } });
     assert.equal((await agyRun(allow)).code, 99);
     const ok = agyArgs(dir, "fresh");
     assert.equal((await agyRun(ok, { input: ok.input + ok.input })).code, 99, "two NDJSON lines");
