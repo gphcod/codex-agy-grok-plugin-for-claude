@@ -15,7 +15,7 @@ import { PROVIDERS, SESSION, footer, harness } from "./fixtures/three-providers.
 
 const ADAPTERS = { codex, gemini, grok };
 const CONSULT = { codex: "gpt-6\\.1-sol/xhigh", gemini: "gemini-4-argon/medium", grok: "grok-4\\.7/high" };
-const READ_ONLY_DENY = ["write_file(*)", "edit_file(*)", "command(*)", "unsandboxed(*)", "mcp(*)", "execute_url(*)"];
+const READ_ONLY_DENY = ["write_file(*)", "edit_file(*)", "unsandboxed(*)", "mcp(*)", "execute_url(*)"];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const flag = (args, name) => { const i = args.indexOf(name); return i < 0 ? undefined : args[i + 1]; };

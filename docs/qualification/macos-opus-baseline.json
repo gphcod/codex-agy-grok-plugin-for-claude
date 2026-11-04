@@ -1,0 +1,225 @@
+{
+  "host": "Claude Code interactive TTY, default permission mode, Opus 5.5",
+  "date": "2026-11-04",
+  "installed_plugin": "council 1.0.1 (cache), source commit 20adb554a301310a686d5271b1afdee287cc1f18",
+  "models": {
+    "codex": "gpt-6-luna/low",
+    "gemini": "gemini-3.8-flash/low",
+    "grok": "grok-4.7-build-fast/low"
+  },
+  "route_note": "Slash commands have disable-model-invocation; the Skill tool refused /council:setup. Turn cells ran through the council:council skill's documented CLI calls, not typed slash commands. The setup and models --refresh Bash calls went out in the same response as that refused Skill call.",
+  "overall": "NOT PASSED - open cells: task gemini, cancel, slash gemini, slash grok",
+  "usage_note": "Token usage is in state/jobs/<job>/meta.json. costUsd was null on the three records sampled. Host cost was not measured.",
+  "cells": {
+    "ask": {
+      "state": "pass",
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "codex": "578f70978fe1a00d",
+      "gemini": "02626b93f44ae3ba",
+      "grok": "91512101e42593b6"
+    },
+    "reply_last": {
+      "state": "pass",
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "round": "2/9",
+      "codex": "c4060baefc1a3144",
+      "gemini": "f95e7bceef0adbaf",
+      "grok": "61274480f827903e"
+    },
+    "reply_thread": {
+      "state": "pass",
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "round": "3/9",
+      "codex": "3fd1e0cc94bc9938",
+      "gemini": "2fd0f4d8fa35efb2",
+      "grok": "1e2a6351e9fd51e3"
+    },
+    "review_uncommitted": {
+      "state": "pass",
+      "expected_exit": 10,
+      "actual_exit": 10,
+      "codex": "fb483d74acc6b494",
+      "gemini": "0917cf804b219b3f",
+      "grok": "b3d1034820a06575",
+      "note": "gemini attention: denied run_command git status"
+    },
+    "review_base_main": {
+      "state": "pass",
+      "expected_exit": 10,
+      "actual_exit": 10,
+      "codex": "6793a03eb651f049",
+      "gemini": "0c493768fa5a3850",
+      "grok": "a9b49b4203659b88",
+      "note": "gemini attention: denied run_command git status"
+    },
+    "review_commit_HEAD": {
+      "state": "pass",
+      "expected_exit": 10,
+      "actual_exit": 10,
+      "codex": "deb2d02124055214",
+      "gemini": "40b4a8d8603bd4f7",
+      "grok": "55753b5812a42087"
+    },
+    "review_adversarial": {
+      "state": "pass",
+      "codex": {
+        "expected_exit": 2,
+        "actual_exit": 2,
+        "job": null,
+        "message": "review --to codex has no --adversarial"
+      },
+      "gemini": {
+        "expected_exit": 10,
+        "actual_exit": 10,
+        "job": "d9e82eaa18e76117",
+        "note": "attention: denied run_command git status"
+      },
+      "grok": {
+        "expected_exit": 10,
+        "actual_exit": 10,
+        "job": "6d51ba0bdaa8744c"
+      }
+    },
+    "task": {
+      "codex": {
+        "state": "pass",
+        "expected_exit": 0,
+        "actual_exit": 0,
+        "edited": 1,
+        "job": "395e57bc4b356a06"
+      },
+      "grok": {
+        "state": "pass",
+        "expected_exit": 0,
+        "actual_exit": 0,
+        "edited": 1,
+        "job": "ba84fe8ea70456e6"
+      },
+      "gemini": {
+        "state": "RED - open until rerun on an installed build",
+        "expected_exit": 0,
+        "actual_exit": 10,
+        "edited": 0,
+        "job": "d85d0662031b4628",
+        "cause": "git status got 'user denied' in headless accept-edits; the turn ended with no edit; calc.js unchanged"
+      }
+    },
+    "wait_list": {
+      "state": "pass",
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "files": [
+        "evidence-opus/wait-list-codex.out",
+        "evidence-opus/wait-list-gemini.out",
+        "evidence-opus/wait-list-grok.out"
+      ]
+    },
+    "wait_replay": {
+      "state": "pass",
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "files": [
+        "evidence-opus/wait-job-codex.out",
+        "evidence-opus/wait-job-gemini.out",
+        "evidence-opus/wait-job-grok.out"
+      ]
+    },
+    "cancel": {
+      "state": "OPEN - not proven",
+      "codex": {
+        "job": "93575d43fa548577",
+        "cancel_exit": 0,
+        "job_final": "ok, exit 0, 1m08s"
+      },
+      "grok": {
+        "job": "e04ea37364e33469",
+        "cancel_exit": 0,
+        "job_final": "ok, exit 0, 15s"
+      },
+      "gemini": {
+        "job": "757733eb40f7d07e",
+        "cancel": "not attempted; job finished in 26s"
+      },
+      "note": "cancel printed 'finished' and both jobs ended ok, so no running job was shown to be stopped. Whether the jobs had already ended when cancel ran was not established. Needs a rerun that catches a running job."
+    },
+    "models_refresh": {
+      "state": "pass",
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "file": "evidence-opus/models-refresh.out"
+    },
+    "setup": {
+      "state": "pass",
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "file": "evidence-opus/setup.out"
+    },
+    "slash_conveniences": {
+      "codex": {
+        "state": "pass under Haiku 5.5, not rerun under Opus",
+        "exit": 0,
+        "job": "de9f949c45224dd4"
+      },
+      "gemini": {
+        "state": "OPEN - user must type"
+      },
+      "grok": {
+        "state": "OPEN - user must type"
+      }
+    },
+    "fanout": {
+      "state": "pass",
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "asks": {
+        "codex": "942bd62f23d57c26",
+        "gemini": "85fbe8cc8829b995",
+        "grok": "aad0c19e0ebf3c3c"
+      },
+      "thread_replies": {
+        "codex": "3405c967594a57b1",
+        "gemini": "7fb08a556113e835",
+        "grok": "ee84fdcc466313a6"
+      }
+    }
+  },
+  "fix_proof_source_not_installed": {
+    "note": "Run from uncommitted plugin-source BEFORE the task-only sandbox change. Does not close installed cells. The sandbox change has no live run in this session.",
+    "task": {
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "edited": 1,
+      "job": "38e46edc9a4bdf67",
+      "observed": "the task's answer reported sandboxed node as not permitted"
+    },
+    "review_uncommitted": {
+      "expected_exit": 10,
+      "actual_exit": 10,
+      "denial": false,
+      "job": "ba4940a4f47914bf"
+    },
+    "ask_allowed_and_refused": {
+      "expected_exit": 10,
+      "actual_exit": 10,
+      "job": "b825edecbb01e6ab",
+      "git status --short": "ran",
+      "touch x.tmp": "denied and reported"
+    }
+  },
+  "offline": {
+    "previous": "556 pass / 3 skip",
+    "after_policy_edit": "531 pass / 25 fail / 3 skip (old expectations)",
+    "interim": "555 pass / 2 fail / 3 skip",
+    "before_sandbox_change": "557 pass / 0 fail / 3 skip",
+    "after_sandbox_change": "not run by this session; the user runs the final tests"
+  },
+  "mutations": [
+    "codex and grok fixtures: calc.js fixed by tasks",
+    "gemini fixture: git checkout -- . then calc.js rewritten with the initial bug; fixed by job 38e46edc9a4bdf67; reset to the bug for the review, so it currently holds the bug",
+    "no commits; fixture.json kept"
+  ],
+  "cleanup": "Leftover provider processes after cancel were not checked."
+}

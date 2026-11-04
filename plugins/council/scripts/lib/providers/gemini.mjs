@@ -5,7 +5,7 @@
 // its code (no LICENSE in the installed copy, docs/decisions.md S0), and from gemini-plugin-for-codex
 // (MIT) skills/agy/scripts/lib/settings.mjs (configuredPolicy, sessionSettings).
 // Changes from gemini-plugin-cc: a job-specific --settings file on every turn (merged global lists,
-// A2 deny union on read-only turns), --mode accept-edits only on tasks, --sandbox always, denial
+// A2 deny union on read-only turns), --mode accept-edits only on tasks, --sandbox only on read-only turns, denial
 // exits 10 instead of 20 (S5.7 parity record).
 import fs from "node:fs";
 import { geminiServiceFailure } from "../core/gemini-service.mjs";
@@ -27,7 +27,11 @@ export const WINDOWS_QUALIFIED = true;
 export const WINDOWS_UNSUPPORTED = "Gemini (agy) is not supported on Windows in council 1.0: the agy path is not qualified there (PLAN.md A8); use --to codex or --to grok";
 
 /** A2 read-only deny list: the union of gemini-plugin-cc's and gemini-plugin-for-codex's rules. */
-export const READ_ONLY_DENY = ["write_file(*)", "edit_file(*)", "command(*)", "unsandboxed(*)", "mcp(*)", "execute_url(*)"];
+export const READ_ONLY_DENY = ["write_file(*)", "edit_file(*)", "unsandboxed(*)", "mcp(*)", "execute_url(*)"];
+/** Inspection commands a read-only turn may run without a prompt nobody can answer (good-faith agents; declared intent, not containment). */
+export const READ_ONLY_COMMANDS = ["git status", "git diff", "git log", "git show", "git blame", "git grep", "git rev-parse", "git ls-files", "ls", "pwd", "cat", "head", "tail", "wc", "grep", "rg", "find"].map((c) => `command(${c})`);
+/** A headless task has nobody to approve a shell step; an authorized task may run commands. A global deny rule still applies. */
+export const TASK_ALLOW = ["command(*)"];
 /** The only global allow rules a read-only turn keeps (gemini-plugin-for-codex sessionSettings). */
 const READ_ONLY_ALLOW = /^(read_file|read_url)\(.*\)$/;
 const LISTS = ["allow", "ask", "deny"];
@@ -72,15 +76,15 @@ export function readGlobalPolicy(env = {}) {
 
 /**
  * The job's session settings (A5.1). A session list replaces the global one (S1.2), so the global
- * lists are carried over; a read-only turn keeps only read_file/read_url allow rules and adds the A2
- * deny rules; a task keeps the global lists as they are. `strict` tool permission is preserved.
+ * lists are carried over; a read-only turn keeps only read_file/read_url allow rules, adds the
+ * inspection commands and the A2 deny rules; a task adds TASK_ALLOW to the global lists. `strict` tool permission is preserved.
  */
 export function sessionSettings(policy, readOnly) {
   const permissions = Object.fromEntries(LISTS.map((key) => [key, [...new Set(policy.permissions[key])]]));
   if (readOnly) {
-    permissions.allow = permissions.allow.filter((rule) => READ_ONLY_ALLOW.test(rule));
+    permissions.allow = [...permissions.allow.filter((rule) => READ_ONLY_ALLOW.test(rule)), ...READ_ONLY_COMMANDS];
     permissions.deny = [...new Set([...permissions.deny, ...READ_ONLY_DENY])];
-  }
+  } else permissions.allow = [...new Set([...permissions.allow, ...TASK_ALLOW])];
   return { permissions, ...(policy.toolPermission === "strict" ? { toolPermission: "strict" } : {}) };
 }
 
@@ -308,7 +312,7 @@ const adapter = {
   checkRequest(request, env = {}) { checkGeminiRequest(request, env); },
   /**
    * A5.1: one NDJSON user message on stdin with the contract prepended (reviews send the rendered
-   * review prompt alone); a job-specific --settings file on every turn; --sandbox always;
+   * review prompt alone); a job-specific --settings file on every turn; --sandbox only on read-only turns;
    * --mode accept-edits only on tasks; --conversation on reply and task --thread.
    */
   buildTurn(request) {
@@ -320,7 +324,7 @@ const adapter = {
     fs.writeFileSync(settingsPath, `${JSON.stringify(sessionSettings(readGlobalPolicy(env), readOnly), null, 2)}\n`, { mode: 0o600 });
     const args = [
       "--input-format", "stream-json", "--output-format", "stream-json", "--disable-slash-commands",
-      "--print-timeout", printTimeout(request.deadline), "--sandbox", "--settings", settingsPath,
+      "--print-timeout", printTimeout(request.deadline), ...(readOnly ? ["--sandbox"] : []), "--settings", settingsPath,
       ...modelArgs(request.model, request.effort, adapter.catalog),
     ];
     if (!readOnly) args.push("--mode", "accept-edits");

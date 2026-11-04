@@ -23,7 +23,7 @@ import {
 const argv = process.argv.slice(2);
 const EFFORTS = ["low", "medium", "high"];
 // A2 read-only deny list (union of gemini-plugin-cc and gemini-plugin-for-codex).
-const READ_ONLY_DENY = ["write_file(*)", "edit_file(*)", "command(*)", "unsandboxed(*)", "mcp(*)", "execute_url(*)"];
+const READ_ONLY_DENY = ["write_file(*)", "edit_file(*)", "unsandboxed(*)", "mcp(*)", "execute_url(*)"];
 const TOOLS = readStreamFixture("agy", "minimal.jsonl")[0].init.tools;
 
 // --- probe commands (no guard required) ---------------------------------------------------------
@@ -41,7 +41,7 @@ if (args.positionals.length) fail(`unexpected positional ${args.positionals.join
 if (args.one("--input-format") !== "stream-json") fail("--input-format stream-json missing");
 if (args.one("--output-format") !== "stream-json") fail("--output-format stream-json missing");
 if (!args.has("--disable-slash-commands")) fail("--disable-slash-commands missing");
-if (!args.has("--sandbox")) fail("--sandbox missing");
+if (!args.has("--sandbox") && args.one("--mode") !== "accept-edits") fail("--sandbox missing on a read-only turn");
 if (!/^\d+(\.\d+)?s$/.test(args.one("--print-timeout") ?? "")) fail("--print-timeout <seconds>s missing");
 const settingsPath = args.one("--settings");
 if (!settingsPath || !existsSync(settingsPath)) fail("--settings <file> missing or absent");
@@ -55,7 +55,7 @@ const readOnly = mode === undefined;
 if (readOnly) {
   const deny = settings.permissions.deny ?? [];
   for (const rule of READ_ONLY_DENY) if (!deny.includes(rule)) fail(`read-only turn lacks deny rule ${rule}`);
-  for (const rule of settings.permissions.allow ?? []) if (!/^(read_file|read_url)\(/.test(rule)) fail(`read-only turn allows ${rule}`);
+  for (const rule of settings.permissions.allow ?? []) if (!/^(read_file|read_url)\(/.test(rule) && !/^command\((git (status|diff|log|show|blame|grep|rev-parse|ls-files)|ls|pwd|cat|head|tail|wc|grep|rg|find)\)$/.test(rule)) fail(`read-only turn allows ${rule}`);
 }
 const model = args.one("--model");
 if (!model) fail("--model missing");

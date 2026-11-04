@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.2 (2026-11-04)
+
+Gemini only. Efficiency comes first, and called agents are treated as acting in good faith.
+
+- Read-only turns no longer deny all commands. They allow a finite list of inspection commands (`READ_ONLY_COMMANDS`). Other commands are refused and still exit 10.
+- Tasks add `command(*)` to the allow list, because headless agy has nobody to approve a shell step. This fixes a task ending with no edit after `git status` was refused.
+- `--sandbox` is passed only on read-only turns, so an explicitly requested task can run `node` and `npm` and write the git index.
+- Configured `ask` and `deny` rules still apply.
+
 ## 1.0.1 (2026-11-03 Pacific)
 
 The owner moved the version from `1.0.0-rc.11` to `1.0.1`. Only the version fields change, so the plugin behaves exactly as rc.11 did. No `1.0.0` was released. The exact-payload macOS and interactive checks in S7 of `PLAN.md` remain open, so this number does not mean they passed.
