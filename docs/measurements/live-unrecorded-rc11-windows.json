@@ -1,0 +1,189 @@
+{
+  "ownerDate": "2026-11-03 Pacific",
+  "approval": "The owner approved fixing this and set the low models for testing only",
+  "pluginVersion": "1.0.0-rc.11",
+  "frozenCommit": "383910c7644247c9b2514ce303ecfca45bef9ab7",
+  "pluginSha256": "9ce76dd394c7229be8f2adcca35aa342987d011abe5b3c0983a9f42d52e815d6",
+  "grokCli": "1.0.70",
+  "notes": [
+    "Throwaway repositories and a scratch state root. No model here reviewed anything.",
+    "orphan.pastHeartbeat waited 25 s after the command appeared before killing the companion; orphan.atOnce killed it right after.",
+    "The commands only slept. The script stopped any command that cancel left running.",
+    "afterKill is read 1 s after the kill, and afterCancel 2 s after cancel returned."
+  ],
+  "date": "2026-11-04T02:37:05.405Z",
+  "host": "claude-hosted",
+  "entry": "E:/_PMOg/codex-agy-grok-plugin-for-claude/plugins/council/scripts/council.mjs",
+  "root": "C:\\Users\\kkao\\AppData\\Local\\Temp\\tw-fx-claude-hosted-mw1iaawd",
+  "orphan": {
+    "pastHeartbeat": {
+      "sleepMs": 177201,
+      "waitAfterCommandMs": 25000,
+      "job": "e59b5137ac2dea23",
+      "before": {
+        "providerPid": 16172,
+        "command": [
+          36140,
+          37656
+        ]
+      },
+      "afterKill": {
+        "providerAlive": false,
+        "command": [
+          37656
+        ]
+      },
+      "cancel": {
+        "code": 0,
+        "out": "cancelled · grok · job e59b5137ac2dea23 · a command the lost turn started may still be running if no heartbeat recorded it; check the process table\n",
+        "err": ""
+      },
+      "afterCancel": {
+        "providerAlive": false,
+        "command": []
+      },
+      "wait": {
+        "code": 1,
+        "out": "I'll run that exact command and wait until it exits.\ncouncil grok cancelled · job e59b5137ac2dea23 · grok-4.6/low · 38s · round 1/9 · edited 0 · error: recovered after the companion stopped\n",
+        "err": ""
+      },
+      "meta": {
+        "status": "running",
+        "cleanupPending": false,
+        "execution": [
+          "grok.exe",
+          "conhost.exe",
+          "pwsh.exe",
+          "conhost.exe",
+          "node.exe"
+        ]
+      }
+    },
+    "atOnce": {
+      "sleepMs": 177202,
+      "waitAfterCommandMs": 0,
+      "job": "e996ea3bdc470ca4",
+      "before": {
+        "providerPid": 38040,
+        "command": [
+          46588,
+          19536
+        ]
+      },
+      "afterKill": {
+        "providerAlive": false,
+        "command": [
+          19536
+        ]
+      },
+      "cancel": {
+        "code": 0,
+        "out": "cancelled · grok · job e996ea3bdc470ca4 · a command the lost turn started may still be running if no heartbeat recorded it; check the process table\n",
+        "err": ""
+      },
+      "afterCancel": {
+        "providerAlive": false,
+        "command": [
+          19536
+        ]
+      },
+      "wait": {
+        "code": 1,
+        "out": "I'll run the exact command and wait until it exits.\ncouncil grok cancelled · job e996ea3bdc470ca4 · grok-4.6/low · 10s · round 1/9 · edited 0 · error: recovered after the companion stopped\n",
+        "err": ""
+      },
+      "meta": {
+        "status": "running",
+        "cleanupPending": false,
+        "execution": []
+      }
+    }
+  },
+  "clean": {
+    "grok": {
+      "settings": [
+        "grok-4.6",
+        "low"
+      ],
+      "seconds": 23.074,
+      "code": 0,
+      "out": "I'll run that Node timer and wait until it exits.\n\nfinished\ncouncil grok ok · job 179555ff39a0d7e9 · grok-4.6/low · 23s · round 1/9 · edited 0\n",
+      "job": {
+        "id": "179555ff39a0d7e9",
+        "status": "done",
+        "outcome": "ok",
+        "error": null,
+        "cleanupPending": false,
+        "execution": [
+          "grok.exe",
+          "conhost.exe",
+          "pwsh.exe",
+          "conhost.exe",
+          "node.exe"
+        ],
+        "attention": null
+      },
+      "commandLeft": []
+    },
+    "codex": {
+      "settings": [
+        "gpt-6-luna",
+        "low"
+      ],
+      "seconds": 27.466,
+      "code": 0,
+      "out": "finished\ncouncil codex ok · job f6599ffd01966de4 · gpt-6-luna/low · 27s · round 1/9 · edited 0\n",
+      "job": {
+        "id": "f6599ffd01966de4",
+        "status": "done",
+        "outcome": "ok",
+        "error": null,
+        "cleanupPending": false,
+        "execution": [
+          "codex.exe",
+          "conhost.exe",
+          "node_repl.exe",
+          "conhost.exe",
+          "node.exe",
+          "cmd.exe",
+          "conhost.exe",
+          "conhost.exe",
+          "node.exe",
+          "node_repl.exe",
+          "codex-code-mode-host.exe",
+          "conhost.exe",
+          "codex-command-runner-0.166.0.exe",
+          "powershell.exe",
+          "conhost.exe",
+          "node.exe"
+        ],
+        "attention": null
+      },
+      "commandLeft": []
+    },
+    "gemini": {
+      "settings": [
+        "gemini-3.8-flash",
+        "low"
+      ],
+      "seconds": 35.803,
+      "code": 0,
+      "out": "I have launched the command and will wait for it to finish.\nWaiting for the command to finish.\nfinished --session eeeeeeee-5555-4555-8555-eeeeeeeeeeee\nfinished --session eeeeeeee-5555-4555-8555-eeeeeeeeeeee\ncouncil gemini ok · job 07fb24cbd1b6f539 · gemini-3.8-flash/low · 36s · round 1/9 · edited 0\n",
+      "job": {
+        "id": "07fb24cbd1b6f539",
+        "status": "done",
+        "outcome": "ok",
+        "error": null,
+        "cleanupPending": false,
+        "execution": [
+          "agy.exe",
+          "conhost.exe",
+          "powershell.exe",
+          "node.exe"
+        ],
+        "attention": null
+      },
+      "commandLeft": []
+    }
+  }
+}
