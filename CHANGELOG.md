@@ -1,6 +1,10 @@
 # Changelog
 
-## 1.0.0 (unreleased; 1.0.0-rc.11 candidate)
+## 1.0.1 (2026-11-03 Pacific)
+
+The owner moved the version from `1.0.0-rc.11` to `1.0.1`. Only the version fields change, so the plugin behaves exactly as rc.11 did. No `1.0.0` was released. The exact-payload macOS and interactive checks in S7 of `PLAN.md` remain open, so this number does not mean they passed.
+
+## 1.0.0 (not released; candidates up to 1.0.0-rc.11)
 
 First release of `council`. A single plugin now provides the following, through one companion process and one provider CLI child per call:
 
