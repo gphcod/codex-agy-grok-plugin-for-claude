@@ -12,4 +12,4 @@ Remaining installed-host cells at this release: rerun Gemini task/review on inst
 
 Review: two independent gpt-6-luna/low reviewers found no substantive defect. The final conditional-sandbox delta and cross-host parity were approved. Reviewers made no paid provider calls.
 
-Final `npm test`: 560 tests, 557 passed, 3 skipped, 0 failed after the sandbox fix and version bump. Skips are the opt-in live suites.
+Final `npm test`: 560 tests, 557 passed, 3 skipped, 0 failed after the sandbox fix and version bump.
