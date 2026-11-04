@@ -173,7 +173,7 @@ On Windows council never launches through `cmd.exe`. An npm `.cmd` shim runs its
 - **A clean Codex review reports `incomplete` (exit 10).** `codex exec review` writes the same explanation-only text for a clean review as for output it could not parse. council therefore cannot prove a clean review and reports `codex reported no findings; its output cannot prove a clean review` with Codex's text. Read it; it is not an approval.
 - **Codex needs a Git repository or a trusted directory.** Elsewhere, `codex exec` exits 1 with its own message. council does not add `--skip-git-repo-check`.
 - **Gemini web search cannot be blocked.** agy's `search_web` tool ignores a `search_web(*)` deny rule, so read-only Gemini turns may search the web, and `--web --to gemini` exits 2 instead of pretending to switch it. `setup` says so.
-- **A hard-killed companion on Windows** takes its provider child with it, unlike POSIX; `cancel` still recovers the job.
+- **A hard-killed companion on Windows** takes its provider child with it, unlike POSIX; `cancel` still recovers the job. A command that child started can outlive both. `cancel` stops it once a heartbeat (every 10 s) has recorded it. One started since the last heartbeat, or orphaned between two of them, keeps running, so `cancel` warns you to check the process table.
 - **Gemini settings.** Every turn passes a job-specific `--settings` file. It starts from the `allow`/`ask`/`deny` lists in your `~/.gemini/antigravity-cli/settings.json`, because a session list replaces the global one. On read-only turns it keeps only `read_file`/`read_url` allow rules and adds a deny list: `write_file(*)`, `edit_file(*)`, `command(*)`, `unsandboxed(*)`, `mcp(*)`, `execute_url(*)`. On tasks it keeps your lists unchanged. `--sandbox` is always on, and `--mode accept-edits` is passed only on tasks.
 - **Grok** runs read-only turns on the explore agent, or with the RESUME_DENY tool list once a task ran on the thread. It denies MCP tools, disables Claude skills, agents, hooks and MCP servers through its environment variables (and Claude rules on read-only turns), and turns web search off unless `--web`. Reviews run with `--cwd` at the repository root, because Grok sessions refuse `--add-dir`. Every Grok turn ends with a process scan for leftovers.
 
@@ -249,6 +249,10 @@ The [final rc.8 efficiency qualification](docs/qualification/efficiency-rc8-wind
 ## rc.9 review fixes
 
 A whole-code review by Codex, Gemini, Grok and Claude led to eight fixes; see the [changelog](CHANGELOG.md) and [decisions](docs/decisions.md). The [rc.9 qualification](docs/qualification/review-fixes-rc9-windows.md) records the matched rc.8/rc.9 benchmark and the Windows regression.
+
+## rc.11 lost-turn commands
+
+`cancel` of a lost job now warns that a command no heartbeat recorded may still be running, and a recorded process gets a bounded wait after a clean exit before it counts as a survivor. See the [changelog](CHANGELOG.md), [decisions](docs/decisions.md) and the [rc.11 qualification](docs/qualification/unrecorded-command-rc11-windows.md). It remains a release candidate pending macOS and interactive qualification.
 
 ## rc.10 thread-state fixes
 

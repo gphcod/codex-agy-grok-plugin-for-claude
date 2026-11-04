@@ -48,7 +48,7 @@ export async function cancelManaged(ctx, job, { timeoutMs = 30000, control = exe
         if (job.unattributedPipes) return { status: "unknown", code: 1, job: view(), error: "execution ownership/cleanup cannot be confirmed; claim and cancellation request retained" };
         // A lost turn may have moved its session to Grok's default agent and never saved that. Set before the
         // job stops blocking its thread, so every later selection reads it. A spawn that may not have run counts:
-        // that recipe is valid on a session that never used the agent; explore is not on one that did.
+        // that recipe is valid on a session that never used the agent; explore on one that did is proven only for Grok 1.0.70.
         if (job.threadId && job.spawnAttempted && job.turn?.agent === "default") {
           try { markDefaultAgent(ctx.home, job.provider, job.threadId); }
           catch (e) { return { status: "unknown", code: 1, job: view(), error: `cannot save the thread's agent: ${e.message}; claim and cancellation request retained` }; }
@@ -56,7 +56,7 @@ export async function cancelManaged(ctx, job, { timeoutMs = 30000, control = exe
         markStopped(job);
         releaseClaims(ctx.home, job);
         const current = view();
-        return { status: current.claimHeld ? "unknown" : label(job), code: current.claimHeld ? 1 : 0, job: current };
+        return { status: current.claimHeld ? "unknown" : label(job), code: current.claimHeld ? 1 : 0, job: current, ...(job.spawnAttempted && !current.claimHeld ? { warning: MESSAGES.unrecorded } : {}) };
       } else {
         try { recordRecoveryEvidence(job, found.rows); }
         catch (e) { return { status: "unknown", code: 1, job: view(), error: `cannot save cleanup evidence: ${e.message}` }; }
@@ -131,8 +131,8 @@ export async function cancelJob(ctx, o, refs, out, { controlFor, provider = null
   const control = await controlFor(job);
   const result = await cancelManaged(ctx, job, { timeoutMs, control, io });
   const pending = result.code !== 0;
-  const data = { provider: job.provider, job: job.id, status: result.status, exit: result.code, thread: result.job?.threadId ?? null, cleanupPending: pending, error: result.error ?? null };
-  out(o.json ? `${JSON.stringify(data)}\n` : `${result.status} · ${job.provider} · job ${job.id}${result.error ? ` · ${result.error}` : ""}${!pending && result.job?.threadId ? " · the thread stays resumable" : ""}\n`);
+  const data = { provider: job.provider, job: job.id, status: result.status, exit: result.code, thread: result.job?.threadId ?? null, cleanupPending: pending, error: result.error ?? null, ...(result.warning ? { warning: result.warning } : {}) };
+  out(o.json ? `${JSON.stringify(data)}\n` : `${result.status} · ${job.provider} · job ${job.id}${result.error ? ` · ${result.error}` : ""}${!pending && result.job?.threadId ? " · the thread stays resumable" : ""}${result.warning ? ` · ${result.warning}` : ""}\n`);
   return result.code;
 }
 
