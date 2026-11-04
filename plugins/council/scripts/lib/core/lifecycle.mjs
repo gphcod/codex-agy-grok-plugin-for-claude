@@ -277,7 +277,7 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
           try { job.leader = control.identify?.(job.pid) ?? null; } catch { job.leader = null; }
         }
         try {
-          save(job); // Recovery finds this child by its exact operands; no per-turn process query.
+          save(job); // Recovery finds this child by its exact operands; a turn shorter than a heartbeat makes no process query.
           if (cancelled()) stop("cancelled"); // Covers the cancellation-before/while-spawning race.
           else announce(); // The durable job is recoverable before a native init event arrives.
           if (turn.stdin !== undefined && turn.stdin !== null) child.stdin.end(turn.stdin); else child.stdin.end();
@@ -298,6 +298,14 @@ export async function runManagedTurn(ctx, adapter, initial, prepare, options = {
       // Finds execution the turn owns that outlived the launcher, and stops it.
       const scanOwned = async () => {
         let found = guarded.inspect(job, guarded.snapshot());
+        // A process recorded at a heartbeat can still be exiting when a clean exit closes the pipes: a survivor outlasts this wait.
+        // Each scan's rows are saved first, so a command known only through a parent that exits meanwhile stays known.
+        for (const end = Date.now() + unverifiedWaitMs; found.rows.length > 0 && !reason && !running(child) && child?.exitCode === 0 && Date.now() < end;) {
+          job.execution = unique([...job.execution, ...found.rows]);
+          save(job);
+          await sleep(100);
+          found = guarded.inspect(job, guarded.snapshot());
+        }
         const stopped = found.rows.length > 0;
         if (stopped) {
           reason ??= "owned execution survived the launcher";

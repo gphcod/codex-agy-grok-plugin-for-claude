@@ -356,3 +356,19 @@ A job already recovered under rc.9 or earlier keeps its stale record, because re
 The owner approved real sessions at grok-4.6/low to save tokens. Real Grok 1.0.70 accepted `--agent explore` on a session that ran the default agent and offered the same three read-only tools as the deny recipe, so the adapter's note does not hold for that CLI and model. The marker stays: it caused no problem in these runs, and other versions were not run. `grok.mjs` keeps its note until the next release, because correcting it changes plugin bytes.
 
 The same run found a new limit. After a lost companion, a command the default agent started keeps running while `cancel` reports `cancelled`. A normal `cancel` stops it. This is not fixed. The record is in the qualification.
+
+## 2026-11-03 Pacific: rc.11, a command a lost turn left running
+
+This corrects "This is not fixed" in the previous entry.
+
+**What the earlier run missed.** On Windows, Grok and its shell wrapper end by themselves within about a second of losing the companion, and the command stays with no living parent. This plugin already records identities at every heartbeat on every platform, but that run killed the companion before the first one. A real run that waited 25 s past the command's start recorded it, and `cancel` stopped it. So the gap here is a command no heartbeat recorded, not every command. The Codex-hosted plugin skipped recording on Windows and needed the real fix (1.1.5).
+
+**The warning has no time limit in it.** The plan said "started in the last seconds". Codex showed that an intermediate shell can start a detached command and exit between two heartbeats, so an unseen command can be minutes old. It prints only from the `cancel` that performed the recovery, never from a repeat that looked at no process table, and only when a spawn was attempted. It stays out of `job.error`, where "may still be running" reads as cleanup still owed.
+
+**A wait before a recorded process counts as a survivor.** A recorded helper such as `conhost.exe` alive at the exit scan used to fail the turn at once. Codex and Gemini asked for a bounded look-again first; Grok would have added it only if a live check failed. Taken, because the code path is plain and it costs nothing unless the first scan finds a process. It reuses the 5 s of the unverified wait. Each scan's rows are saved before the next look: Codex and Grok showed that a command known only through a wrapper that exits during the wait would otherwise vanish from the owned set and let the turn end `ok` with the command running.
+
+**Rejected.**
+- A stopped survivor no longer failing a completed turn (Gemini's option). Codex and Grok kept the rule: the caller should learn that a process had to be killed.
+- An extra query after each tool step. It narrows the gap to 2-3 s for one query per step, and still misses a process orphaned between queries.
+- Adopting an orphan by its dead parent's pid. Windows reuses pids, and a wrong match kills an innocent process.
+- A Job Object. Its name goes when the last handle closes, so a helper process must live for every turn, and it needs `Add-Type`.

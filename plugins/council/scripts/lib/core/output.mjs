@@ -52,6 +52,8 @@ export const MESSAGES = {
   threadBusyUnidentified: (thread) => `quiesce this state root before manual recovery: thread ${thread} is busy with an unidentified claim`,
   threadLocked: (thread, job) => `continue with a new ask: thread ${thread} is busy as job ${job}, whose output an unidentified process kept open, so it stays locked`,
   threadCleanup: (thread, job) => `run cancel ${job}: thread ${thread} requires cleanup of that job`,
+  // Never in a job's error, where "may still be running" reads as cleanup still owed.
+  unrecorded: "a command the lost turn started may still be running if no heartbeat recorded it; check the process table",
   cleanupPending: (provider, why) => `cleanup pending: ${provider} or a descendant may still be running; ${why || "execution ended"}`,
   requestGone: (name) => `a new request id is safe: the first call of ${name} ended before it chose a provider; nothing ran`,
   requestUnchosen: (name) => `retry with the same request id to keep waiting: the first call of ${name} has not chosen its provider yet`,

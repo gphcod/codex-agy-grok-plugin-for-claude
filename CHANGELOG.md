@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (unreleased; 1.0.0-rc.10 candidate)
+## 1.0.0 (unreleased; 1.0.0-rc.11 candidate)
 
 First release of `council`. A single plugin now provides the following, through one companion process and one provider CLI child per call:
 
@@ -10,6 +10,14 @@ First release of `council`. A single plugin now provides the following, through 
 - authorized delegated edits
 
 The release check is S7 of `PLAN.md`: a macOS matrix, a Windows session and the tag.
+
+### 1.0.0-rc.11 (2026-11-03 Pacific)
+
+Follows the real Grok sessions, which showed a lost turn's command outliving `cancel`. A later real run showed that on this plugin the gap is narrower than first recorded: a command a heartbeat has recorded is stopped. The earlier run killed the companion before its first heartbeat.
+
+- `cancel` of a lost job now warns: `a command the lost turn started may still be running if no heartbeat recorded it; check the process table`. With `--json` this is a `warning` field. A command started and orphaned between two heartbeats stays unseen, so recovery proves only that nothing identified is left. A repeat `cancel`, or a job that never reached its spawn, prints no warning.
+- A recorded process still alive after a clean exit gets up to 5 s to exit before it counts as a survivor. One that stays is still stopped and fails the turn. A helper such as `conhost.exe` that is merely still exiting no longer risks failing a good turn.
+- Corrected the notes that said a session on Grok's default agent cannot switch to explore. Grok 1.0.70 at grok-4.6 accepted it; the deny recipe and the marker stay, because other versions were not run.
 
 ### 1.0.0-rc.10 (2026-11-03 Pacific)
 
