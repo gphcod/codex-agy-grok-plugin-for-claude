@@ -625,3 +625,7 @@ A7.6: a thread with no record resumes only from the newest job on it whose provi
 ## rc.11 lost-turn commands amendment (2026-11-03 Pacific)
 
 A7.5/A7.8: a recovering `cancel` warns that a command no heartbeat recorded may still be running. A recorded process alive after a clean exit gets a bounded wait before it counts as a survivor. The reasons are in `docs/decisions.md`.
+
+## 1.0.1 amendment (2026-11-03 Pacific)
+
+S7.4: the owner chose `1.0.1` in place of `1.0.0`. The rest of S7, the exact-payload macOS and interactive gates, stays open. The reasons are in `docs/decisions.md`.

@@ -250,6 +250,10 @@ The [final rc.8 efficiency qualification](docs/qualification/efficiency-rc8-wind
 
 A whole-code review by Codex, Gemini, Grok and Claude led to eight fixes; see the [changelog](CHANGELOG.md) and [decisions](docs/decisions.md). The [rc.9 qualification](docs/qualification/review-fixes-rc9-windows.md) records the matched rc.8/rc.9 benchmark and the Windows regression.
 
+## 1.0.1
+
+The owner moved the version from `1.0.0-rc.11` to `1.0.1` on 2026-11-03 Pacific. Only the version fields change, and no `1.0.0` was released. Exact-payload macOS and interactive qualification remain open, so this number does not mean they passed. The sections below describe their own versions.
+
 ## rc.11 lost-turn commands
 
 `cancel` of a lost job now warns that a command no heartbeat recorded may still be running, and a recorded process gets a bounded wait after a clean exit before it counts as a survivor. See the [changelog](CHANGELOG.md), [decisions](docs/decisions.md) and the [rc.11 qualification](docs/qualification/unrecorded-command-rc11-windows.md). It remains a release candidate pending macOS and interactive qualification.

@@ -372,3 +372,7 @@ This corrects "This is not fixed" in the previous entry.
 - An extra query after each tool step. It narrows the gap to 2-3 s for one query per step, and still misses a process orphaned between queries.
 - Adopting an orphan by its dead parent's pid. Windows reuses pids, and a wrong match kills an innocent process.
 - A Job Object. Its name goes when the last handle closes, so a helper process must live for every turn, and it needs `Add-Type`.
+
+## 2026-11-03 Pacific: 1.0.1
+
+The owner chose this version. It replaces `1.0.0-rc.11` and changes only the version fields, so rc.11's qualification applies to the same code. S7.4 kept the final tag for the owner, and no `1.0.0` was released. The exact-payload macOS and interactive gates in S7 remain open, so the plugin's rank in the handbook stays provisional. `1.9.1` was considered and set aside, because it implies minor releases that never happened.
